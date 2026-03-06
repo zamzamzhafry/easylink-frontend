@@ -1,6 +1,7 @@
 // app/api/employees/[id]/route.js
 import { NextResponse } from 'next/server';
 import pool from '@/lib/db';
+import { getKaryawanColumns } from '@/lib/karyawan-schema';
 
 export async function PUT(req, { params }) {
   const { id } = params;
@@ -11,6 +12,9 @@ export async function PUT(req, { params }) {
   const awalKontrak = awal_kontrak?.trim() || null;
   const akhirKontrak = akhir_kontrak?.trim() || null;
   const activeDuty = isActiveDuty ? 1 : 0;
+  const columns = await getKaryawanColumns();
+  const hasSoftDelete = columns.has('isDeleted');
+  const hasActiveDuty = columns.has('isActiveDuty');
 
   if (!namaKaryawan) {
     return NextResponse.json(
@@ -29,11 +33,25 @@ export async function PUT(req, { params }) {
     }
   }
 
+  const setParts = [
+    'nama = ?',
+    'pin = ?',
+    'nip = ?',
+    'awal_kontrak = ?',
+    'akhir_kontrak = ?',
+  ];
+  const values = [namaKaryawan, userPin, normalizedNip, awalKontrak, akhirKontrak];
+  if (hasActiveDuty) {
+    setParts.push('isActiveDuty = ?');
+    values.push(activeDuty);
+  }
+  values.push(id);
+
   await pool.query(
     `UPDATE tb_karyawan
-     SET nama = ?, pin = ?, nip = ?, awal_kontrak = ?, akhir_kontrak = ?, isActiveDuty = ?
-     WHERE id = ? AND isDeleted = 0`,
-    [namaKaryawan, userPin, normalizedNip, awalKontrak, akhirKontrak, activeDuty, id]
+     SET ${setParts.join(', ')}
+     WHERE id = ? ${hasSoftDelete ? 'AND isDeleted = 0' : ''}`,
+    values
   );
 
   return NextResponse.json({ ok: true });
@@ -41,12 +59,28 @@ export async function PUT(req, { params }) {
 
 export async function DELETE(_req, { params }) {
   const { id } = params;
+  const columns = await getKaryawanColumns();
+  const hasSoftDelete = columns.has('isDeleted');
+  const hasDeletedAt = columns.has('deletedAt');
+  const hasActiveDuty = columns.has('isActiveDuty');
 
+  if (!hasSoftDelete || !hasDeletedAt) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error: 'Soft delete columns are missing. Run employee_crud_revision.sql first.',
+      },
+      { status: 400 }
+    );
+  }
+
+  const setParts = ['isDeleted = 1', 'deletedAt = NOW()'];
+  if (hasActiveDuty) {
+    setParts.push('isActiveDuty = 0');
+  }
   await pool.query(
     `UPDATE tb_karyawan
-     SET isDeleted = 1,
-         deletedAt = NOW(),
-         isActiveDuty = 0
+     SET ${setParts.join(', ')}
      WHERE id = ? AND isDeleted = 0`,
     [id]
   );

@@ -1,11 +1,13 @@
 // app/api/schedule/route.js
 import { NextResponse } from 'next/server';
 import pool from '@/lib/db';
+import { hasKaryawanColumn } from '@/lib/karyawan-schema';
 
 export async function GET(req) {
   const { searchParams } = new URL(req.url);
   const from = searchParams.get('from');
   const to   = searchParams.get('to');
+  const canFilterDeleted = await hasKaryawanColumn('isDeleted');
 
   const [shifts] = await pool.query('SELECT * FROM tb_shift_type ORDER BY id');
 
@@ -22,7 +24,7 @@ export async function GET(req) {
     LEFT JOIN tb_employee_group eg ON eg.karyawan_id = k.id
     LEFT JOIN tb_group g ON g.id = eg.group_id
     WHERE sc.tanggal BETWEEN ? AND ?
-      AND k.isDeleted = 0
+      ${canFilterDeleted ? 'AND k.isDeleted = 0' : ''}
     ORDER BY sc.tanggal, nama
   `, [from, to]);
 
@@ -33,7 +35,7 @@ export async function GET(req) {
     LEFT JOIN tb_user u ON u.pin = k.pin
     LEFT JOIN tb_employee_group eg ON eg.karyawan_id = k.id
     LEFT JOIN tb_group g ON g.id = eg.group_id
-    WHERE k.isDeleted = 0
+    ${canFilterDeleted ? 'WHERE k.isDeleted = 0' : ''}
     ORDER BY nama
   `);
 
@@ -42,6 +44,7 @@ export async function GET(req) {
 
 export async function POST(req) {
   const body = await req.json();
+  const canFilterDeleted = await hasKaryawanColumn('isDeleted');
 
   // Assign single shift
   if (body.action === 'set') {
@@ -76,6 +79,60 @@ export async function POST(req) {
       }
     }
     return NextResponse.json({ ok: true, affected: members.length * dates.length });
+  }
+
+  // Bulk upsert from validated import rows
+  if (body.action === 'bulk_rows') {
+    const rows = Array.isArray(body.rows) ? body.rows : [];
+    if (!rows.length) {
+      return NextResponse.json({ ok: false, error: 'No import rows provided.' }, { status: 400 });
+    }
+
+    const employeeIds = [...new Set(rows.map((row) => Number(row.karyawan_id)).filter(Boolean))];
+    const shiftIds = [...new Set(rows.map((row) => Number(row.shift_id)).filter(Boolean))];
+    if (!employeeIds.length || !shiftIds.length) {
+      return NextResponse.json(
+        { ok: false, error: 'Import rows must include valid employee IDs and shift IDs.' },
+        { status: 400 }
+      );
+    }
+
+    const [employees] = await pool.query(
+      `SELECT id FROM tb_karyawan
+       WHERE id IN (${employeeIds.map(() => '?').join(',')})
+       ${canFilterDeleted ? 'AND isDeleted = 0' : ''}`,
+      employeeIds
+    );
+    const [shifts] = await pool.query(
+      `SELECT id FROM tb_shift_type WHERE id IN (${shiftIds.map(() => '?').join(',')})`,
+      shiftIds
+    );
+
+    const employeeSet = new Set(employees.map((employee) => Number(employee.id)));
+    const shiftSet = new Set(shifts.map((shift) => Number(shift.id)));
+
+    let affected = 0;
+    const skipped = [];
+    for (const row of rows) {
+      const employeeId = Number(row.karyawan_id);
+      const shiftId = Number(row.shift_id);
+      const tanggal = row.tanggal;
+
+      if (!employeeSet.has(employeeId) || !shiftSet.has(shiftId) || !tanggal) {
+        skipped.push(row);
+        continue;
+      }
+
+      await pool.query(
+        `INSERT INTO tb_schedule (karyawan_id, tanggal, shift_id, catatan)
+         VALUES (?, ?, ?, ?)
+         ON DUPLICATE KEY UPDATE shift_id = VALUES(shift_id), catatan = VALUES(catatan)`,
+        [employeeId, tanggal, shiftId, row.catatan ?? null]
+      );
+      affected += 1;
+    }
+
+    return NextResponse.json({ ok: true, affected, skipped: skipped.length });
   }
 
   return NextResponse.json({ ok: false, error: 'unknown action' }, { status: 400 });

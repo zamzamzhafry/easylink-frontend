@@ -1,8 +1,13 @@
 // app/api/employees/route.js
 import { NextResponse } from 'next/server';
 import pool from '@/lib/db';
+import { getKaryawanColumns } from '@/lib/karyawan-schema';
 
 export async function GET() {
+  const columns = await getKaryawanColumns();
+  const hasSoftDelete = columns.has('isDeleted');
+  const hasActiveDuty = columns.has('isActiveDuty');
+
   const [rows] = await pool.query(`
     SELECT
       k.id,
@@ -12,12 +17,12 @@ export async function GET() {
       k.awal_kontrak,
       k.akhir_kontrak,
       k.foto,
-      k.isActiveDuty,
+      ${hasActiveDuty ? 'k.isActiveDuty' : '1 AS isActiveDuty'},
       u.nama   AS nama_user,
       u.privilege
     FROM tb_karyawan k
     LEFT JOIN tb_user u ON u.pin = k.pin
-    WHERE k.isDeleted = 0
+    ${hasSoftDelete ? 'WHERE k.isDeleted = 0' : ''}
     ORDER BY k.id ASC
   `);
   return NextResponse.json(rows);
@@ -31,6 +36,10 @@ export async function POST(req) {
   const awalKontrak = body.awal_kontrak?.trim() || null;
   const akhirKontrak = body.akhir_kontrak?.trim() || null;
   const isActiveDuty = body.isActiveDuty ? 1 : 0;
+  const columns = await getKaryawanColumns();
+  const hasSoftDelete = columns.has('isDeleted');
+  const hasDeletedAt = columns.has('deletedAt');
+  const hasActiveDuty = columns.has('isActiveDuty');
 
   if (!namaKaryawan) {
     return NextResponse.json(
@@ -49,11 +58,25 @@ export async function POST(req) {
     }
   }
 
+  const insertColumns = ['nama', 'pin', 'nip', 'awal_kontrak', 'akhir_kontrak'];
+  const insertValues = [namaKaryawan, userPin, nip, awalKontrak, akhirKontrak];
+  if (hasActiveDuty) {
+    insertColumns.push('isActiveDuty');
+    insertValues.push(isActiveDuty);
+  }
+  if (hasSoftDelete) {
+    insertColumns.push('isDeleted');
+    insertValues.push(0);
+  }
+  if (hasDeletedAt) {
+    insertColumns.push('deletedAt');
+    insertValues.push(null);
+  }
+
+  const placeholders = insertColumns.map(() => '?').join(', ');
   const [result] = await pool.query(
-    `INSERT INTO tb_karyawan
-      (nama, pin, nip, awal_kontrak, akhir_kontrak, isActiveDuty, isDeleted, deletedAt)
-     VALUES (?, ?, ?, ?, ?, ?, 0, NULL)`,
-    [namaKaryawan, userPin, nip, awalKontrak, akhirKontrak, isActiveDuty]
+    `INSERT INTO tb_karyawan (${insertColumns.join(', ')}) VALUES (${placeholders})`,
+    insertValues
   );
 
   return NextResponse.json({ ok: true, id: result.insertId });

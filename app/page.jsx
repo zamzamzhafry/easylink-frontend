@@ -1,73 +1,79 @@
-// app/page.jsx — Dashboard
-import pool from '@/lib/db';
-import { Users, UserCheck, UserX, Clock, Fingerprint, Monitor } from 'lucide-react';
 import Link from 'next/link';
+import { Clock, Fingerprint, Monitor, UserCheck, Users, UserX } from 'lucide-react';
+import pool from '@/lib/db';
+import { hasKaryawanColumn } from '@/lib/karyawan-schema';
 
 async function getStats() {
   const today = new Date().toISOString().slice(0, 10);
+  const canFilterDeleted = await hasKaryawanColumn('isDeleted');
 
   const [[{ total }]] = await pool.query(
-    'SELECT COUNT(*) AS total FROM tb_karyawan'
+    `SELECT COUNT(*) AS total FROM tb_karyawan ${canFilterDeleted ? 'WHERE isDeleted = 0' : ''}`
   );
 
-  // employees who scanned today
   const [[{ hadir }]] = await pool.query(
     `SELECT COUNT(DISTINCT pin) AS hadir
      FROM tb_scanlog
-     WHERE scan_date = ?`, [today]
+     WHERE DATE(scan_date) = ?`,
+    [today]
   ).catch(() => [[{ hadir: 0 }]]);
 
-  // employees with a schedule today but no scan → absent
   const [[{ jadwal_hari }]] = await pool.query(
     `SELECT COUNT(*) AS jadwal_hari
      FROM tb_schedule s
      JOIN tb_shift_type st ON s.shift_id = st.id
-     WHERE s.tanggal = ? AND st.needs_scan = 1`, [today]
+     JOIN tb_karyawan k ON k.id = s.karyawan_id
+     WHERE s.tanggal = ?
+       AND st.needs_scan = 1
+       ${canFilterDeleted ? 'AND k.isDeleted = 0' : ''}`,
+    [today]
   ).catch(() => [[{ jadwal_hari: 0 }]]);
 
-  // late today — scheduled pagi 07:00, compare first scan
-  const [late] = await pool.query(
-    `SELECT COUNT(DISTINCT sl.pin) AS cnt
-     FROM tb_scanlog sl
-     JOIN tb_schedule sc ON sc.karyawan_id = (
-       SELECT id FROM tb_karyawan WHERE pin = sl.pin LIMIT 1
-     ) AND sc.tanggal = ?
+  const [[{ late_count }]] = await pool.query(
+    `SELECT COUNT(*) AS late_count
+     FROM (
+       SELECT sl.pin, MIN(TIME(sl.scan_date)) AS first_scan
+       FROM tb_scanlog sl
+       WHERE DATE(sl.scan_date) = ?
+       GROUP BY sl.pin
+     ) logs
+     JOIN tb_karyawan k ON k.pin = logs.pin
+     JOIN tb_schedule sc ON sc.karyawan_id = k.id AND sc.tanggal = ?
      JOIN tb_shift_type st ON sc.shift_id = st.id
-     WHERE sl.scan_date = ?
-       AND st.jam_masuk IS NOT NULL
-       AND TIMEDIFF(MIN(sl.scan_time), ADDTIME(st.jam_masuk,'00:15:00')) > 0
-     GROUP BY sl.pin`, [today, today]
-  ).catch(() => [[{ cnt: 0 }]]);
+     WHERE st.jam_masuk IS NOT NULL
+       AND TIME_TO_SEC(logs.first_scan) - TIME_TO_SEC(st.jam_masuk) > 900
+       ${canFilterDeleted ? 'AND k.isDeleted = 0' : ''}`,
+    [today, today]
+  ).catch(() => [[{ late_count: 0 }]]);
 
-  // recent 10 scans
   const [recent] = await pool.query(
-    `SELECT sl.pin, sl.scan_date, sl.scan_time, sl.verify_mode,
+    `SELECT sl.pin,
+            DATE(sl.scan_date) AS scan_date,
+            TIME(sl.scan_date) AS scan_time,
+            sl.verifymode,
             COALESCE(k.nama, u.nama, sl.pin) AS nama
      FROM tb_scanlog sl
-     LEFT JOIN tb_karyawan k ON k.pin = sl.pin
+     LEFT JOIN tb_karyawan k ON k.pin = sl.pin ${canFilterDeleted ? 'AND k.isDeleted = 0' : ''}
      LEFT JOIN tb_user     u ON u.pin = sl.pin
-     ORDER BY sl.scan_date DESC, sl.scan_time DESC
+     ORDER BY sl.scan_date DESC
      LIMIT 10`
   ).catch(() => [[]]);
 
-  // device count
-  const [[{ devices }]] = await pool.query(
-    'SELECT COUNT(*) AS devices FROM tb_device'
-  );
+  const [[{ devices }]] = await pool.query('SELECT COUNT(*) AS devices FROM tb_device');
 
   return {
-    total:       Number(total),
-    hadir:       Number(hadir),
+    total: Number(total),
+    hadir: Number(hadir),
     jadwal_hari: Number(jadwal_hari),
-    late:        Array.isArray(late) ? late.length : 0,
-    recent:      Array.isArray(recent) ? recent : [],
-    devices:     Number(devices),
+    late: Number(late_count),
+    recent: Array.isArray(recent) ? recent : [],
+    devices: Number(devices),
   };
 }
 
-const verifyLabel = (v) => {
+const verifyLabel = (value) => {
   const map = { 1: 'Finger', 4: 'Face', 15: 'Palm', 2: 'Card' };
-  return map[v] ?? `Mode ${v}`;
+  return map[value] ?? `Mode ${value}`;
 };
 
 export default async function Dashboard() {
@@ -75,91 +81,97 @@ export default async function Dashboard() {
   const absent = Math.max(0, stats.jadwal_hari - stats.hadir);
 
   const cards = [
-    { label: 'Total Karyawan',   value: stats.total,    icon: Users,      color: 'text-teal-400',   bg: 'bg-teal-400/10',   href: '/employees' },
-    { label: 'Hadir Hari Ini',   value: stats.hadir,    icon: UserCheck,  color: 'text-emerald-400', bg: 'bg-emerald-400/10', href: '/attendance' },
-    { label: 'Tidak Hadir',      value: absent,          icon: UserX,      color: 'text-rose-400',   bg: 'bg-rose-400/10',   href: '/attendance' },
-    { label: 'Terlambat',        value: stats.late,      icon: Clock,      color: 'text-amber-400',  bg: 'bg-amber-400/10',  href: '/attendance' },
-    { label: 'Perangkat Aktif',  value: stats.devices,   icon: Monitor,    color: 'text-violet-400', bg: 'bg-violet-400/10', href: '#' },
+    { label: 'Total Karyawan', value: stats.total, icon: Users, color: 'text-teal-400', bg: 'bg-teal-400/10', href: '/employees' },
+    { label: 'Hadir Hari Ini', value: stats.hadir, icon: UserCheck, color: 'text-emerald-400', bg: 'bg-emerald-400/10', href: '/attendance' },
+    { label: 'Tidak Hadir', value: absent, icon: UserX, color: 'text-rose-400', bg: 'bg-rose-400/10', href: '/attendance' },
+    { label: 'Terlambat', value: stats.late, icon: Clock, color: 'text-amber-400', bg: 'bg-amber-400/10', href: '/attendance' },
+    { label: 'Perangkat Aktif', value: stats.devices, icon: Monitor, color: 'text-violet-400', bg: 'bg-violet-400/10', href: '#' },
   ];
 
   return (
-    <div className="space-y-8 max-w-6xl">
-      {/* Header */}
+    <div className="max-w-6xl space-y-8">
       <div>
-        <p className="text-xs font-mono text-teal-400 uppercase tracking-widest mb-1">
-          {new Date().toLocaleDateString('id-ID', { weekday:'long', year:'numeric', month:'long', day:'numeric' })}
+        <p className="mb-1 text-xs font-mono uppercase tracking-widest text-teal-400">
+          {new Date().toLocaleDateString('id-ID', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
         </p>
         <h1 className="text-3xl font-bold text-white">Dashboard Absensi</h1>
-        <p className="text-slate-400 mt-1 text-sm">EasyLink biometric attendance system overview</p>
+        <p className="mt-1 text-sm text-slate-400">EasyLink biometric attendance system overview</p>
       </div>
 
-      {/* Stat Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">
         {cards.map(({ label, value, icon: Icon, color, bg, href }) => (
-          <Link key={label} href={href}
-            className="bg-slate-900 border border-slate-800 rounded-xl p-4 hover:border-slate-700 transition-colors group"
+          <Link
+            key={label}
+            href={href}
+            className="group rounded-xl border border-slate-800 bg-slate-900 p-4 transition-colors hover:border-slate-700"
           >
-            <div className={`inline-flex p-2 rounded-lg ${bg} mb-3`}>
-              <Icon className={`w-5 h-5 ${color}`} />
+            <div className={`mb-3 inline-flex rounded-lg p-2 ${bg}`}>
+              <Icon className={`h-5 w-5 ${color}`} />
             </div>
-            <div className="text-2xl font-bold text-white font-mono">{value}</div>
-            <div className="text-xs text-slate-400 mt-0.5">{label}</div>
+            <div className="font-mono text-2xl font-bold text-white">{value}</div>
+            <div className="mt-0.5 text-xs text-slate-400">{label}</div>
           </Link>
         ))}
       </div>
 
-      {/* Quick Links */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
         {[
           { href: '/employees', label: 'Manage Employees', desc: 'Edit names & link users' },
           { href: '/attendance', label: 'Attendance Log', desc: 'View scan history' },
           { href: '/groups', label: 'Employee Groups', desc: 'Organize by team/shift group' },
           { href: '/schedule', label: 'Shift Schedule', desc: 'Assign shifts & view calendar' },
         ].map(({ href, label, desc }) => (
-          <Link key={href} href={href}
-            className="bg-slate-900 border border-slate-800 hover:border-teal-500/40 rounded-xl p-4 transition-all group"
+          <Link
+            key={href}
+            href={href}
+            className="group rounded-xl border border-slate-800 bg-slate-900 p-4 transition-all hover:border-teal-500/40"
           >
-            <div className="font-semibold text-white text-sm group-hover:text-teal-400 transition-colors">{label}</div>
-            <div className="text-slate-500 text-xs mt-1">{desc}</div>
-            <div className="mt-3 text-teal-500 text-xs font-mono">→ Open</div>
+            <div className="text-sm font-semibold text-white transition-colors group-hover:text-teal-400">{label}</div>
+            <div className="mt-1 text-xs text-slate-500">{desc}</div>
+            <div className="mt-3 font-mono text-xs text-teal-500">-&gt; Open</div>
           </Link>
         ))}
       </div>
 
-      {/* Recent Scans */}
-      <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
-        <div className="px-5 py-3 border-b border-slate-800 flex items-center gap-2">
-          <Fingerprint className="w-4 h-4 text-teal-400" />
+      <div className="overflow-hidden rounded-xl border border-slate-800 bg-slate-900">
+        <div className="flex items-center gap-2 border-b border-slate-800 px-5 py-3">
+          <Fingerprint className="h-4 w-4 text-teal-400" />
           <span className="text-sm font-semibold text-white">Recent Scans</span>
-          <span className="ml-auto text-xs text-slate-500 font-mono">last 10 entries</span>
+          <span className="ml-auto font-mono text-xs text-slate-500">last 10 entries</span>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-slate-800 text-left">
-                <th className="px-5 py-2.5 text-slate-500 font-medium text-xs uppercase tracking-wide">Nama</th>
-                <th className="px-4 py-2.5 text-slate-500 font-medium text-xs uppercase tracking-wide">PIN</th>
-                <th className="px-4 py-2.5 text-slate-500 font-medium text-xs uppercase tracking-wide">Tanggal</th>
-                <th className="px-4 py-2.5 text-slate-500 font-medium text-xs uppercase tracking-wide">Waktu</th>
-                <th className="px-4 py-2.5 text-slate-500 font-medium text-xs uppercase tracking-wide">Metode</th>
+                <th className="px-5 py-2.5 text-xs font-medium uppercase tracking-wide text-slate-500">Nama</th>
+                <th className="px-4 py-2.5 text-xs font-medium uppercase tracking-wide text-slate-500">PIN</th>
+                <th className="px-4 py-2.5 text-xs font-medium uppercase tracking-wide text-slate-500">Tanggal</th>
+                <th className="px-4 py-2.5 text-xs font-medium uppercase tracking-wide text-slate-500">Waktu</th>
+                <th className="px-4 py-2.5 text-xs font-medium uppercase tracking-wide text-slate-500">Metode</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800/50">
               {stats.recent.length === 0 ? (
-                <tr><td colSpan={5} className="px-5 py-8 text-center text-slate-500 text-xs">No scan data found</td></tr>
-              ) : stats.recent.map((r, i) => (
-                <tr key={i} className="data-row">
-                  <td className="px-5 py-2.5 text-white">{r.nama}</td>
-                  <td className="px-4 py-2.5 text-slate-400 font-mono text-xs">{r.pin}</td>
-                  <td className="px-4 py-2.5 text-slate-400 font-mono text-xs">{r.scan_date}</td>
-                  <td className="px-4 py-2.5 text-teal-400 font-mono text-xs">{r.scan_time}</td>
-                  <td className="px-4 py-2.5">
-                    <span className="inline-flex px-2 py-0.5 rounded text-xs bg-slate-800 text-slate-300 border border-slate-700">
-                      {verifyLabel(r.verify_mode)}
-                    </span>
+                <tr>
+                  <td colSpan={5} className="px-5 py-8 text-center text-xs text-slate-500">
+                    No scan data found
                   </td>
                 </tr>
-              ))}
+              ) : (
+                stats.recent.map((row, index) => (
+                  <tr key={`${row.pin}-${row.scan_date}-${row.scan_time}-${index}`} className="data-row">
+                    <td className="px-5 py-2.5 text-white">{row.nama}</td>
+                    <td className="px-4 py-2.5 font-mono text-xs text-slate-400">{row.pin}</td>
+                    <td className="px-4 py-2.5 font-mono text-xs text-slate-400">{String(row.scan_date).slice(0, 10)}</td>
+                    <td className="px-4 py-2.5 font-mono text-xs text-teal-400">{String(row.scan_time).slice(0, 8)}</td>
+                    <td className="px-4 py-2.5">
+                      <span className="inline-flex rounded border border-slate-700 bg-slate-800 px-2 py-0.5 text-xs text-slate-300">
+                        {verifyLabel(row.verifymode)}
+                      </span>
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>

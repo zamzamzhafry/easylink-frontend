@@ -9,7 +9,11 @@ export default function NoteModal({ row, onClose, onSave }) {
   const [catatan, setCatatan] = useState(row.note_catatan || '');
   const [saving, setSaving] = useState(false);
 
-  const subtitle = useMemo(() => `${row.nama} | ${row.scan_date}`, [row.nama, row.scan_date]);
+  const subtitle = useMemo(() => {
+    const rawDate = String(row.scan_date ?? '');
+    const dateText = rawDate.includes('T') ? rawDate.slice(0, 10) : rawDate;
+    return `${row.nama} | ${dateText}`;
+  }, [row.nama, row.scan_date]);
 
   const save = async () => {
     setSaving(true);

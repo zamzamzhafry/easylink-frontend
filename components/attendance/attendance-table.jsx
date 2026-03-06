@@ -8,6 +8,7 @@ import { shiftClassName } from '@/lib/shift-helpers';
 const TABLE_HEADERS = [
   { key: 'date', label: 'Tanggal' },
   { key: 'name', label: 'Nama' },
+  { key: 'group', label: 'Group' },
   { key: 'shift', label: 'Shift' },
   { key: 'in', label: 'Masuk' },
   { key: 'out', label: 'Keluar' },
@@ -18,6 +19,12 @@ const TABLE_HEADERS = [
 ];
 
 export default function AttendanceTable({ loading, rows, onEdit }) {
+  const displayDate = (value) => {
+    if (!value) return '-';
+    const text = String(value);
+    return text.includes('T') ? text.slice(0, 10) : text;
+  };
+
   return (
     <TableShell>
       <table className="w-full text-sm">
@@ -26,9 +33,9 @@ export default function AttendanceTable({ loading, rows, onEdit }) {
         </thead>
         <tbody className="divide-y divide-slate-800/40">
           {loading ? (
-            <TableLoadingRow colSpan={9} label="Loading..." />
+            <TableLoadingRow colSpan={10} label="Loading..." />
           ) : rows.length === 0 ? (
-            <TableEmptyRow colSpan={9} label="No records in range" />
+            <TableEmptyRow colSpan={10} label="No records in range" />
           ) : (
             rows.map((row, index) => {
               const status = STATUS_MAP[row.computed_status] ?? STATUS_MAP.lainnya;
@@ -36,8 +43,9 @@ export default function AttendanceTable({ loading, rows, onEdit }) {
 
               return (
                 <tr key={`${row.pin}-${row.scan_date}-${index}`} className={`data-row ${isAnomaly ? 'bg-amber-500/3' : ''}`}>
-                  <td className="px-4 py-3 font-mono text-xs text-slate-400">{row.scan_date}</td>
+                  <td className="px-4 py-3 font-mono text-xs text-slate-400">{displayDate(row.scan_date)}</td>
                   <td className="px-4 py-3 font-medium text-white">{row.nama}</td>
+                  <td className="px-4 py-3 text-xs text-slate-500">{row.nama_group || '-'}</td>
                   <td className="px-4 py-3">
                     {row.nama_shift ? (
                       <span

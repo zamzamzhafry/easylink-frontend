@@ -1,22 +1,35 @@
 // app/api/attendance/route.js
 import { NextResponse } from 'next/server';
 import pool from '@/lib/db';
+import { hasKaryawanColumn } from '@/lib/karyawan-schema';
+
+function toMinutes(value) {
+  if (!value || typeof value !== 'string') return null;
+  const [hours, minutes] = value.split(':').map(Number);
+  if (Number.isNaN(hours) || Number.isNaN(minutes)) return null;
+  return (hours * 60) + minutes;
+}
 
 export async function GET(req) {
   const { searchParams } = new URL(req.url);
-  const dateFrom = searchParams.get('from') || new Date().toISOString().slice(0,10);
-  const dateTo   = searchParams.get('to')   || dateFrom;
+  const dateFrom = searchParams.get('from') || new Date().toISOString().slice(0, 10);
+  const dateTo = searchParams.get('to') || dateFrom;
   const pinFilter = searchParams.get('pin') || null;
+  const groupId = searchParams.get('group_id') || null;
+  const parsedGroupId = Number.parseInt(groupId ?? '', 10);
+  const canFilterDeleted = await hasKaryawanColumn('isDeleted');
 
-  // Aggregate per employee per day: first scan = masuk, last scan = keluar
+  // tb_scanlog uses one timestamp column (scan_date), so date/time are derived from it.
   let query = `
     SELECT
-      sl.pin,
-      sl.scan_date,
-      MIN(sl.scan_time) AS masuk,
-      MAX(sl.scan_time) AS keluar,
-      COUNT(sl.id)      AS scan_count,
-      COALESCE(k.nama, u.nama, sl.pin) AS nama,
+      logs.pin,
+      logs.scan_date,
+      logs.masuk,
+      logs.keluar,
+      logs.scan_count,
+      COALESCE(k.nama, u.nama, logs.pin) AS nama,
+      eg.group_id,
+      g.nama_group,
       sc.shift_id,
       st.nama_shift,
       st.jam_masuk,
@@ -25,13 +38,15 @@ export async function GET(req) {
       st.needs_scan,
       an.status  AS note_status,
       an.catatan AS note_catatan
-    FROM tb_scanlog sl
-    LEFT JOIN tb_karyawan        k  ON k.pin  = sl.pin
-    LEFT JOIN tb_user            u  ON u.pin  = sl.pin
-    LEFT JOIN tb_schedule        sc ON sc.karyawan_id = k.id AND sc.tanggal = sl.scan_date
-    LEFT JOIN tb_shift_type      st ON st.id  = sc.shift_id
-    LEFT JOIN tb_attendance_note an ON an.pin  = sl.pin AND an.tanggal = sl.scan_date
-    WHERE sl.scan_date BETWEEN ? AND ?
+    FROM (
+      SELECT
+        sl.pin,
+        DATE(sl.scan_date) AS scan_date,
+        MIN(TIME(sl.scan_date)) AS masuk,
+        MAX(TIME(sl.scan_date)) AS keluar,
+        COUNT(*) AS scan_count
+      FROM tb_scanlog sl
+      WHERE DATE(sl.scan_date) BETWEEN ? AND ?
   `;
   const params = [dateFrom, dateTo];
 
@@ -40,56 +55,66 @@ export async function GET(req) {
     params.push(pinFilter);
   }
 
-  query += ' GROUP BY sl.pin, sl.scan_date ORDER BY sl.scan_date DESC, nama ASC';
+  query += `
+      GROUP BY sl.pin, DATE(sl.scan_date)
+    ) logs
+    LEFT JOIN tb_karyawan        k  ON k.pin  = logs.pin ${canFilterDeleted ? 'AND k.isDeleted = 0' : ''}
+    LEFT JOIN tb_user            u  ON u.pin  = logs.pin
+    LEFT JOIN tb_employee_group  eg ON eg.karyawan_id = k.id
+    LEFT JOIN tb_group           g  ON g.id = eg.group_id
+    LEFT JOIN tb_schedule        sc ON sc.karyawan_id = k.id AND sc.tanggal = logs.scan_date
+    LEFT JOIN tb_shift_type      st ON st.id  = sc.shift_id
+    LEFT JOIN tb_attendance_note an ON an.pin  = logs.pin AND an.tanggal = logs.scan_date
+    WHERE 1 = 1
+  `;
+
+  if (Number.isInteger(parsedGroupId)) {
+    query += ' AND eg.group_id = ?';
+    params.push(parsedGroupId);
+  }
+
+  query += ' ORDER BY logs.scan_date DESC, nama ASC';
 
   const [rows] = await pool.query(query, params);
 
-  // Compute status per row
-  const LATE_MINUTES = 15;
-  const result = rows.map(r => {
-    let status = r.note_status || 'normal';
-    let flags  = [];
+  const lateMinutesThreshold = 15;
+  const result = rows.map((row) => {
+    let status = row.note_status || 'normal';
+    const flags = [];
 
-    if (r.jam_masuk && r.masuk) {
-      const [sh, sm] = r.jam_masuk.split(':').map(Number);
-      const [ah, am] = r.masuk.split(':').map(Number);
-      const schedMins = sh * 60 + sm;
-      const actualMins = ah * 60 + am;
-      if (actualMins - schedMins > LATE_MINUTES) {
+    const scheduledInMinutes = toMinutes(row.jam_masuk);
+    const actualInMinutes = toMinutes(row.masuk);
+    if (scheduledInMinutes !== null && actualInMinutes !== null) {
+      if (actualInMinutes - scheduledInMinutes > lateMinutesThreshold) {
         flags.push('terlambat');
         if (status === 'normal') status = 'terlambat';
       }
     }
 
-    if (r.jam_keluar && r.keluar && !r.next_day) {
-      const [sh, sm] = r.jam_keluar.split(':').map(Number);
-      const [ah, am] = r.keluar.split(':').map(Number);
-      const schedMins = sh * 60 + sm;
-      const actualMins = ah * 60 + am;
-      if (schedMins - actualMins > LATE_MINUTES) {
+    const scheduledOutMinutes = toMinutes(row.jam_keluar);
+    const actualOutMinutes = toMinutes(row.keluar);
+    if (scheduledOutMinutes !== null && actualOutMinutes !== null && !row.next_day) {
+      if (scheduledOutMinutes - actualOutMinutes > lateMinutesThreshold) {
         flags.push('pulang_awal');
         if (status === 'normal') status = 'pulang_awal';
       }
     }
 
-    // Work duration in minutes
-    let durasiMenit = null;
-    if (r.masuk && r.keluar && r.masuk !== r.keluar) {
-      const [mh, mm] = r.masuk.split(':').map(Number);
-      const [kh, km] = r.keluar.split(':').map(Number);
-      let diff = (kh * 60 + km) - (mh * 60 + mm);
-      if (diff < 0 && r.next_day) diff += 24 * 60;
-      if (diff > 0) durasiMenit = diff;
+    let durationMinutes = null;
+    if (actualInMinutes !== null && actualOutMinutes !== null && row.masuk !== row.keluar) {
+      let diff = actualOutMinutes - actualInMinutes;
+      if (diff < 0 && row.next_day) diff += 24 * 60;
+      if (diff > 0) durationMinutes = diff;
     }
 
     return {
-      ...r,
+      ...row,
       computed_status: status,
       flags,
-      durasi_menit: durasiMenit,
-      durasi_label: durasiMenit
-        ? `${Math.floor(durasiMenit / 60)}j ${durasiMenit % 60}m`
-        : '—',
+      durasi_menit: durationMinutes,
+      durasi_label: durationMinutes
+        ? `${Math.floor(durationMinutes / 60)}j ${durationMinutes % 60}m`
+        : '-',
     };
   });
 
