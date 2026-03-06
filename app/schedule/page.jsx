@@ -48,6 +48,7 @@ export default function SchedulePage() {
   const [monthOf, setMonthOf] = useState(() => monthStart(new Date()));
   const [groupTab, setGroupTab] = useState('all');
   const [data, setData] = useState({ shifts: [], schedules: [], employees: [], scanCompletions: [] });
+  const [attendanceRows, setAttendanceRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [bulkModal, setBulkModal] = useState(false);
   const [importResult, setImportResult] = useState({ entries: [], errors: [] });
@@ -73,19 +74,27 @@ export default function SchedulePage() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const result = await requestJson(`/api/schedule?from=${from}&to=${to}`);
-      const normalizedSchedules = Array.isArray(result?.schedules)
-        ? result.schedules.map((item) => ({ ...item, tanggal: normalizeDate(item.tanggal) }))
+      const [scheduleResult, attendanceResult] = await Promise.all([
+        requestJson(`/api/schedule?from=${from}&to=${to}`),
+        requestJson(`/api/attendance?from=${from}&to=${to}`),
+      ]);
+      const normalizedSchedules = Array.isArray(scheduleResult?.schedules)
+        ? scheduleResult.schedules.map((item) => ({ ...item, tanggal: normalizeDate(item.tanggal) }))
         : [];
-      const normalizedCompletions = Array.isArray(result?.scanCompletions)
-        ? result.scanCompletions.map((item) => ({ ...item, tanggal: normalizeDate(item.tanggal) }))
+      const normalizedCompletions = Array.isArray(scheduleResult?.scanCompletions)
+        ? scheduleResult.scanCompletions.map((item) => ({ ...item, tanggal: normalizeDate(item.tanggal) }))
         : [];
       setData({
-        shifts: Array.isArray(result?.shifts) ? result.shifts : [],
+        shifts: Array.isArray(scheduleResult?.shifts) ? scheduleResult.shifts : [],
         schedules: normalizedSchedules,
-        employees: Array.isArray(result?.employees) ? result.employees : [],
+        employees: Array.isArray(scheduleResult?.employees) ? scheduleResult.employees : [],
         scanCompletions: normalizedCompletions,
       });
+      setAttendanceRows(
+        Array.isArray(attendanceResult)
+          ? attendanceResult.map((row) => ({ ...row, scan_date: normalizeDate(row.scan_date) }))
+          : []
+      );
     } catch (error) {
       warning(error.message || 'Failed to fetch schedule data.', 'Schedule request failed');
     } finally {
@@ -147,6 +156,26 @@ export default function SchedulePage() {
     })),
     [filteredEmployees, metricsByEmployee]
   );
+
+  const anomalyByKey = useMemo(() => {
+    const employeeIdByPin = new Map(
+      data.employees
+        .filter((employee) => employee.pin)
+        .map((employee) => [String(employee.pin), Number(employee.id)])
+    );
+    const map = new Map();
+
+    attendanceRows.forEach((row) => {
+      if (!row || row.computed_status === 'normal') return;
+      const employeeId = employeeIdByPin.get(String(row.pin));
+      if (!employeeId) return;
+      const dateKey = normalizeDate(row.scan_date);
+      if (!dateKey) return;
+      map.set(`${employeeId}|${dateKey}`, row.computed_status);
+    });
+
+    return map;
+  }, [attendanceRows, data.employees]);
 
   const exportTemplate = () => {
     const csv = scheduleCsvTemplate(filteredEmployees, dates, getShift);
@@ -407,6 +436,7 @@ export default function SchedulePage() {
             dates={dates}
             getShift={getShift}
             metricsByEmployee={metricsByEmployee}
+            anomalyByKey={anomalyByKey}
             zoomPercent={zoomPercent}
             onSetShift={setShift}
           />

@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import {
+  AlertTriangle,
   BedDouble,
   Briefcase,
   Circle,
@@ -28,12 +29,20 @@ function shiftIcon(shiftName) {
   return Briefcase;
 }
 
-function ShiftPicker({ schedule, shifts, fontScale, onSetShift }) {
+function ShiftPicker({ schedule, shifts, fontScale, anomalyStatus, onSetShift }) {
   const [open, setOpen] = useState(false);
   const wrapperRef = useRef(null);
   const selectedLabel = schedule?.nama_shift || 'Not Assigned';
   const selectedClass = schedule ? shiftClassName(schedule.nama_shift) : 'border-slate-700 text-slate-400';
   const SelectedIcon = schedule ? shiftIcon(schedule.nama_shift) : Circle;
+  const anomalyClass =
+    anomalyStatus === 'terlambat'
+      ? 'ring-1 ring-amber-500/70 bg-amber-500/10'
+      : anomalyStatus === 'pulang_awal'
+        ? 'ring-1 ring-rose-500/70 bg-rose-500/10'
+        : anomalyStatus
+          ? 'ring-1 ring-violet-500/70 bg-violet-500/10'
+          : '';
 
   useEffect(() => {
     if (!open) return undefined;
@@ -51,14 +60,17 @@ function ShiftPicker({ schedule, shifts, fontScale, onSetShift }) {
       <button
         type="button"
         onClick={() => setOpen((prev) => !prev)}
-        className={`flex w-full items-center justify-between gap-1 rounded-lg border px-1.5 py-1.5 text-left transition-colors hover:brightness-110 ${selectedClass}`}
+        className={`flex w-full items-center justify-between gap-1 rounded-lg border px-1.5 py-1.5 text-left transition-colors hover:brightness-110 ${selectedClass} ${anomalyClass}`}
         style={{ fontSize: `${Math.max(9, 10 * fontScale)}px` }}
       >
         <span className="inline-flex min-w-0 items-center gap-1">
           <SelectedIcon className="h-3 w-3 shrink-0 opacity-80" />
           <span className="truncate">{selectedLabel}</span>
         </span>
-        <span className="text-[10px] opacity-70">{open ? '▲' : '▼'}</span>
+        <span className="inline-flex items-center gap-1 text-[10px] opacity-80">
+          {anomalyStatus && <AlertTriangle className="h-3 w-3 text-amber-300" />}
+          {open ? '▲' : '▼'}
+        </span>
       </button>
 
       {open && (
@@ -113,6 +125,7 @@ export default function ScheduleGrid({
   dates,
   getShift,
   metricsByEmployee,
+  anomalyByKey,
   zoomPercent = 100,
   onSetShift,
 }) {
@@ -189,6 +202,7 @@ export default function ScheduleGrid({
                     const dateString = formatIsoDate(date);
                     const schedule = getShift(employee.id, dateString);
                     const isToday = dateString === today;
+                    const anomalyStatus = anomalyByKey?.get(`${employee.id}|${dateString}`) || null;
 
                     return (
                       <td
@@ -199,6 +213,7 @@ export default function ScheduleGrid({
                           schedule={schedule}
                           shifts={shifts}
                           fontScale={fontScale}
+                          anomalyStatus={anomalyStatus}
                           onSetShift={(shiftId) => onSetShift(employee.id, dateString, shiftId)}
                         />
                       </td>
