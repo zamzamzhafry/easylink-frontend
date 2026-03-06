@@ -22,6 +22,7 @@ export async function GET(req) {
     LEFT JOIN tb_employee_group eg ON eg.karyawan_id = k.id
     LEFT JOIN tb_group g ON g.id = eg.group_id
     WHERE sc.tanggal BETWEEN ? AND ?
+      AND k.isDeleted = 0
     ORDER BY sc.tanggal, nama
   `, [from, to]);
 
@@ -32,6 +33,7 @@ export async function GET(req) {
     LEFT JOIN tb_user u ON u.pin = k.pin
     LEFT JOIN tb_employee_group eg ON eg.karyawan_id = k.id
     LEFT JOIN tb_group g ON g.id = eg.group_id
+    WHERE k.isDeleted = 0
     ORDER BY nama
   `);
 

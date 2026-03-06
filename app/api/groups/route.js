@@ -18,6 +18,7 @@ export async function GET() {
     FROM tb_employee_group eg
     JOIN tb_karyawan k ON k.id = eg.karyawan_id
     LEFT JOIN tb_user u ON u.pin = k.pin
+    WHERE k.isDeleted = 0
     ORDER BY nama
   `);
 
@@ -27,7 +28,7 @@ export async function GET() {
     FROM tb_karyawan k
     LEFT JOIN tb_user u ON u.pin = k.pin
     LEFT JOIN tb_employee_group eg ON eg.karyawan_id = k.id
-    WHERE eg.karyawan_id IS NULL
+    WHERE eg.karyawan_id IS NULL AND k.isDeleted = 0
     ORDER BY nama
   `);
 

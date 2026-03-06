@@ -1,210 +1,177 @@
 'use client';
-import { useEffect, useState } from 'react';
-import { Pencil, Search, AlertCircle, CheckCircle2, X } from 'lucide-react';
 
-function EditModal({ emp, onClose, onSaved }) {
-  const [form, setForm] = useState({
-    nama_karyawan: emp.nama_karyawan ?? '',
-    nama_user:     emp.nama_user     ?? '',
-    nip:           emp.nip           ?? '',
-    awal_kontrak:  emp.awal_kontrak  ?? '',
-    akhir_kontrak: emp.akhir_kontrak ?? '',
-  });
-  const [saving, setSaving] = useState(false);
-
-  const save = async () => {
-    setSaving(true);
-    await fetch(`/api/employees/${emp.id}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(form),
-    });
-    setSaving(false);
-    onSaved();
-  };
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
-      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-md p-6 shadow-2xl">
-        <button onClick={onClose} className="absolute top-4 right-4 text-slate-500 hover:text-white">
-          <X className="w-5 h-5" />
-        </button>
-        <h2 className="text-white font-bold text-lg mb-1">Edit Employee</h2>
-        <p className="text-slate-500 text-xs mb-5 font-mono">ID #{emp.id} · PIN {emp.pin}</p>
-
-        <div className="space-y-4">
-          <Field label="Full Name (tb_karyawan.nama)" value={form.nama_karyawan}
-            onChange={v => setForm(f => ({ ...f, nama_karyawan: v }))} />
-          <Field label="Device Username (tb_user.nama)" value={form.nama_user}
-            onChange={v => setForm(f => ({ ...f, nama_user: v }))}
-            hint="Leave unchanged to not modify device user" />
-          <Field label="NIP" value={form.nip}
-            onChange={v => setForm(f => ({ ...f, nip: v }))} />
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="Awal Kontrak" value={form.awal_kontrak}
-              onChange={v => setForm(f => ({ ...f, awal_kontrak: v }))} />
-            <Field label="Akhir Kontrak" value={form.akhir_kontrak}
-              onChange={v => setForm(f => ({ ...f, akhir_kontrak: v }))} />
-          </div>
-        </div>
-
-        <div className="flex gap-2 mt-6">
-          <button onClick={onClose}
-            className="flex-1 px-4 py-2 rounded-lg border border-slate-700 text-slate-400 text-sm hover:text-white transition-colors">
-            Cancel
-          </button>
-          <button onClick={save} disabled={saving}
-            className="flex-1 px-4 py-2 rounded-lg bg-teal-500 text-slate-900 font-semibold text-sm hover:bg-teal-400 transition-colors disabled:opacity-50">
-            {saving ? 'Saving…' : 'Save Changes'}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function Field({ label, value, onChange, hint }) {
-  return (
-    <div>
-      <label className="block text-xs text-slate-400 mb-1">{label}</label>
-      <input
-        value={value}
-        onChange={e => onChange(e.target.value)}
-        className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-teal-500 transition-colors"
-      />
-      {hint && <p className="text-slate-600 text-xs mt-1">{hint}</p>}
-    </div>
-  );
-}
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { AlertCircle, Plus, Search } from 'lucide-react';
+import EditEmployeeModal from '@/components/employees/edit-employee-modal';
+import EmployeesTable from '@/components/employees/employees-table';
+import { useToast } from '@/components/ui/toast-provider';
+import { requestJson } from '@/lib/request-json';
 
 export default function EmployeesPage() {
-  const [data, setData]     = useState([]);
+  const { success, warning } = useToast();
+  const [rows, setRows] = useState([]);
+  const [users, setUsers] = useState([]);
   const [search, setSearch] = useState('');
+  const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  const load = () => {
+  const load = useCallback(async () => {
     setLoading(true);
-    fetch('/api/employees').then(r => r.json()).then(d => { setData(d); setLoading(false); });
+    try {
+      const [employeesData, usersData] = await Promise.all([
+        requestJson('/api/employees'),
+        requestJson('/api/employees/users'),
+      ]);
+      setRows(Array.isArray(employeesData) ? employeesData : []);
+      setUsers(Array.isArray(usersData) ? usersData : []);
+    } catch (error) {
+      warning(error.message || 'Failed to fetch employees.', 'Employees request failed');
+    } finally {
+      setLoading(false);
+    }
+  }, [warning]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const filteredRows = useMemo(() => {
+    const query = search.toLowerCase();
+    return rows.filter((employee) => {
+      return (
+        (employee.nama_karyawan ?? '').toLowerCase().includes(query) ||
+        (employee.nama_user ?? '').toLowerCase().includes(query) ||
+        (employee.pin ?? '').toLowerCase().includes(query) ||
+        (employee.nip ?? '').toLowerCase().includes(query)
+      );
+    });
+  }, [rows, search]);
+
+  const unlinkedCount = useMemo(
+    () => rows.filter((employee) => !employee.nama_karyawan || employee.nama_karyawan.trim() === '').length,
+    [rows]
+  );
+
+  const saveEmployee = async (form) => {
+    if (!editing) return false;
+
+    try {
+      await requestJson(`/api/employees/${editing.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(form),
+      });
+      await load();
+      success('Employee data has been updated.', 'Saved');
+      return true;
+    } catch (error) {
+      warning(error.message || 'Failed to update employee.', 'Unable to save changes');
+      return false;
+    }
   };
 
-  useEffect(load, []);
+  const createEmployee = async (form) => {
+    try {
+      await requestJson('/api/employees', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(form),
+      });
+      await load();
+      success('Employee has been added.', 'Created');
+      return true;
+    } catch (error) {
+      warning(error.message || 'Failed to create employee.', 'Unable to create employee');
+      return false;
+    }
+  };
 
-  const filtered = data.filter(e => {
-    const q = search.toLowerCase();
-    return (
-      (e.nama_karyawan ?? '').toLowerCase().includes(q) ||
-      (e.nama_user     ?? '').toLowerCase().includes(q) ||
-      (e.pin           ?? '').includes(q) ||
-      (e.nip           ?? '').includes(q)
-    );
-  });
-
-  const unlinked = data.filter(e => !e.nama_karyawan || e.nama_karyawan.trim() === '');
+  const deleteEmployee = async (employee) => {
+    try {
+      await requestJson(`/api/employees/${employee.id}`, { method: 'DELETE' });
+      await load();
+      success(`Employee ${employee.nama_karyawan || employee.pin || employee.id} was deleted.`, 'Soft deleted');
+    } catch (error) {
+      warning(error.message || 'Failed to delete employee.', 'Unable to delete employee');
+    }
+  };
 
   return (
     <div className="max-w-6xl space-y-6">
-      {/* Header */}
       <div className="flex items-end justify-between">
         <div>
-          <p className="text-xs font-mono text-teal-400 uppercase tracking-widest mb-1">Management</p>
+          <p className="mb-1 text-xs font-mono uppercase tracking-widest text-teal-400">Management</p>
           <h1 className="text-3xl font-bold text-white">Employees</h1>
-          <p className="text-slate-400 text-sm mt-1">Link device users (tb_user) to employee records (tb_karyawan)</p>
+          <p className="mt-1 text-sm text-slate-400">
+            Link device users (tb_user) to employee records (tb_karyawan)
+          </p>
         </div>
         <div className="text-right">
-          <div className="text-2xl font-bold text-white font-mono">{data.length}</div>
+          <div className="font-mono text-2xl font-bold text-white">{rows.length}</div>
           <div className="text-xs text-slate-500">total records</div>
         </div>
       </div>
 
-      {/* Alert: unlinked users */}
-      {unlinked.length > 0 && (
-        <div className="flex items-start gap-3 bg-amber-500/10 border border-amber-500/30 rounded-xl px-4 py-3">
-          <AlertCircle className="w-4 h-4 text-amber-400 mt-0.5 shrink-0" />
+      <div className="flex justify-end">
+        <button
+          type="button"
+          onClick={() => setCreating(true)}
+          className="inline-flex items-center gap-2 rounded-xl bg-teal-500 px-4 py-2.5 text-sm font-semibold text-slate-900 transition-colors hover:bg-teal-400"
+        >
+          <Plus className="h-4 w-4" />
+          Add Employee
+        </button>
+      </div>
+
+      {unlinkedCount > 0 && (
+        <div className="flex items-start gap-3 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3">
+          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-amber-400" />
           <div>
-            <p className="text-amber-300 text-sm font-medium">
-              {unlinked.length} employee{unlinked.length > 1 ? 's' : ''} without a real name
+            <p className="text-sm font-medium text-amber-300">
+              {unlinkedCount} employee{unlinkedCount > 1 ? 's' : ''} without a real name
             </p>
-            <p className="text-amber-400/70 text-xs mt-0.5">
-              These users were registered on the device but haven't been linked to a full name yet.
+            <p className="mt-0.5 text-xs text-amber-400/70">
+              These users were registered on the device but have not been linked to a full name yet.
             </p>
           </div>
         </div>
       )}
 
-      {/* Search bar */}
       <div className="relative">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
         <input
           value={search}
-          onChange={e => setSearch(e.target.value)}
-          placeholder="Search name, PIN, or NIP…"
-          className="w-full bg-slate-900 border border-slate-800 rounded-xl pl-9 pr-4 py-2.5 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-teal-500 transition-colors"
+          onChange={(event) => setSearch(event.target.value)}
+          placeholder="Search name, PIN, or NIP..."
+          className="w-full rounded-xl border border-slate-800 bg-slate-900 py-2.5 pl-9 pr-4 text-sm text-white placeholder-slate-600 transition-colors focus:border-teal-500 focus:outline-none"
         />
       </div>
 
-      {/* Table */}
-      <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-slate-800 text-left">
-                {['ID','PIN','Full Name (karyawan)','Device User (user)','NIP','Kontrak','Status',''].map(h => (
-                  <th key={h} className="px-4 py-3 text-slate-500 font-medium text-xs uppercase tracking-wide whitespace-nowrap">{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-800/50">
-              {loading ? (
-                <tr><td colSpan={8} className="px-4 py-10 text-center text-slate-500 text-xs">Loading…</td></tr>
-              ) : filtered.length === 0 ? (
-                <tr><td colSpan={8} className="px-4 py-10 text-center text-slate-500 text-xs">No results</td></tr>
-              ) : filtered.map(e => {
-                const hasName = e.nama_karyawan && e.nama_karyawan.trim() !== '';
-                return (
-                  <tr key={e.id} className="data-row">
-                    <td className="px-4 py-3 text-slate-500 font-mono text-xs">{e.id}</td>
-                    <td className="px-4 py-3 text-slate-300 font-mono text-xs">{e.pin}</td>
-                    <td className="px-4 py-3">
-                      {hasName ? (
-                        <span className="text-white">{e.nama_karyawan}</span>
-                      ) : (
-                        <span className="italic text-amber-400/80 text-xs">— no name set —</span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3 text-slate-400">{e.nama_user || <span className="italic text-slate-600 text-xs">—</span>}</td>
-                    <td className="px-4 py-3 text-slate-500 font-mono text-xs">{e.nip || '—'}</td>
-                    <td className="px-4 py-3 text-slate-500 text-xs whitespace-nowrap">
-                      {e.awal_kontrak && <span>{e.awal_kontrak}{e.akhir_kontrak ? ` – ${e.akhir_kontrak}` : ''}</span>}
-                    </td>
-                    <td className="px-4 py-3">
-                      {hasName ? (
-                        <span className="inline-flex items-center gap-1 text-emerald-400 text-xs">
-                          <CheckCircle2 className="w-3 h-3" /> Linked
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center gap-1 text-amber-400 text-xs">
-                          <AlertCircle className="w-3 h-3" /> Unlinked
-                        </span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3">
-                      <button onClick={() => setEditing(e)}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-teal-500/20 hover:text-teal-400 text-slate-300 text-xs transition-all border border-slate-700 hover:border-teal-500/40">
-                        <Pencil className="w-3 h-3" /> Edit
-                      </button>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      </div>
+      <EmployeesTable
+        loading={loading}
+        rows={filteredRows}
+        onEdit={setEditing}
+        onDelete={deleteEmployee}
+      />
+
+      {creating && (
+        <EditEmployeeModal
+          mode="create"
+          users={users}
+          onClose={() => setCreating(false)}
+          onSave={createEmployee}
+        />
+      )}
 
       {editing && (
-        <EditModal emp={editing} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); load(); }} />
+        <EditEmployeeModal
+          mode="edit"
+          employee={editing}
+          users={users}
+          onClose={() => setEditing(null)}
+          onSave={saveEmployee}
+        />
       )}
     </div>
   );

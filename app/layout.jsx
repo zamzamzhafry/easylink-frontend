@@ -1,6 +1,7 @@
 import './globals.css';
 import { DM_Sans, DM_Mono } from 'next/font/google';
 import Sidebar from '@/components/sidebar';
+import { ToastProvider } from '@/components/ui/toast-provider';
 
 const sans = DM_Sans({ subsets: ['latin'], variable: '--font-sans' });
 const mono = DM_Mono({ subsets: ['latin'], weight: ['400','500'], variable: '--font-mono' });
@@ -14,10 +15,10 @@ export default function RootLayout({ children }) {
   return (
     <html lang="id" className={`${sans.variable} ${mono.variable}`}>
       <body className="bg-slate-950 text-slate-100 font-sans antialiased">
-        <Sidebar />
-        <main className="ml-60 min-h-screen p-6">
-          {children}
-        </main>
+        <ToastProvider>
+          <Sidebar />
+          <main className="ml-60 min-h-screen p-6">{children}</main>
+        </ToastProvider>
       </body>
     </html>
   );
