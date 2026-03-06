@@ -14,6 +14,7 @@ const TABLE_HEADERS = [
   { key: 'out', label: 'Keluar' },
   { key: 'duration', label: 'Durasi' },
   { key: 'status', label: 'Status' },
+  { key: 'review', label: 'Review' },
   { key: 'note', label: 'Catatan' },
   { key: 'action', label: '' },
 ];
@@ -33,9 +34,9 @@ export default function AttendanceTable({ loading, rows, onEdit }) {
         </thead>
         <tbody className="divide-y divide-slate-800/40">
           {loading ? (
-            <TableLoadingRow colSpan={10} label="Loading..." />
+            <TableLoadingRow colSpan={11} label="Loading..." />
           ) : rows.length === 0 ? (
-            <TableEmptyRow colSpan={10} label="No records in range" />
+            <TableEmptyRow colSpan={11} label="No records in range" />
           ) : (
             rows.map((row, index) => {
               const status = STATUS_MAP[row.computed_status] ?? STATUS_MAP.lainnya;
@@ -90,6 +91,21 @@ export default function AttendanceTable({ loading, rows, onEdit }) {
                       {isAnomaly ? <AlertTriangle className="h-2.5 w-2.5" /> : <CheckCircle2 className="h-2.5 w-2.5" />}
                       {status.label}
                     </span>
+                  </td>
+                  <td className="px-4 py-3">
+                    {row.reviewed_status === 'reviewed' ? (
+                      <span className="inline-flex rounded border border-emerald-500/20 bg-emerald-500/10 px-2 py-0.5 text-xs text-emerald-300">
+                        Reviewed
+                      </span>
+                    ) : row.reviewed_status === 'pending' ? (
+                      <span className="inline-flex rounded border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-xs text-amber-300">
+                        Pending
+                      </span>
+                    ) : (
+                      <span className="inline-flex rounded border border-slate-700 px-2 py-0.5 text-xs text-slate-500">
+                        Not Required
+                      </span>
+                    )}
                   </td>
                   <td className="max-w-[200px] px-4 py-3">
                     {row.note_catatan ? (

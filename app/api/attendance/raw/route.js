@@ -24,12 +24,19 @@ export async function GET(req) {
       g.nama_group,
       sl.verifymode,
       sl.iomode,
-      sl.workcode
+      sl.workcode,
+      an.status AS note_status,
+      an.catatan AS note_catatan,
+      CASE
+        WHEN an.status IS NOT NULL OR (an.catatan IS NOT NULL AND TRIM(an.catatan) <> '') THEN 'reviewed'
+        ELSE 'pending'
+      END AS reviewed_status
     FROM tb_scanlog sl
     LEFT JOIN tb_karyawan       k  ON k.pin = sl.pin ${canFilterDeleted ? 'AND k.isDeleted = 0' : ''}
     LEFT JOIN tb_user           u  ON u.pin = sl.pin
     LEFT JOIN tb_employee_group eg ON eg.karyawan_id = k.id
     LEFT JOIN tb_group          g  ON g.id = eg.group_id
+    LEFT JOIN tb_attendance_note an ON an.pin = sl.pin AND an.tanggal = DATE(sl.scan_date)
     WHERE DATE(sl.scan_date) BETWEEN ? AND ?
   `;
   const params = [dateFrom, dateTo];

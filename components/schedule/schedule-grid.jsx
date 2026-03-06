@@ -1,28 +1,152 @@
 'use client';
 
-import { DAYS_ID, formatIsoDate } from '@/lib/schedule-helpers';
+import { useEffect, useRef, useState } from 'react';
+import {
+  BedDouble,
+  Briefcase,
+  Circle,
+  Clock3,
+  MoonStar,
+  Sun,
+  Sunset,
+} from 'lucide-react';
+import { formatIsoDate } from '@/lib/schedule-helpers';
 import { shiftClassName } from '@/lib/shift-helpers';
 import { TableEmptyRow, TableLoadingRow, TableShell } from '@/components/ui/table-shell';
 
-export default function ScheduleGrid({ loading, employees, shifts, weekDates, getShift, onSetShift }) {
+function dayLabel(dateValue) {
+  return new Date(dateValue).toLocaleDateString('id-ID', { weekday: 'short' });
+}
+
+function shiftIcon(shiftName) {
+  const key = String(shiftName || '').toLowerCase();
+  if (key.includes('pagi')) return Sun;
+  if (key.includes('siang')) return Sunset;
+  if (key.includes('malam')) return MoonStar;
+  if (key.includes('libur')) return BedDouble;
+  if (key.includes('cuti')) return BedDouble;
+  return Briefcase;
+}
+
+function ShiftPicker({ schedule, shifts, fontScale, onSetShift }) {
+  const [open, setOpen] = useState(false);
+  const wrapperRef = useRef(null);
+  const selectedLabel = schedule?.nama_shift || 'Not Assigned';
+  const selectedClass = schedule ? shiftClassName(schedule.nama_shift) : 'border-slate-700 text-slate-400';
+  const SelectedIcon = schedule ? shiftIcon(schedule.nama_shift) : Circle;
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const onPointerDown = (event) => {
+      if (wrapperRef.current && !wrapperRef.current.contains(event.target)) {
+        setOpen(false);
+      }
+    };
+    window.addEventListener('pointerdown', onPointerDown);
+    return () => window.removeEventListener('pointerdown', onPointerDown);
+  }, [open]);
+
+  return (
+    <div ref={wrapperRef} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((prev) => !prev)}
+        className={`flex w-full items-center justify-between gap-1 rounded-lg border px-1.5 py-1.5 text-left transition-colors hover:brightness-110 ${selectedClass}`}
+        style={{ fontSize: `${Math.max(9, 10 * fontScale)}px` }}
+      >
+        <span className="inline-flex min-w-0 items-center gap-1">
+          <SelectedIcon className="h-3 w-3 shrink-0 opacity-80" />
+          <span className="truncate">{selectedLabel}</span>
+        </span>
+        <span className="text-[10px] opacity-70">{open ? '▲' : '▼'}</span>
+      </button>
+
+      {open && (
+        <div className="absolute left-0 z-40 mt-1 max-h-56 w-48 overflow-y-auto rounded-lg border border-slate-700 bg-slate-900 p-1 shadow-2xl">
+          <button
+            type="button"
+            onClick={() => {
+              onSetShift(null);
+              setOpen(false);
+            }}
+            className="mb-1 flex w-full items-center gap-2 rounded-md border border-slate-700 px-2 py-1.5 text-left text-xs text-slate-300 transition-colors hover:bg-slate-800"
+          >
+            <Circle className="h-3.5 w-3.5" />
+            Not Assigned
+          </button>
+
+          {shifts.map((shift) => {
+            const Icon = shiftIcon(shift.nama_shift);
+            return (
+              <button
+                key={shift.id}
+                type="button"
+                onClick={() => {
+                  onSetShift(shift.id);
+                  setOpen(false);
+                }}
+                className={`mb-1 flex w-full items-center gap-2 rounded-md border px-2 py-1.5 text-left text-xs transition-colors hover:brightness-110 ${shiftClassName(
+                  shift.nama_shift
+                )}`}
+              >
+                <Icon className="h-3.5 w-3.5" />
+                <span className="truncate">{shift.nama_shift}</span>
+                {shift.jam_masuk && (
+                  <span className="ml-auto inline-flex items-center gap-1 opacity-75">
+                    <Clock3 className="h-3 w-3" />
+                    {String(shift.jam_masuk).slice(0, 5)}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+export default function ScheduleGrid({
+  loading,
+  employees,
+  shifts,
+  dates,
+  getShift,
+  metricsByEmployee,
+  zoomPercent = 100,
+  onSetShift,
+}) {
   const today = formatIsoDate(new Date());
+  const colSpan = 1 + dates.length;
+  const clampedZoom = Math.min(150, Math.max(75, Number(zoomPercent) || 100));
+  const employeeColWidth = 300; // keep employee column static for readability
+  const dayColWidth = Math.round(100 * (clampedZoom / 100));
+  const fontScale = clampedZoom / 100;
+  const tableMinWidth = Math.max(1100, employeeColWidth + (dayColWidth * dates.length));
 
   return (
     <TableShell innerClassName="overflow-x-auto">
-      <table className="min-w-[900px] w-full text-sm">
-        <thead>
+      <table className="w-full text-sm" style={{ minWidth: `${tableMinWidth}px` }}>
+        <thead className="sticky top-0 z-30 bg-slate-900">
           <tr className="border-b border-slate-800">
-            <th className="w-48 px-4 py-3 text-left text-xs font-medium text-slate-500">Employee</th>
-            {weekDates.map((date, index) => {
-              const isToday = formatIsoDate(date) === today;
+            <th
+              className="sticky left-0 z-40 bg-slate-900 px-4 py-3 text-left text-xs font-medium text-slate-500"
+              style={{ width: `${employeeColWidth}px`, minWidth: `${employeeColWidth}px` }}
+            >
+              Employee
+            </th>
+            {dates.map((date) => {
+              const iso = formatIsoDate(date);
+              const isToday = iso === today;
               return (
                 <th
-                  key={index}
-                  className={`w-28 px-2 py-3 text-center text-xs font-medium ${
+                  key={iso}
+                  className={`px-2 py-3 text-center text-xs font-medium ${
                     isToday ? 'text-teal-400' : 'text-slate-500'
                   }`}
+                  style={{ width: `${dayColWidth}px`, minWidth: `${dayColWidth}px` }}
                 >
-                  <div>{DAYS_ID[index]}</div>
+                  <div>{dayLabel(date)}</div>
                   <div className={`mt-0.5 font-mono text-base ${isToday ? 'text-teal-400' : 'text-slate-300'}`}>
                     {date.getDate()}
                   </div>
@@ -34,51 +158,55 @@ export default function ScheduleGrid({ loading, employees, shifts, weekDates, ge
 
         <tbody className="divide-y divide-slate-800/40">
           {loading ? (
-            <TableLoadingRow colSpan={8} />
+            <TableLoadingRow colSpan={colSpan} />
           ) : employees.length === 0 ? (
-            <TableEmptyRow colSpan={8} label="No employees found" />
+            <TableEmptyRow colSpan={colSpan} label="No employees found" />
           ) : (
-            employees.map((employee) => (
-              <tr key={employee.id} className="data-row">
-                <td className="px-4 py-2">
-                  <div className="text-sm font-medium text-white">{employee.nama}</div>
-                  <div className="font-mono text-xs text-slate-600">PIN {employee.pin}</div>
-                  {employee.nama_group && (
-                    <div className="mt-0.5 text-xs text-teal-500/70">{employee.nama_group}</div>
-                  )}
-                </td>
+            employees.map((employee) => {
+              const metrics = metricsByEmployee.get(Number(employee.id)) || {
+                shifted_days: 0,
+                planned_hours: 0,
+                done_hours: 0,
+                pending_hours: 0,
+                future_hours: 0,
+              };
 
-                {weekDates.map((date, dayIndex) => {
-                  const dateString = formatIsoDate(date);
-                  const schedule = getShift(employee.id, dateString);
-                  const isToday = dateString === today;
-                  return (
-                    <td key={dayIndex} className={`px-2 py-2 text-center ${isToday ? 'bg-teal-950/30' : ''}`}>
-                      <select
-                        value={schedule?.shift_id ?? ''}
-                        onChange={(event) => {
-                          if (event.target.value) {
-                            onSetShift(employee.id, dateString, Number(event.target.value));
-                          }
-                        }}
-                        className={`w-full cursor-pointer rounded-lg border px-1 py-1.5 text-xs transition-colors focus:border-teal-500 focus:outline-none ${
-                          schedule
-                            ? `${shiftClassName(schedule.nama_shift)} bg-transparent`
-                            : 'border-slate-700 bg-slate-800 text-slate-500'
-                        }`}
+              return (
+                <tr key={employee.id} className="data-row">
+                  <td className="sticky left-0 z-20 bg-slate-950 px-4 py-2">
+                    <div className="text-sm font-medium text-white">{employee.nama}</div>
+                    <div className="font-mono text-xs text-slate-600">PIN {employee.pin || '-'}</div>
+                    <div className="mt-1 text-[11px] text-slate-500">
+                      Shifted: {metrics.shifted_days}d | Done: {metrics.done_hours.toFixed(1)}h | Pending:{' '}
+                      {metrics.pending_hours.toFixed(1)}h | Future: {metrics.future_hours.toFixed(1)}h
+                    </div>
+                    {employee.nama_group && (
+                      <div className="mt-0.5 text-xs text-teal-500/70">{employee.nama_group}</div>
+                    )}
+                  </td>
+
+                  {dates.map((date) => {
+                    const dateString = formatIsoDate(date);
+                    const schedule = getShift(employee.id, dateString);
+                    const isToday = dateString === today;
+
+                    return (
+                      <td
+                        key={`${employee.id}-${dateString}`}
+                        className={`px-1.5 py-2 text-center ${isToday ? 'bg-teal-950/30' : ''}`}
                       >
-                        <option value="">-</option>
-                        {shifts.map((shift) => (
-                          <option key={shift.id} value={shift.id}>
-                            {shift.nama_shift}
-                          </option>
-                        ))}
-                      </select>
-                    </td>
-                  );
-                })}
-              </tr>
-            ))
+                        <ShiftPicker
+                          schedule={schedule}
+                          shifts={shifts}
+                          fontScale={fontScale}
+                          onSetShift={(shiftId) => onSetShift(employee.id, dateString, shiftId)}
+                        />
+                      </td>
+                    );
+                  })}
+                </tr>
+              );
+            })
           )}
         </tbody>
       </table>

@@ -1,6 +1,6 @@
 import './globals.css';
 import { DM_Sans, DM_Mono } from 'next/font/google';
-import Sidebar from '@/components/sidebar';
+import AppShell from '@/components/app-shell';
 import { ToastProvider } from '@/components/ui/toast-provider';
 
 const sans = DM_Sans({ subsets: ['latin'], variable: '--font-sans' });
@@ -16,8 +16,7 @@ export default function RootLayout({ children }) {
     <html lang="id" className={`${sans.variable} ${mono.variable}`}>
       <body className="bg-slate-950 text-slate-100 font-sans antialiased">
         <ToastProvider>
-          <Sidebar />
-          <main className="ml-60 min-h-screen p-6">{children}</main>
+          <AppShell>{children}</AppShell>
         </ToastProvider>
       </body>
     </html>

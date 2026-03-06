@@ -1,49 +1,72 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Download, Printer, Upload, Users } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Download, Printer, Upload, Users } from 'lucide-react';
 import BulkAssignModal from '@/components/schedule/bulk-assign-modal';
 import ScheduleGrid from '@/components/schedule/schedule-grid';
 import ShiftLegend from '@/components/schedule/shift-legend';
-import WeekNavigation from '@/components/schedule/week-navigation';
 import { useToast } from '@/components/ui/toast-provider';
 import { requestJson } from '@/lib/request-json';
 import {
   addDays,
+  employeeScheduleMetrics,
   formatIsoDate,
   groupOptionsFromEmployees,
+  monthDates,
+  monthEnd,
+  monthLabel,
+  monthStart,
   parseScheduleTemplateImport,
   scheduleCsvTemplate,
-  scheduleHoursSummary,
   schedulePrintHtml,
-  weekDates,
-  weekStart,
 } from '@/lib/schedule-helpers';
 
 const TABS = [
-  { key: 'plan', label: 'Group Schedule Plan' },
+  { key: 'plan', label: 'Monthly Plan' },
   { key: 'import', label: 'Import / Check' },
-  { key: 'summary', label: 'Employee Work Summary' },
+  { key: 'summary', label: 'Employee Metrics' },
 ];
+
+function normalizeDate(value) {
+  if (!value) return '';
+  if (typeof value === 'string') {
+    return value.includes('T') ? value.slice(0, 10) : value.slice(0, 10);
+  }
+  if (value instanceof Date) {
+    const year = value.getFullYear();
+    const month = String(value.getMonth() + 1).padStart(2, '0');
+    const day = String(value.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  }
+  const text = String(value);
+  return text.includes('T') ? text.slice(0, 10) : text.slice(0, 10);
+}
 
 export default function SchedulePage() {
   const { success, warning } = useToast();
   const [activeTab, setActiveTab] = useState('plan');
-  const [weekOf, setWeekOf] = useState(() => weekStart(new Date()));
-  const [data, setData] = useState({ shifts: [], schedules: [], employees: [] });
+  const [monthOf, setMonthOf] = useState(() => monthStart(new Date()));
+  const [groupTab, setGroupTab] = useState('all');
+  const [data, setData] = useState({ shifts: [], schedules: [], employees: [], scanCompletions: [] });
   const [loading, setLoading] = useState(true);
   const [bulkModal, setBulkModal] = useState(false);
   const [importResult, setImportResult] = useState({ entries: [], errors: [] });
   const [uploadFileName, setUploadFileName] = useState('');
   const [applyingImport, setApplyingImport] = useState(false);
+  const [zoomPercent, setZoomPercent] = useState(100);
 
-  const dates = useMemo(() => weekDates(weekOf), [weekOf]);
-  const from = formatIsoDate(dates[0]);
-  const to = formatIsoDate(dates[6]);
+  const dates = useMemo(() => monthDates(monthOf), [monthOf]);
+  const from = formatIsoDate(monthStart(monthOf));
+  const to = formatIsoDate(monthEnd(monthOf));
+  const monthTitle = useMemo(() => monthLabel(monthOf, 'id-ID'), [monthOf]);
 
   const getShift = useCallback(
     (employeeId, dateString) =>
-      data.schedules.find((item) => item.karyawan_id === employeeId && item.tanggal === dateString),
+      data.schedules.find(
+        (item) =>
+          Number(item.karyawan_id) === Number(employeeId) &&
+          normalizeDate(item.tanggal) === dateString
+      ),
     [data.schedules]
   );
 
@@ -51,7 +74,18 @@ export default function SchedulePage() {
     setLoading(true);
     try {
       const result = await requestJson(`/api/schedule?from=${from}&to=${to}`);
-      setData(result ?? { shifts: [], schedules: [], employees: [] });
+      const normalizedSchedules = Array.isArray(result?.schedules)
+        ? result.schedules.map((item) => ({ ...item, tanggal: normalizeDate(item.tanggal) }))
+        : [];
+      const normalizedCompletions = Array.isArray(result?.scanCompletions)
+        ? result.scanCompletions.map((item) => ({ ...item, tanggal: normalizeDate(item.tanggal) }))
+        : [];
+      setData({
+        shifts: Array.isArray(result?.shifts) ? result.shifts : [],
+        schedules: normalizedSchedules,
+        employees: Array.isArray(result?.employees) ? result.employees : [],
+        scanCompletions: normalizedCompletions,
+      });
     } catch (error) {
       warning(error.message || 'Failed to fetch schedule data.', 'Schedule request failed');
     } finally {
@@ -64,39 +98,72 @@ export default function SchedulePage() {
   }, [load]);
 
   const setShift = async (employeeId, dateString, shiftId) => {
+    const employee = data.employees.find((item) => Number(item.id) === Number(employeeId));
+    const shift = data.shifts.find((item) => Number(item.id) === Number(shiftId));
     try {
       await requestJson('/api/schedule', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          action: 'set',
+          action: shiftId ? 'set' : 'clear',
           karyawan_id: employeeId,
           tanggal: dateString,
-          shift_id: shiftId,
+          ...(shiftId ? { shift_id: shiftId } : {}),
         }),
       });
       await load();
+      success(
+        `${employee?.nama || `Employee #${employeeId}`} | ${dateString} -> ${shift ? shift.nama_shift : 'Not Assigned'}`,
+        'Schedule updated'
+      );
     } catch (error) {
       warning(error.message || 'Failed to set shift schedule.', 'Unable to set shift');
     }
   };
 
+  const groups = useMemo(() => groupOptionsFromEmployees(data.employees), [data.employees]);
+
+  const filteredEmployees = useMemo(() => {
+    if (groupTab === 'all') return data.employees;
+    if (groupTab === 'ungrouped') return data.employees.filter((employee) => !employee.group_id);
+    return data.employees.filter((employee) => String(employee.group_id) === String(groupTab));
+  }, [data.employees, groupTab]);
+
+  const metricsByEmployee = useMemo(
+    () => employeeScheduleMetrics(data.employees, data.schedules, data.shifts, data.scanCompletions, new Date()),
+    [data.employees, data.schedules, data.shifts, data.scanCompletions]
+  );
+
+  const filteredSummary = useMemo(
+    () => filteredEmployees.map((employee) => ({
+      employee,
+      metrics: metricsByEmployee.get(Number(employee.id)) || {
+        shifted_days: 0,
+        planned_hours: 0,
+        done_hours: 0,
+        pending_hours: 0,
+        future_hours: 0,
+      },
+    })),
+    [filteredEmployees, metricsByEmployee]
+  );
+
   const exportTemplate = () => {
-    const csv = scheduleCsvTemplate(data.employees, dates, getShift);
+    const csv = scheduleCsvTemplate(filteredEmployees, dates, getShift);
     const blob = new Blob([csv], { type: 'text/csv' });
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
-    link.download = `jadwal_${from}_${to}.csv`;
+    link.download = `schedule_${from}_${to}_${groupTab}.csv`;
     link.click();
   };
 
   const printSchedule = () => {
-    const popup = window.open('', '_blank', 'width=1200,height=800');
+    const popup = window.open('', '_blank', 'width=1280,height=800');
     if (!popup) {
       warning('Unable to open print window. Please allow popups.', 'Print blocked');
       return;
     }
-    popup.document.write(schedulePrintHtml(data.employees, dates, getShift));
+    popup.document.write(schedulePrintHtml(filteredEmployees, dates, getShift));
     popup.document.close();
     popup.focus();
     popup.print();
@@ -115,6 +182,10 @@ export default function SchedulePage() {
           to: dateTo,
         }),
       });
+      success(
+        `Applied bulk schedule for ${result?.affected ?? 0} row(s).`,
+        'Bulk assignment successful'
+      );
       return result?.affected ?? 0;
     } catch (error) {
       warning(error.message || 'Bulk assignment failed.', 'Unable to apply bulk assignment');
@@ -162,7 +233,7 @@ export default function SchedulePage() {
       });
 
       success(
-        `Imported ${result.affected || 0} schedule rows${result.skipped ? `, skipped ${result.skipped}` : ''}.`,
+        `Imported ${result.affected || 0} rows${result.skipped ? `, skipped ${result.skipped}` : ''}.`,
         'Import complete'
       );
       await load();
@@ -173,33 +244,28 @@ export default function SchedulePage() {
     }
   };
 
-  const groups = useMemo(() => groupOptionsFromEmployees(data.employees), [data.employees]);
-
-  const groupedEmployees = useMemo(() => {
-    const map = new Map();
-    data.employees.forEach((employee) => {
-      const key = employee.group_id ? String(employee.group_id) : 'ungrouped';
-      const label = employee.nama_group || 'Unassigned';
-      const prev = map.get(key) || { id: key, name: label, members: [] };
-      prev.members.push(employee);
-      map.set(key, prev);
-    });
-    return [...map.values()].sort((a, b) => b.members.length - a.members.length);
-  }, [data.employees]);
-
-  const hoursSummary = useMemo(
-    () => scheduleHoursSummary(data.employees, data.schedules, data.shifts),
-    [data.employees, data.schedules, data.shifts]
-  );
+  const totalStats = useMemo(() => {
+    return filteredSummary.reduce(
+      (acc, row) => {
+        acc.shiftedDays += row.metrics.shifted_days;
+        acc.plannedHours += row.metrics.planned_hours;
+        acc.doneHours += row.metrics.done_hours;
+        acc.pendingHours += row.metrics.pending_hours;
+        acc.futureHours += row.metrics.future_hours;
+        return acc;
+      },
+      { shiftedDays: 0, plannedHours: 0, doneHours: 0, pendingHours: 0, futureHours: 0 }
+    );
+  }, [filteredSummary]);
 
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <p className="mb-1 text-xs font-mono uppercase tracking-widest text-teal-400">Planning</p>
-          <h1 className="text-3xl font-bold text-white">Shift Schedule</h1>
+          <h1 className="text-3xl font-bold text-white">Monthly Group Schedule</h1>
           <p className="mt-1 text-sm text-slate-400">
-            Group planning, import checking, print/export, and estimated work hours.
+            Monthly planning by group, with done/pending/future estimated work hours.
           </p>
         </div>
         <div className="flex gap-2">
@@ -215,7 +281,7 @@ export default function SchedulePage() {
             onClick={exportTemplate}
             className="flex items-center gap-2 rounded-xl border border-teal-500/30 bg-teal-500/10 px-4 py-2.5 text-sm text-teal-400 transition-colors hover:bg-teal-500/20"
           >
-            <Download className="h-4 w-4" /> Export Template
+            <Download className="h-4 w-4" /> Export
           </button>
           <button
             type="button"
@@ -225,6 +291,52 @@ export default function SchedulePage() {
             <Printer className="h-4 w-4" /> Print
           </button>
         </div>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2 rounded-xl border border-slate-800 bg-slate-900 p-2">
+        <button
+          type="button"
+          onClick={() => setMonthOf((current) => addDays(monthStart(current), -1))}
+          className="rounded-lg border border-slate-700 bg-slate-800 p-2 text-slate-300 transition-colors hover:text-white"
+        >
+          <ChevronLeft className="h-4 w-4" />
+        </button>
+        <div className="rounded-lg border border-slate-700 px-3 py-2 font-mono text-sm text-white">{monthTitle}</div>
+        <button
+          type="button"
+          onClick={() => setMonthOf((current) => addDays(monthEnd(current), 1))}
+          className="rounded-lg border border-slate-700 bg-slate-800 p-2 text-slate-300 transition-colors hover:text-white"
+        >
+          <ChevronRight className="h-4 w-4" />
+        </button>
+        <div className="ml-auto font-mono text-xs text-slate-500">
+          {from} - {to}
+        </div>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-3 rounded-xl border border-slate-800 bg-slate-900 p-3">
+        <label htmlFor="schedule-zoom" className="text-xs text-slate-400">
+          Day Columns Zoom
+        </label>
+        <input
+          id="schedule-zoom"
+          type="range"
+          min={75}
+          max={150}
+          step={5}
+          value={zoomPercent}
+          onChange={(event) => setZoomPercent(Number(event.target.value))}
+          className="h-1.5 w-48 cursor-pointer accent-teal-500"
+        />
+        <span className="font-mono text-xs text-teal-300">{zoomPercent}%</span>
+        <button
+          type="button"
+          onClick={() => setZoomPercent(100)}
+          className="rounded-md border border-slate-700 px-2 py-1 text-xs text-slate-300 transition-colors hover:text-white"
+        >
+          Reset
+        </button>
+        <span className="text-xs text-slate-500">Employee column stays fixed.</span>
       </div>
 
       <div className="flex flex-wrap gap-2 rounded-xl border border-slate-800 bg-slate-900 p-2">
@@ -244,60 +356,68 @@ export default function SchedulePage() {
         ))}
       </div>
 
+      <div className="flex flex-wrap gap-2 rounded-xl border border-slate-800 bg-slate-900 p-2">
+        <button
+          type="button"
+          onClick={() => setGroupTab('all')}
+          className={`rounded-lg px-3 py-1.5 text-xs transition-colors ${
+            groupTab === 'all' ? 'bg-teal-500 text-slate-900' : 'text-slate-400 hover:bg-slate-800 hover:text-white'
+          }`}
+        >
+          All Groups ({data.employees.length})
+        </button>
+        {groups.map((group) => {
+          const count = data.employees.filter((employee) => String(employee.group_id) === String(group.id)).length;
+          return (
+            <button
+              key={group.id}
+              type="button"
+              onClick={() => setGroupTab(String(group.id))}
+              className={`rounded-lg px-3 py-1.5 text-xs transition-colors ${
+                String(groupTab) === String(group.id)
+                  ? 'bg-teal-500 text-slate-900'
+                  : 'text-slate-400 hover:bg-slate-800 hover:text-white'
+              }`}
+            >
+              {group.name} ({count})
+            </button>
+          );
+        })}
+        <button
+          type="button"
+          onClick={() => setGroupTab('ungrouped')}
+          className={`rounded-lg px-3 py-1.5 text-xs transition-colors ${
+            groupTab === 'ungrouped'
+              ? 'bg-teal-500 text-slate-900'
+              : 'text-slate-400 hover:bg-slate-800 hover:text-white'
+          }`}
+        >
+          Unassigned ({data.employees.filter((employee) => !employee.group_id).length})
+        </button>
+      </div>
+
       {activeTab === 'plan' && (
         <div className="space-y-6">
-          <WeekNavigation
-            weekDates={dates}
-            onPrevious={() => setWeekOf((current) => addDays(current, -7))}
-            onNext={() => setWeekOf((current) => addDays(current, 7))}
-          />
-
           <ShiftLegend shifts={data.shifts} />
 
           <ScheduleGrid
             loading={loading}
-            employees={data.employees}
+            employees={filteredEmployees}
             shifts={data.shifts}
-            weekDates={dates}
+            dates={dates}
             getShift={getShift}
+            metricsByEmployee={metricsByEmployee}
+            zoomPercent={zoomPercent}
             onSetShift={setShift}
           />
-
-          <div className="rounded-xl border border-slate-800 bg-slate-900">
-            <div className="border-b border-slate-800 px-4 py-3">
-              <h2 className="text-sm font-semibold text-white">Employee Table by Group</h2>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-slate-800 text-left">
-                    <th className="px-4 py-2 text-xs uppercase tracking-wide text-slate-500">Group</th>
-                    <th className="px-4 py-2 text-xs uppercase tracking-wide text-slate-500">Members</th>
-                    <th className="px-4 py-2 text-xs uppercase tracking-wide text-slate-500">Employee List</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-800/40">
-                  {groupedEmployees.map((group) => (
-                    <tr key={group.id}>
-                      <td className="px-4 py-3 text-white">{group.name}</td>
-                      <td className="px-4 py-3 font-mono text-xs text-slate-400">{group.members.length}</td>
-                      <td className="px-4 py-3 text-xs text-slate-300">
-                        {group.members.map((member) => `${member.nama} (PIN ${member.pin || '-'})`).join(', ')}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
         </div>
       )}
 
       {activeTab === 'import' && (
         <div className="space-y-4 rounded-xl border border-slate-800 bg-slate-900 p-4">
-          <h2 className="text-sm font-semibold text-white">Import Schedule Template (CSV)</h2>
+          <h2 className="text-sm font-semibold text-white">Import Schedule CSV</h2>
           <p className="text-xs text-slate-400">
-            Upload the exported template, edit shifts per date, then check and apply.
+            Upload monthly template, validate rows, then apply to schedule table.
           </p>
 
           <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-xs text-slate-300 transition-colors hover:border-slate-500 hover:text-white">
@@ -316,10 +436,8 @@ export default function SchedulePage() {
               <p className="font-mono text-xl font-bold text-white">{importResult.errors.length}</p>
             </div>
             <div className="rounded-lg border border-slate-700 bg-slate-800 px-3 py-2">
-              <p className="text-xs text-slate-400">Week range</p>
-              <p className="font-mono text-sm text-white">
-                {from} - {to}
-              </p>
+              <p className="text-xs text-slate-400">Selected month</p>
+              <p className="font-mono text-sm text-white">{monthTitle}</p>
             </div>
           </div>
 
@@ -348,34 +466,62 @@ export default function SchedulePage() {
       )}
 
       {activeTab === 'summary' && (
-        <div className="rounded-xl border border-slate-800 bg-slate-900">
-          <div className="border-b border-slate-800 px-4 py-3">
-            <h2 className="text-sm font-semibold text-white">Estimated Work Hours per Employee</h2>
-            <p className="mt-1 text-xs text-slate-500">
-              Based on assigned shift count and `tb_shift_type.jam_kerja` in selected week.
-            </p>
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+            <div className="rounded-lg border border-slate-800 bg-slate-900 px-3 py-2">
+              <p className="text-xs text-slate-500">Total Shifted</p>
+              <p className="font-mono text-lg font-bold text-white">{totalStats.shiftedDays}d</p>
+            </div>
+            <div className="rounded-lg border border-slate-800 bg-slate-900 px-3 py-2">
+              <p className="text-xs text-slate-500">Planned Hours</p>
+              <p className="font-mono text-lg font-bold text-teal-300">{totalStats.plannedHours.toFixed(1)}h</p>
+            </div>
+            <div className="rounded-lg border border-slate-800 bg-slate-900 px-3 py-2">
+              <p className="text-xs text-slate-500">Done Hours</p>
+              <p className="font-mono text-lg font-bold text-emerald-300">{totalStats.doneHours.toFixed(1)}h</p>
+            </div>
+            <div className="rounded-lg border border-slate-800 bg-slate-900 px-3 py-2">
+              <p className="text-xs text-slate-500">Pending Hours</p>
+              <p className="font-mono text-lg font-bold text-amber-300">{totalStats.pendingHours.toFixed(1)}h</p>
+            </div>
+            <div className="rounded-lg border border-slate-800 bg-slate-900 px-3 py-2">
+              <p className="text-xs text-slate-500">Future Hours</p>
+              <p className="font-mono text-lg font-bold text-violet-300">{totalStats.futureHours.toFixed(1)}h</p>
+            </div>
           </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-slate-800 text-left">
-                  <th className="px-4 py-2 text-xs uppercase tracking-wide text-slate-500">Employee</th>
-                  <th className="px-4 py-2 text-xs uppercase tracking-wide text-slate-500">Group</th>
-                  <th className="px-4 py-2 text-xs uppercase tracking-wide text-slate-500">Scheduled Days</th>
-                  <th className="px-4 py-2 text-xs uppercase tracking-wide text-slate-500">Estimated Hours</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-800/40">
-                {hoursSummary.map((row) => (
-                  <tr key={row.id}>
-                    <td className="px-4 py-3 text-white">{row.nama}</td>
-                    <td className="px-4 py-3 text-xs text-slate-400">{row.nama_group || '-'}</td>
-                    <td className="px-4 py-3 font-mono text-xs text-slate-300">{row.scheduled_days}</td>
-                    <td className="px-4 py-3 font-mono text-xs text-teal-300">{row.estimated_hours.toFixed(2)}</td>
+
+          <div className="rounded-xl border border-slate-800 bg-slate-900">
+            <div className="border-b border-slate-800 px-4 py-3">
+              <h2 className="text-sm font-semibold text-white">Per Employee Schedule Metrics</h2>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-slate-800 text-left">
+                    <th className="px-4 py-2 text-xs uppercase tracking-wide text-slate-500">Employee</th>
+                    <th className="px-4 py-2 text-xs uppercase tracking-wide text-slate-500">Group</th>
+                    <th className="px-4 py-2 text-xs uppercase tracking-wide text-slate-500">Total Shifted</th>
+                    <th className="px-4 py-2 text-xs uppercase tracking-wide text-slate-500">Planned Hours</th>
+                    <th className="px-4 py-2 text-xs uppercase tracking-wide text-slate-500">Done Hours</th>
+                    <th className="px-4 py-2 text-xs uppercase tracking-wide text-slate-500">Pending Hours</th>
+                    <th className="px-4 py-2 text-xs uppercase tracking-wide text-slate-500">Future Hours</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="divide-y divide-slate-800/40">
+                  {filteredSummary.map(({ employee, metrics }) => (
+                    <tr key={employee.id}>
+                      <td className="px-4 py-3 text-white">{employee.nama}</td>
+                      <td className="px-4 py-3 text-xs text-slate-400">{employee.nama_group || '-'}</td>
+                      <td className="px-4 py-3 font-mono text-xs text-slate-300">{metrics.shifted_days}</td>
+                      <td className="px-4 py-3 font-mono text-xs text-teal-300">{metrics.planned_hours.toFixed(1)}</td>
+                      <td className="px-4 py-3 font-mono text-xs text-emerald-300">{metrics.done_hours.toFixed(1)}</td>
+                      <td className="px-4 py-3 font-mono text-xs text-amber-300">{metrics.pending_hours.toFixed(1)}</td>
+                      <td className="px-4 py-3 font-mono text-xs text-violet-300">{metrics.future_hours.toFixed(1)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       )}

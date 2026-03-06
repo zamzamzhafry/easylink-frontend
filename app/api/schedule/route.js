@@ -12,7 +12,7 @@ export async function GET(req) {
   const [shifts] = await pool.query('SELECT * FROM tb_shift_type ORDER BY id');
 
   const [schedules] = await pool.query(`
-    SELECT sc.id, sc.karyawan_id, sc.tanggal, sc.shift_id, sc.catatan,
+    SELECT sc.id, sc.karyawan_id, DATE_FORMAT(sc.tanggal, '%Y-%m-%d') AS tanggal, sc.shift_id, sc.catatan,
            st.nama_shift, st.jam_masuk, st.jam_keluar, st.next_day, st.color_hex,
            COALESCE(k.nama, u.nama, k.pin) AS nama,
            k.pin,
@@ -39,7 +39,19 @@ export async function GET(req) {
     ORDER BY nama
   `);
 
-  return NextResponse.json({ shifts, schedules, employees });
+  const [scanCompletions] = await pool.query(`
+    SELECT
+      k.id AS karyawan_id,
+      DATE_FORMAT(DATE(sl.scan_date), '%Y-%m-%d') AS tanggal,
+      COUNT(*) AS scan_count
+    FROM tb_scanlog sl
+    JOIN tb_karyawan k ON k.pin = sl.pin
+    WHERE DATE(sl.scan_date) BETWEEN ? AND ?
+      ${canFilterDeleted ? 'AND k.isDeleted = 0' : ''}
+    GROUP BY k.id, DATE(sl.scan_date)
+  `, [from, to]);
+
+  return NextResponse.json({ shifts, schedules, employees, scanCompletions });
 }
 
 export async function POST(req) {
@@ -53,6 +65,15 @@ export async function POST(req) {
        VALUES (?, ?, ?, ?)
        ON DUPLICATE KEY UPDATE shift_id = VALUES(shift_id), catatan = VALUES(catatan)`,
       [body.karyawan_id, body.tanggal, body.shift_id, body.catatan ?? null]
+    );
+    return NextResponse.json({ ok: true });
+  }
+
+  // Clear single shift assignment (set to not assigned)
+  if (body.action === 'clear') {
+    await pool.query(
+      'DELETE FROM tb_schedule WHERE karyawan_id = ? AND tanggal = ?',
+      [body.karyawan_id, body.tanggal]
     );
     return NextResponse.json({ ok: true });
   }

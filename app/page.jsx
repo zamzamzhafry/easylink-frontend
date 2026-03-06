@@ -3,7 +3,7 @@ import { Clock, Fingerprint, Monitor, UserCheck, Users, UserX } from 'lucide-rea
 import pool from '@/lib/db';
 import { hasKaryawanColumn } from '@/lib/karyawan-schema';
 
-async function getStats() {
+async function getStats({ limit, page }) {
   const today = new Date().toISOString().slice(0, 10);
   const canFilterDeleted = await hasKaryawanColumn('isDeleted');
 
@@ -46,6 +46,13 @@ async function getStats() {
     [today, today]
   ).catch(() => [[{ late_count: 0 }]]);
 
+  const [[{ total_recent }]] = await pool.query(
+    'SELECT COUNT(*) AS total_recent FROM tb_scanlog'
+  ).catch(() => [[{ total_recent: 0 }]]);
+  const totalPages = Math.max(1, Math.ceil(Number(total_recent) / limit));
+  const currentPage = Math.min(page, totalPages);
+  const offset = (currentPage - 1) * limit;
+
   const [recent] = await pool.query(
     `SELECT sl.pin,
             DATE(sl.scan_date) AS scan_date,
@@ -56,7 +63,8 @@ async function getStats() {
      LEFT JOIN tb_karyawan k ON k.pin = sl.pin ${canFilterDeleted ? 'AND k.isDeleted = 0' : ''}
      LEFT JOIN tb_user     u ON u.pin = sl.pin
      ORDER BY sl.scan_date DESC
-     LIMIT 10`
+     LIMIT ? OFFSET ?`,
+    [limit, offset]
   ).catch(() => [[]]);
 
   const [[{ devices }]] = await pool.query('SELECT COUNT(*) AS devices FROM tb_device');
@@ -67,6 +75,9 @@ async function getStats() {
     jadwal_hari: Number(jadwal_hari),
     late: Number(late_count),
     recent: Array.isArray(recent) ? recent : [],
+    recentTotal: Number(total_recent),
+    recentPage: currentPage,
+    recentTotalPages: totalPages,
     devices: Number(devices),
   };
 }
@@ -76,9 +87,29 @@ const verifyLabel = (value) => {
   return map[value] ?? `Mode ${value}`;
 };
 
-export default async function Dashboard() {
-  const stats = await getStats();
+function normalizeLimit(value) {
+  const parsed = Number.parseInt(value, 10);
+  if ([50, 100, 200].includes(parsed)) return parsed;
+  return 50;
+}
+
+function normalizePage(value) {
+  const parsed = Number.parseInt(value, 10);
+  if (Number.isInteger(parsed) && parsed > 0) return parsed;
+  return 1;
+}
+
+function pageLink(page, limit) {
+  return `/?page=${page}&limit=${limit}`;
+}
+
+export default async function Dashboard({ searchParams }) {
+  const limit = normalizeLimit(searchParams?.limit);
+  const page = normalizePage(searchParams?.page);
+  const stats = await getStats({ limit, page });
   const absent = Math.max(0, stats.jadwal_hari - stats.hadir);
+  const totalPages = stats.recentTotalPages;
+  const safePage = stats.recentPage;
 
   const cards = [
     { label: 'Total Karyawan', value: stats.total, icon: Users, color: 'text-teal-400', bg: 'bg-teal-400/10', href: '/employees' },
@@ -137,7 +168,24 @@ export default async function Dashboard() {
         <div className="flex items-center gap-2 border-b border-slate-800 px-5 py-3">
           <Fingerprint className="h-4 w-4 text-teal-400" />
           <span className="text-sm font-semibold text-white">Recent Scans</span>
-          <span className="ml-auto font-mono text-xs text-slate-500">last 10 entries</span>
+          <div className="ml-auto flex items-center gap-2">
+            <span className="font-mono text-xs text-slate-500">
+              page {safePage}/{totalPages} | showing {limit}
+            </span>
+            {[50, 100, 200].map((option) => (
+              <Link
+                key={option}
+                href={pageLink(1, option)}
+                className={`rounded-md border px-2 py-1 text-[11px] ${
+                  option === limit
+                    ? 'border-teal-500/50 bg-teal-500/15 text-teal-300'
+                    : 'border-slate-700 text-slate-400 hover:text-white'
+                }`}
+              >
+                {option}
+              </Link>
+            ))}
+          </div>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -174,6 +222,31 @@ export default async function Dashboard() {
               )}
             </tbody>
           </table>
+        </div>
+        <div className="flex items-center justify-between border-t border-slate-800 px-5 py-2 text-xs">
+          <span className="text-slate-500">total scans: {stats.recentTotal}</span>
+          <div className="flex items-center gap-2">
+            {safePage > 1 ? (
+              <Link
+                href={pageLink(safePage - 1, limit)}
+                className="rounded border border-slate-700 px-2 py-1 text-slate-300 hover:text-white"
+              >
+                Prev
+              </Link>
+            ) : (
+              <span className="rounded border border-slate-800 px-2 py-1 text-slate-600">Prev</span>
+            )}
+            {safePage < totalPages ? (
+              <Link
+                href={pageLink(safePage + 1, limit)}
+                className="rounded border border-slate-700 px-2 py-1 text-slate-300 hover:text-white"
+              >
+                Next
+              </Link>
+            ) : (
+              <span className="rounded border border-slate-800 px-2 py-1 text-slate-600">Next</span>
+            )}
+          </div>
         </div>
       </div>
     </div>

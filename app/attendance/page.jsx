@@ -195,14 +195,15 @@ export default function AttendancePage() {
                 <th className="px-4 py-3 text-xs uppercase tracking-wide text-slate-500">PIN</th>
                 <th className="px-4 py-3 text-xs uppercase tracking-wide text-slate-500">Employee Fullname</th>
                 <th className="px-4 py-3 text-xs uppercase tracking-wide text-slate-500">Group</th>
+                <th className="px-4 py-3 text-xs uppercase tracking-wide text-slate-500">Review</th>
                 <th className="px-4 py-3 text-xs uppercase tracking-wide text-slate-500">Verify / IO / Workcode</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800/40">
               {rawLoading ? (
-                <TableLoadingRow colSpan={6} />
+                <TableLoadingRow colSpan={7} />
               ) : rawRows.length === 0 ? (
-                <TableEmptyRow colSpan={6} label="No raw scanlog rows in range" />
+                <TableEmptyRow colSpan={7} label="No raw scanlog rows in range" />
               ) : (
                 rawRows.map((row, index) => (
                   <tr key={`${row.pin}-${row.scan_date}-${row.scan_time}-${index}`}>
@@ -211,6 +212,17 @@ export default function AttendancePage() {
                     <td className="px-4 py-3 font-mono text-xs text-slate-300">{row.pin}</td>
                     <td className="px-4 py-3 text-white">{row.nama}</td>
                     <td className="px-4 py-3 text-xs text-slate-500">{row.nama_group || '-'}</td>
+                    <td className="px-4 py-3">
+                      {row.reviewed_status === 'reviewed' ? (
+                        <span className="inline-flex rounded border border-emerald-500/20 bg-emerald-500/10 px-2 py-0.5 text-xs text-emerald-300">
+                          Reviewed
+                        </span>
+                      ) : (
+                        <span className="inline-flex rounded border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-xs text-amber-300">
+                          Pending
+                        </span>
+                      )}
+                    </td>
                     <td className="px-4 py-3 font-mono text-xs text-slate-500">
                       {row.verifymode}/{row.iomode}/{row.workcode}
                     </td>

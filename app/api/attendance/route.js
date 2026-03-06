@@ -107,10 +107,19 @@ export async function GET(req) {
       if (diff > 0) durationMinutes = diff;
     }
 
+    const hasReview = Boolean(row.note_status || (row.note_catatan && String(row.note_catatan).trim()));
+    const reviewedStatus = hasReview
+      ? 'reviewed'
+      : status !== 'normal'
+        ? 'pending'
+        : 'not_required';
+
     return {
       ...row,
       computed_status: status,
       flags,
+      reviewed_status: reviewedStatus,
+      has_review: hasReview ? 1 : 0,
       durasi_menit: durationMinutes,
       durasi_label: durationMinutes
         ? `${Math.floor(durationMinutes / 60)}j ${durationMinutes % 60}m`
