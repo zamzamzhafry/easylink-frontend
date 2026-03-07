@@ -151,6 +151,8 @@ export default async function Dashboard({ searchParams }) {
           { href: '/attendance', label: 'Attendance Log', desc: 'View scan history' },
           { href: '/groups', label: 'Employee Groups', desc: 'Organize by team/shift group' },
           { href: '/schedule', label: 'Shift Schedule', desc: 'Assign shifts & view calendar' },
+          { href: '/performance', label: 'Performance', desc: 'Per profile late/on-time stats' },
+          { href: '/shifts', label: 'Shift Maker', desc: 'Customize punch in/out templates' },
         ].map(({ href, label, desc }) => (
           <Link
             key={href}

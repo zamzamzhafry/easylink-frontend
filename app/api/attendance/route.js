@@ -1,3 +1,4 @@
+export const dynamic = 'force-dynamic';
 // app/api/attendance/route.js
 import { NextResponse } from 'next/server';
 import pool from '@/lib/db';
@@ -141,3 +142,4 @@ export async function POST(req) {
   );
   return NextResponse.json({ ok: true });
 }
+

@@ -3,27 +3,53 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
+  BarChart3,
   CalendarClock,
   CalendarRange,
+  LogOut,
   Fingerprint,
   LayoutDashboard,
   Layers,
   PanelLeftClose,
   PanelLeftOpen,
+  ShieldCheck,
+  Timer,
   Users,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const nav = [
-  { href: '/', label: 'Dashboard', icon: LayoutDashboard },
-  { href: '/employees', label: 'Employees', icon: Users },
-  { href: '/attendance', label: 'Absensi', icon: CalendarClock },
-  { href: '/groups', label: 'Groups', icon: Layers },
-  { href: '/schedule', label: 'Schedule', icon: CalendarRange },
+  { href: '/', label: 'Dashboard', icon: LayoutDashboard, auth: 'all' },
+  { href: '/schedule', label: 'Schedule', icon: CalendarRange, auth: 'schedule' },
+  { href: '/performance', label: 'Performance', icon: BarChart3, auth: 'dashboard' },
+  { href: '/attendance', label: 'Absensi', icon: CalendarClock, auth: 'attendance' },
+  { href: '/employees', label: 'Employees', icon: Users, auth: 'admin' },
+  { href: '/groups', label: 'Groups', icon: Layers, auth: 'admin' },
+  { href: '/shifts', label: 'Shift Maker', icon: Timer, auth: 'admin' },
 ];
 
-export default function Sidebar({ collapsed = false, onToggle }) {
+function canSeeNav(user, authType) {
+  if (!user) return authType === 'all';
+  if (user.is_admin) return true;
+  if (authType === 'all') return true;
+  if (authType === 'schedule') return Boolean(user.can_schedule);
+  if (authType === 'dashboard') return Boolean(user.can_dashboard);
+  if (authType === 'attendance') return Boolean(user.can_schedule || user.can_dashboard);
+  return false;
+}
+
+export default function Sidebar({ collapsed = false, onToggle, currentUser = null }) {
   const path = usePathname();
+  const visibleNav = nav.filter((item) => canSeeNav(currentUser, item.auth));
+
+  const logout = async () => {
+    try {
+      await fetch('/api/auth/logout', { method: 'POST' });
+    } catch {
+      // noop
+    }
+    window.location.href = '/login';
+  };
 
   return (
     <aside
@@ -55,7 +81,7 @@ export default function Sidebar({ collapsed = false, onToggle }) {
       </div>
 
       <nav className="flex-1 space-y-1 px-2 py-4 overflow-y-auto">
-        {nav.map(({ href, label, icon: Icon }) => {
+        {visibleNav.map(({ href, label, icon: Icon }) => {
           const active = path === href || (href !== '/' && path.startsWith(href));
           return (
             <Link
@@ -77,8 +103,30 @@ export default function Sidebar({ collapsed = false, onToggle }) {
         })}
       </nav>
 
-      <div className={cn('border-t border-slate-800 px-4 py-4 text-xs text-slate-600', collapsed ? 'text-center' : '')}>
-        {collapsed ? 'v1.0' : 'demo_easylinksdk | v1.0'}
+      <div className="border-t border-slate-800 px-3 py-3">
+        {currentUser && !collapsed && (
+          <div className="mb-2 rounded-lg border border-slate-800 bg-slate-950/70 px-3 py-2">
+            <div className="text-xs font-semibold text-white">{currentUser.nama}</div>
+            <div className="mt-0.5 inline-flex items-center gap-1 text-[11px] text-slate-500">
+              <ShieldCheck className="h-3 w-3" />
+              {currentUser.is_admin ? 'Admin' : 'Group User'}
+            </div>
+          </div>
+        )}
+        <button
+          type="button"
+          onClick={logout}
+          className={cn(
+            'flex w-full items-center rounded-lg border border-slate-700 px-2.5 py-2 text-xs text-slate-300 transition-colors hover:border-slate-500 hover:text-white',
+            collapsed ? 'justify-center' : 'gap-2'
+          )}
+        >
+          <LogOut className="h-3.5 w-3.5 shrink-0" />
+          {!collapsed && 'Logout'}
+        </button>
+        <div className={cn('mt-3 text-xs text-slate-600', collapsed ? 'text-center' : '')}>
+          {collapsed ? 'v1.1' : 'demo_easylinksdk | v1.1'}
+        </div>
       </div>
     </aside>
   );

@@ -1,3 +1,4 @@
+export const dynamic = 'force-dynamic';
 // app/api/employees/[id]/route.js
 import { NextResponse } from 'next/server';
 import pool from '@/lib/db';
@@ -87,3 +88,4 @@ export async function DELETE(_req, { params }) {
 
   return NextResponse.json({ ok: true });
 }
+

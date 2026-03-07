@@ -84,8 +84,10 @@ export default function SchedulePage() {
       const normalizedCompletions = Array.isArray(scheduleResult?.scanCompletions)
         ? scheduleResult.scanCompletions.map((item) => ({ ...item, tanggal: normalizeDate(item.tanggal) }))
         : [];
+      const allShifts = Array.isArray(scheduleResult?.shifts) ? scheduleResult.shifts : [];
+      const activeShifts = allShifts.filter((shift) => Number(shift?.is_active ?? 1) === 1);
       setData({
-        shifts: Array.isArray(scheduleResult?.shifts) ? scheduleResult.shifts : [],
+        shifts: activeShifts.length ? activeShifts : allShifts,
         schedules: normalizedSchedules,
         employees: Array.isArray(scheduleResult?.employees) ? scheduleResult.employees : [],
         scanCompletions: normalizedCompletions,

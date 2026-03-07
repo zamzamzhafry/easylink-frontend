@@ -3,3 +3,5 @@ node_modules/
 .env
 .env.local
 *.sql
+!auth_group_shift_revision.sql
+*.tsbuildinfo

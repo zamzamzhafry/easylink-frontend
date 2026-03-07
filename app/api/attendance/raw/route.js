@@ -1,3 +1,4 @@
+export const dynamic = 'force-dynamic';
 import { NextResponse } from 'next/server';
 import pool from '@/lib/db';
 import { hasKaryawanColumn } from '@/lib/karyawan-schema';
@@ -52,3 +53,4 @@ export async function GET(req) {
   const [rows] = await pool.query(query, params);
   return NextResponse.json(rows);
 }
+

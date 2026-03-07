@@ -3,25 +3,31 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "dev":   "next dev",
+    "dev": "next dev",
     "build": "next build",
-    "start": "next start"
+    "start": "next start",
+    "typecheck": "tsc --noEmit",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
   },
   "dependencies": {
-    "next":             "14.2.3",
-    "react":            "^18",
-    "react-dom":        "^18",
-    "mysql2":           "^3.9.7",
-    "lucide-react":     "^0.378.0",
     "class-variance-authority": "^0.7.0",
-    "clsx":             "^2.1.1",
-    "tailwind-merge":   "^2.3.0"
+    "clsx": "^2.1.1",
+    "lucide-react": "^0.378.0",
+    "mysql2": "^3.9.7",
+    "next": "14.2.3",
+    "react": "^18",
+    "react-dom": "^18",
+    "tailwind-merge": "^2.3.0",
+    "zod": "^4.3.6"
   },
   "devDependencies": {
-    "autoprefixer":  "^10",
-    "postcss":       "^8",
-    "tailwindcss":   "^3",
-    "@types/node":   "^20",
-    "@types/react":  "^18"
+    "@types/node": "^20",
+    "@types/react": "^18",
+    "autoprefixer": "^10",
+    "prettier": "^3.8.1",
+    "postcss": "^8",
+    "tailwindcss": "^3",
+    "typescript": "^5.9.3"
   }
 }

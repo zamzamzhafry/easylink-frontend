@@ -1,3 +1,4 @@
+export const dynamic = 'force-dynamic';
 // app/api/groups/route.js
 import { NextResponse } from 'next/server';
 import pool from '@/lib/db';
@@ -77,3 +78,4 @@ export async function POST(req) {
 
   return NextResponse.json({ ok: false, error: 'unknown action' }, { status: 400 });
 }
+

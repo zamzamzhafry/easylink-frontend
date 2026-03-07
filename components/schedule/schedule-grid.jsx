@@ -1,32 +1,14 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import {
-  AlertTriangle,
-  BedDouble,
-  Briefcase,
-  Circle,
-  Clock3,
-  MoonStar,
-  Sun,
-  Sunset,
-} from 'lucide-react';
+import { AlertTriangle, Circle, Clock3 } from 'lucide-react';
+import { getShiftIcon } from '@/components/schedule/shift-icon';
 import { formatIsoDate } from '@/lib/schedule-helpers';
-import { shiftClassName } from '@/lib/shift-helpers';
+import { shiftBadgeInlineStyle, shiftClassName } from '@/lib/shift-helpers';
 import { TableEmptyRow, TableLoadingRow, TableShell } from '@/components/ui/table-shell';
 
 function dayLabel(dateValue) {
   return new Date(dateValue).toLocaleDateString('id-ID', { weekday: 'short' });
-}
-
-function shiftIcon(shiftName) {
-  const key = String(shiftName || '').toLowerCase();
-  if (key.includes('pagi')) return Sun;
-  if (key.includes('siang')) return Sunset;
-  if (key.includes('malam')) return MoonStar;
-  if (key.includes('libur')) return BedDouble;
-  if (key.includes('cuti')) return BedDouble;
-  return Briefcase;
 }
 
 function ShiftPicker({ schedule, shifts, fontScale, anomalyStatus, onSetShift }) {
@@ -34,7 +16,8 @@ function ShiftPicker({ schedule, shifts, fontScale, anomalyStatus, onSetShift })
   const wrapperRef = useRef(null);
   const selectedLabel = schedule?.nama_shift || 'Not Assigned';
   const selectedClass = schedule ? shiftClassName(schedule.nama_shift) : 'border-slate-700 text-slate-400';
-  const SelectedIcon = schedule ? shiftIcon(schedule.nama_shift) : Circle;
+  const selectedStyle = schedule ? shiftBadgeInlineStyle(schedule) : null;
+  const SelectedIcon = schedule ? getShiftIcon(schedule) : Circle;
   const anomalyClass =
     anomalyStatus === 'terlambat'
       ? 'ring-1 ring-amber-500/70 bg-amber-500/10'
@@ -61,7 +44,10 @@ function ShiftPicker({ schedule, shifts, fontScale, anomalyStatus, onSetShift })
         type="button"
         onClick={() => setOpen((prev) => !prev)}
         className={`flex w-full items-center justify-between gap-1 rounded-lg border px-1.5 py-1.5 text-left transition-colors hover:brightness-110 ${selectedClass} ${anomalyClass}`}
-        style={{ fontSize: `${Math.max(9, 10 * fontScale)}px` }}
+        style={{
+          fontSize: `${Math.max(9, 10 * fontScale)}px`,
+          ...(selectedStyle || {}),
+        }}
       >
         <span className="inline-flex min-w-0 items-center gap-1">
           <SelectedIcon className="h-3 w-3 shrink-0 opacity-80" />
@@ -69,7 +55,7 @@ function ShiftPicker({ schedule, shifts, fontScale, anomalyStatus, onSetShift })
         </span>
         <span className="inline-flex items-center gap-1 text-[10px] opacity-80">
           {anomalyStatus && <AlertTriangle className="h-3 w-3 text-amber-300" />}
-          {open ? '▲' : '▼'}
+          {open ? '^' : 'v'}
         </span>
       </button>
 
@@ -88,7 +74,7 @@ function ShiftPicker({ schedule, shifts, fontScale, anomalyStatus, onSetShift })
           </button>
 
           {shifts.map((shift) => {
-            const Icon = shiftIcon(shift.nama_shift);
+            const Icon = getShiftIcon(shift);
             return (
               <button
                 key={shift.id}
@@ -100,6 +86,7 @@ function ShiftPicker({ schedule, shifts, fontScale, anomalyStatus, onSetShift })
                 className={`mb-1 flex w-full items-center gap-2 rounded-md border px-2 py-1.5 text-left text-xs transition-colors hover:brightness-110 ${shiftClassName(
                   shift.nama_shift
                 )}`}
+                style={shiftBadgeInlineStyle(shift) || undefined}
               >
                 <Icon className="h-3.5 w-3.5" />
                 <span className="truncate">{shift.nama_shift}</span>
@@ -132,10 +119,10 @@ export default function ScheduleGrid({
   const today = formatIsoDate(new Date());
   const colSpan = 1 + dates.length;
   const clampedZoom = Math.min(150, Math.max(75, Number(zoomPercent) || 100));
-  const employeeColWidth = 300; // keep employee column static for readability
+  const employeeColWidth = 300;
   const dayColWidth = Math.round(100 * (clampedZoom / 100));
   const fontScale = clampedZoom / 100;
-  const tableMinWidth = Math.max(1100, employeeColWidth + (dayColWidth * dates.length));
+  const tableMinWidth = Math.max(1100, employeeColWidth + dayColWidth * dates.length);
 
   return (
     <TableShell innerClassName="overflow-x-auto">
