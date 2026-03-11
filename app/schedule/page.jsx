@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ChevronLeft, ChevronRight, Download, Printer, Upload, Users } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Download, Pencil, Printer, Upload, Users, X } from 'lucide-react';
 import BulkAssignModal from '@/components/schedule/bulk-assign-modal';
 import ScheduleGrid from '@/components/schedule/schedule-grid';
 import ShiftLegend from '@/components/schedule/shift-legend';
@@ -55,6 +55,7 @@ export default function SchedulePage() {
   const [uploadFileName, setUploadFileName] = useState('');
   const [applyingImport, setApplyingImport] = useState(false);
   const [zoomPercent, setZoomPercent] = useState(100);
+  const [editMode, setEditMode] = useState(false);
 
   const dates = useMemo(() => monthDates(monthOf), [monthOf]);
   const from = formatIsoDate(monthStart(monthOf));
@@ -299,28 +300,64 @@ export default function SchedulePage() {
             Monthly planning by group, with done/pending/future estimated work hours.
           </p>
         </div>
+        {/* Edit / View toggle button */}
         <div className="flex gap-2">
-          <button
-            type="button"
-            onClick={() => setBulkModal(true)}
-            className="flex items-center gap-2 rounded-xl border border-violet-500/30 bg-violet-500/20 px-4 py-2.5 text-sm text-violet-300 transition-colors hover:bg-violet-500/30"
-          >
-            <Users className="h-4 w-4" /> Bulk Assign Group
-          </button>
-          <button
-            type="button"
-            onClick={exportTemplate}
-            className="flex items-center gap-2 rounded-xl border border-teal-500/30 bg-teal-500/10 px-4 py-2.5 text-sm text-teal-400 transition-colors hover:bg-teal-500/20"
-          >
-            <Download className="h-4 w-4" /> Export
-          </button>
-          <button
-            type="button"
-            onClick={printSchedule}
-            className="flex items-center gap-2 rounded-xl border border-slate-700 bg-slate-900 px-4 py-2.5 text-sm text-slate-300 transition-colors hover:border-slate-500 hover:text-white"
-          >
-            <Printer className="h-4 w-4" /> Print
-          </button>
+          {editMode ? (
+            <>
+              <button
+                type="button"
+                onClick={() => setBulkModal(true)}
+                className="flex items-center gap-2 rounded-xl border border-violet-500/30 bg-violet-500/20 px-4 py-2.5 text-sm text-violet-300 transition-colors hover:bg-violet-500/30"
+              >
+                <Users className="h-4 w-4" /> Bulk Assign Group
+              </button>
+              <button
+                type="button"
+                onClick={exportTemplate}
+                className="flex items-center gap-2 rounded-xl border border-teal-500/30 bg-teal-500/10 px-4 py-2.5 text-sm text-teal-400 transition-colors hover:bg-teal-500/20"
+              >
+                <Download className="h-4 w-4" /> Export
+              </button>
+              <button
+                type="button"
+                onClick={printSchedule}
+                className="flex items-center gap-2 rounded-xl border border-slate-700 bg-slate-900 px-4 py-2.5 text-sm text-slate-300 transition-colors hover:border-slate-500 hover:text-white"
+              >
+                <Printer className="h-4 w-4" /> Print
+              </button>
+              <button
+                type="button"
+                onClick={() => setEditMode(false)}
+                className="flex items-center gap-2 rounded-xl border border-rose-500/30 bg-rose-500/10 px-4 py-2.5 text-sm text-rose-300 transition-colors hover:bg-rose-500/20"
+              >
+                <X className="h-4 w-4" /> Done Editing
+              </button>
+            </>
+          ) : (
+            <>
+              <button
+                type="button"
+                onClick={exportTemplate}
+                className="flex items-center gap-2 rounded-xl border border-teal-500/30 bg-teal-500/10 px-4 py-2.5 text-sm text-teal-400 transition-colors hover:bg-teal-500/20"
+              >
+                <Download className="h-4 w-4" /> Export
+              </button>
+              <button
+                type="button"
+                onClick={printSchedule}
+                className="flex items-center gap-2 rounded-xl border border-slate-700 bg-slate-900 px-4 py-2.5 text-sm text-slate-300 transition-colors hover:border-slate-500 hover:text-white"
+              >
+                <Printer className="h-4 w-4" /> Print
+              </button>
+              <button
+                type="button"
+                onClick={() => setEditMode(true)}
+                className="flex items-center gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-2.5 text-sm text-amber-300 transition-colors hover:bg-amber-500/20"
+              >
+                <Pencil className="h-4 w-4" /> Edit Schedule
+              </button>
+            </>
+          )}
         </div>
       </div>
 
@@ -440,7 +477,8 @@ export default function SchedulePage() {
             metricsByEmployee={metricsByEmployee}
             anomalyByKey={anomalyByKey}
             zoomPercent={zoomPercent}
-            onSetShift={setShift}
+            readOnly={!editMode}
+            onSetShift={editMode ? setShift : undefined}
           />
         </div>
       )}

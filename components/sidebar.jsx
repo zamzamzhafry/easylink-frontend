@@ -14,7 +14,9 @@ import {
   PanelLeftOpen,
   ShieldCheck,
   Timer,
+  UserCog,
   Users,
+  DatabaseZap,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -26,6 +28,8 @@ const nav = [
   { href: '/employees', label: 'Employees', icon: Users, auth: 'admin' },
   { href: '/groups', label: 'Groups', icon: Layers, auth: 'admin' },
   { href: '/shifts', label: 'Shift Maker', icon: Timer, auth: 'admin' },
+  { href: '/users', label: 'Users', icon: UserCog, auth: 'admin' },
+  { href: '/scanlog', label: 'Scan Log', icon: DatabaseZap, auth: 'admin' },
 ];
 
 function canSeeNav(user, authType) {

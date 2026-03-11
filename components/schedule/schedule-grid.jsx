@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import Link from 'next/link';
 import { AlertTriangle, Circle, Clock3 } from 'lucide-react';
 import { getShiftIcon } from '@/components/schedule/shift-icon';
 import { formatIsoDate } from '@/lib/schedule-helpers';
@@ -11,7 +12,7 @@ function dayLabel(dateValue) {
   return new Date(dateValue).toLocaleDateString('id-ID', { weekday: 'short' });
 }
 
-function ShiftPicker({ schedule, shifts, fontScale, anomalyStatus, onSetShift }) {
+function ShiftPicker({ schedule, shifts, fontScale, anomalyStatus, onSetShift, readOnly = false }) {
   const [open, setOpen] = useState(false);
   const wrapperRef = useRef(null);
   const selectedLabel = schedule?.nama_shift || 'Not Assigned';
@@ -42,8 +43,8 @@ function ShiftPicker({ schedule, shifts, fontScale, anomalyStatus, onSetShift })
     <div ref={wrapperRef} className="relative">
       <button
         type="button"
-        onClick={() => setOpen((prev) => !prev)}
-        className={`flex w-full items-center justify-between gap-1 rounded-lg border px-1.5 py-1.5 text-left transition-colors hover:brightness-110 ${selectedClass} ${anomalyClass}`}
+        onClick={readOnly ? undefined : () => setOpen((prev) => !prev)}
+        className={`flex w-full items-center justify-between gap-1 rounded-lg border px-1.5 py-1.5 text-left transition-colors ${selectedClass} ${anomalyClass} ${readOnly ? 'cursor-default' : 'hover:brightness-110'}`}
         style={{
           fontSize: `${Math.max(9, 10 * fontScale)}px`,
           ...(selectedStyle || {}),
@@ -53,13 +54,18 @@ function ShiftPicker({ schedule, shifts, fontScale, anomalyStatus, onSetShift })
           <SelectedIcon className="h-3 w-3 shrink-0 opacity-80" />
           <span className="truncate">{selectedLabel}</span>
         </span>
-        <span className="inline-flex items-center gap-1 text-[10px] opacity-80">
-          {anomalyStatus && <AlertTriangle className="h-3 w-3 text-amber-300" />}
-          {open ? '^' : 'v'}
-        </span>
+        {!readOnly && (
+          <span className="inline-flex items-center gap-1 text-[10px] opacity-80">
+            {anomalyStatus && <AlertTriangle className="h-3 w-3 text-amber-300" />}
+            {open ? '^' : 'v'}
+          </span>
+        )}
+        {readOnly && anomalyStatus && (
+          <AlertTriangle className="h-3 w-3 text-amber-300 opacity-80" />
+        )}
       </button>
 
-      {open && (
+      {!readOnly && open && (
         <div className="absolute left-0 z-40 mt-1 max-h-56 w-48 overflow-y-auto rounded-lg border border-slate-700 bg-slate-900 p-1 shadow-2xl">
           <button
             type="button"
@@ -115,6 +121,7 @@ export default function ScheduleGrid({
   anomalyByKey,
   zoomPercent = 100,
   onSetShift,
+  readOnly = false,
 }) {
   const today = formatIsoDate(new Date());
   const colSpan = 1 + dates.length;
@@ -174,7 +181,12 @@ export default function ScheduleGrid({
               return (
                 <tr key={employee.id} className="data-row">
                   <td className="sticky left-0 z-20 bg-slate-950 px-4 py-2">
-                    <div className="text-sm font-medium text-white">{employee.nama}</div>
+                    <Link
+                      href={`/employees/${employee.id}`}
+                      className="text-sm font-medium text-white hover:text-teal-300 transition-colors"
+                    >
+                      {employee.nama}
+                    </Link>
                     <div className="font-mono text-xs text-slate-600">PIN {employee.pin || '-'}</div>
                     <div className="mt-1 text-[11px] text-slate-500">
                       Shifted: {metrics.shifted_days}d | Done: {metrics.done_hours.toFixed(1)}h | Pending:{' '}
@@ -201,6 +213,7 @@ export default function ScheduleGrid({
                           shifts={shifts}
                           fontScale={fontScale}
                           anomalyStatus={anomalyStatus}
+                          readOnly={readOnly}
                           onSetShift={(shiftId) => onSetShift(employee.id, dateString, shiftId)}
                         />
                       </td>

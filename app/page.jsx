@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { Clock, Fingerprint, Monitor, UserCheck, Users, UserX } from 'lucide-react';
 import pool from '@/lib/db';
 import { hasKaryawanColumn } from '@/lib/karyawan-schema';
+import { getAuthContextFromCookies } from '@/lib/auth-session';
 
 async function getStats({ limit, page }) {
   const today = new Date().toISOString().slice(0, 10);
@@ -111,13 +112,21 @@ export default async function Dashboard({ searchParams }) {
   const totalPages = stats.recentTotalPages;
   const safePage = stats.recentPage;
 
+  // Auth — used to filter dashboard buttons
+  const auth = await getAuthContextFromCookies();
+  const isAdmin = Boolean(auth?.is_admin);
+  const canSchedule = isAdmin || Boolean(auth?.can_schedule);
+  const canDashboard = isAdmin || Boolean(auth?.can_dashboard);
+  const canAttendance = canSchedule || canDashboard;
+
+  // Cards: only show cards whose destination the user can reach
   const cards = [
-    { label: 'Total Karyawan', value: stats.total, icon: Users, color: 'text-teal-400', bg: 'bg-teal-400/10', href: '/employees' },
-    { label: 'Hadir Hari Ini', value: stats.hadir, icon: UserCheck, color: 'text-emerald-400', bg: 'bg-emerald-400/10', href: '/attendance' },
-    { label: 'Tidak Hadir', value: absent, icon: UserX, color: 'text-rose-400', bg: 'bg-rose-400/10', href: '/attendance' },
-    { label: 'Terlambat', value: stats.late, icon: Clock, color: 'text-amber-400', bg: 'bg-amber-400/10', href: '/attendance' },
-    { label: 'Perangkat Aktif', value: stats.devices, icon: Monitor, color: 'text-violet-400', bg: 'bg-violet-400/10', href: '#' },
-  ];
+    isAdmin && { label: 'Total Karyawan', value: stats.total, icon: Users, color: 'text-teal-400', bg: 'bg-teal-400/10', href: '/employees' },
+    canAttendance && { label: 'Hadir Hari Ini', value: stats.hadir, icon: UserCheck, color: 'text-emerald-400', bg: 'bg-emerald-400/10', href: '/attendance' },
+    canAttendance && { label: 'Tidak Hadir', value: absent, icon: UserX, color: 'text-rose-400', bg: 'bg-rose-400/10', href: '/attendance' },
+    canAttendance && { label: 'Terlambat', value: stats.late, icon: Clock, color: 'text-amber-400', bg: 'bg-amber-400/10', href: '/attendance' },
+    isAdmin && { label: 'Perangkat Aktif', value: stats.devices, icon: Monitor, color: 'text-violet-400', bg: 'bg-violet-400/10', href: '#' },
+  ].filter(Boolean);
 
   return (
     <div className="max-w-6xl space-y-8">
@@ -145,26 +154,35 @@ export default async function Dashboard({ searchParams }) {
         ))}
       </div>
 
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-        {[
-          { href: '/employees', label: 'Manage Employees', desc: 'Edit names & link users' },
-          { href: '/attendance', label: 'Attendance Log', desc: 'View scan history' },
-          { href: '/groups', label: 'Employee Groups', desc: 'Organize by team/shift group' },
-          { href: '/schedule', label: 'Shift Schedule', desc: 'Assign shifts & view calendar' },
-          { href: '/performance', label: 'Performance', desc: 'Per profile late/on-time stats' },
-          { href: '/shifts', label: 'Shift Maker', desc: 'Customize punch in/out templates' },
-        ].map(({ href, label, desc }) => (
-          <Link
-            key={href}
-            href={href}
-            className="group rounded-xl border border-slate-800 bg-slate-900 p-4 transition-all hover:border-teal-500/40"
-          >
-            <div className="text-sm font-semibold text-white transition-colors group-hover:text-teal-400">{label}</div>
-            <div className="mt-1 text-xs text-slate-500">{desc}</div>
-            <div className="mt-3 font-mono text-xs text-teal-500">-&gt; Open</div>
-          </Link>
-        ))}
-      </div>
+      {/* Quick links — only show what the user can actually access */}
+      {(() => {
+        const quickLinks = [
+          isAdmin && { href: '/employees', label: 'Manage Employees', desc: 'Edit names & link users' },
+          canAttendance && { href: '/attendance', label: 'Attendance Log', desc: 'View scan history' },
+          isAdmin && { href: '/groups', label: 'Employee Groups', desc: 'Organize by team/shift group' },
+          canSchedule && { href: '/schedule', label: 'Shift Schedule', desc: 'Assign shifts & view calendar' },
+          canDashboard && { href: '/performance', label: 'Performance', desc: 'Per profile late/on-time stats' },
+          isAdmin && { href: '/shifts', label: 'Shift Maker', desc: 'Customize punch in/out templates' },
+          isAdmin && { href: '/users', label: 'Users', desc: 'Manage device user accounts' },
+          isAdmin && { href: '/scanlog', label: 'Scan Log', desc: 'Raw biometric scanlog viewer' },
+        ].filter(Boolean);
+        if (!quickLinks.length) return null;
+        return (
+          <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+            {quickLinks.map(({ href, label, desc }) => (
+              <Link
+                key={href}
+                href={href}
+                className="group rounded-xl border border-slate-800 bg-slate-900 p-4 transition-all hover:border-teal-500/40"
+              >
+                <div className="text-sm font-semibold text-white transition-colors group-hover:text-teal-400">{label}</div>
+                <div className="mt-1 text-xs text-slate-500">{desc}</div>
+                <div className="mt-3 font-mono text-xs text-teal-500">-&gt; Open</div>
+              </Link>
+            ))}
+          </div>
+        );
+      })()}
 
       <div className="overflow-hidden rounded-xl border border-slate-800 bg-slate-900">
         <div className="flex items-center gap-2 border-b border-slate-800 px-5 py-3">
