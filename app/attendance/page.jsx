@@ -18,14 +18,19 @@ import {
 } from '@/lib/attendance-helpers';
 import { requestJson } from '@/lib/request-json';
 
-const TABS = [
+const ADMIN_TABS = [
   { key: 'summary', label: 'Daily Attendance' },
   { key: 'raw', label: 'Raw Scanlog' },
+  { key: 'dashboard', label: 'Employee Dashboard' },
+];
+const MEMBER_TABS = [
+  { key: 'summary', label: 'Daily Attendance' },
   { key: 'dashboard', label: 'Employee Dashboard' },
 ];
 
 export default function AttendancePage() {
   const { warning } = useToast();
+  const [currentUser, setCurrentUser] = useState(null);
   const [activeTab, setActiveTab] = useState('summary');
   const [from, setFrom] = useState(startOfRange('week'));
   const [to, setTo] = useState(isoDate());
@@ -37,6 +42,20 @@ export default function AttendancePage() {
   const [rawLoading, setRawLoading] = useState(false);
   const [editing, setEditing] = useState(null);
 
+  // Fetch user role on mount
+  useEffect(() => {
+    fetch('/api/auth/me')
+      .then((r) => r.json())
+      .then((d) => {
+        if (d?.ok) setCurrentUser(d.user);
+      })
+      .catch(() => {});
+  }, []);
+
+  const isAdmin = Boolean(currentUser?.is_admin);
+  const isLeader = Boolean(currentUser?.is_leader);
+  const canEditNotes = isAdmin || isLeader;
+  const TABS = isAdmin ? ADMIN_TABS : MEMBER_TABS;
   const load = useCallback(async () => {
     setLoading(true);
     try {
@@ -52,6 +71,10 @@ export default function AttendancePage() {
   }, [from, to, groupId, warning]);
 
   const loadRaw = useCallback(async () => {
+    if (!isAdmin) {
+      setRawRows([]);
+      return;
+    }
     setRawLoading(true);
     try {
       const query = new URLSearchParams({ from, to, limit: '2000' });
@@ -63,16 +86,25 @@ export default function AttendancePage() {
     } finally {
       setRawLoading(false);
     }
-  }, [from, to, groupId, warning]);
+  }, [from, to, groupId, warning, isAdmin]);
 
   const loadGroups = useCallback(async () => {
+    if (!isAdmin && currentUser?.groups) {
+      setGroups(
+        currentUser.groups.map((group) => ({
+          id: Number(group.group_id),
+          nama_group: group.nama_group || `Group ${group.group_id}`,
+        }))
+      );
+      return;
+    }
     try {
       const data = await requestJson('/api/groups');
       setGroups(Array.isArray(data?.groups) ? data.groups : []);
     } catch {
       setGroups([]);
     }
-  }, []);
+  }, [currentUser, isAdmin]);
 
   useEffect(() => {
     loadGroups();
@@ -80,8 +112,16 @@ export default function AttendancePage() {
 
   useEffect(() => {
     load();
-    loadRaw();
-  }, [load, loadRaw]);
+    if (isAdmin) {
+      loadRaw();
+    } else {
+      setRawRows([]);
+    }
+  }, [load, loadRaw, isAdmin]);
+
+  useEffect(() => {
+    if (!isAdmin && activeTab === 'raw') setActiveTab('summary');
+  }, [isAdmin, activeTab]);
 
   const setRange = (unit) => {
     if (unit === 'today') {
@@ -182,7 +222,7 @@ export default function AttendancePage() {
       </div>
 
       {activeTab === 'summary' && (
-        <AttendanceTable loading={loading} rows={rows} onEdit={setEditing} />
+        <AttendanceTable loading={loading} rows={rows} onEdit={canEditNotes ? setEditing : null} />
       )}
 
       {activeTab === 'raw' && (
@@ -190,13 +230,19 @@ export default function AttendancePage() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-slate-800 text-left">
-                <th className="px-4 py-3 text-xs uppercase tracking-wide text-slate-500">Tanggal</th>
+                <th className="px-4 py-3 text-xs uppercase tracking-wide text-slate-500">
+                  Tanggal
+                </th>
                 <th className="px-4 py-3 text-xs uppercase tracking-wide text-slate-500">Jam</th>
                 <th className="px-4 py-3 text-xs uppercase tracking-wide text-slate-500">PIN</th>
-                <th className="px-4 py-3 text-xs uppercase tracking-wide text-slate-500">Employee Fullname</th>
+                <th className="px-4 py-3 text-xs uppercase tracking-wide text-slate-500">
+                  Employee Fullname
+                </th>
                 <th className="px-4 py-3 text-xs uppercase tracking-wide text-slate-500">Group</th>
                 <th className="px-4 py-3 text-xs uppercase tracking-wide text-slate-500">Review</th>
-                <th className="px-4 py-3 text-xs uppercase tracking-wide text-slate-500">Verify / IO / Workcode</th>
+                <th className="px-4 py-3 text-xs uppercase tracking-wide text-slate-500">
+                  Verify / IO / Workcode
+                </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800/40">
@@ -207,8 +253,12 @@ export default function AttendancePage() {
               ) : (
                 rawRows.map((row, index) => (
                   <tr key={`${row.pin}-${row.scan_date}-${row.scan_time}-${index}`}>
-                    <td className="px-4 py-3 font-mono text-xs text-slate-400">{String(row.scan_date).slice(0, 10)}</td>
-                    <td className="px-4 py-3 font-mono text-xs text-teal-300">{String(row.scan_time).slice(0, 8)}</td>
+                    <td className="px-4 py-3 font-mono text-xs text-slate-400">
+                      {String(row.scan_date).slice(0, 10)}
+                    </td>
+                    <td className="px-4 py-3 font-mono text-xs text-teal-300">
+                      {String(row.scan_time).slice(0, 8)}
+                    </td>
                     <td className="px-4 py-3 font-mono text-xs text-slate-300">{row.pin}</td>
                     <td className="px-4 py-3 text-white">{row.nama}</td>
                     <td className="px-4 py-3 text-xs text-slate-500">{row.nama_group || '-'}</td>
@@ -237,7 +287,9 @@ export default function AttendancePage() {
       {activeTab === 'dashboard' && (
         <div className="space-y-4">
           <div className="rounded-xl border border-slate-800 bg-slate-900 p-4">
-            <h2 className="text-sm font-semibold text-white">How Many Times Employee Is Late (Top 12)</h2>
+            <h2 className="text-sm font-semibold text-white">
+              How Many Times Employee Is Late (Top 12)
+            </h2>
             <div className="mt-4 space-y-2">
               {lateData.length === 0 ? (
                 <p className="text-xs text-slate-500">No attendance rows in selected range.</p>
@@ -253,12 +305,14 @@ export default function AttendancePage() {
                     <div className="h-2 rounded bg-slate-800">
                       <div
                         className="h-2 rounded bg-amber-400"
-                        style={{ width: `${Math.max((item.lateCount / maxLate) * 100, item.lateCount ? 8 : 0)}%` }}
+                        style={{
+                          width: `${Math.max((item.lateCount / maxLate) * 100, item.lateCount ? 8 : 0)}%`,
+                        }}
                       />
                     </div>
                     <div className="text-[11px] text-slate-500">
-                      Group: {item.group} | Anomaly: {item.anomalyCount} | Pulang awal: {item.earlyCount} | Records:{' '}
-                      {item.totalRows}
+                      Group: {item.group} | Anomaly: {item.anomalyCount} | Pulang awal:{' '}
+                      {item.earlyCount} | Records: {item.totalRows}
                     </div>
                   </div>
                 ))
@@ -270,12 +324,22 @@ export default function AttendancePage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-slate-800 text-left">
-                  <th className="px-4 py-2 text-xs uppercase tracking-wide text-slate-500">Employee</th>
-                  <th className="px-4 py-2 text-xs uppercase tracking-wide text-slate-500">Group</th>
+                  <th className="px-4 py-2 text-xs uppercase tracking-wide text-slate-500">
+                    Employee
+                  </th>
+                  <th className="px-4 py-2 text-xs uppercase tracking-wide text-slate-500">
+                    Group
+                  </th>
                   <th className="px-4 py-2 text-xs uppercase tracking-wide text-slate-500">Late</th>
-                  <th className="px-4 py-2 text-xs uppercase tracking-wide text-slate-500">Pulang Awal</th>
-                  <th className="px-4 py-2 text-xs uppercase tracking-wide text-slate-500">Anomaly</th>
-                  <th className="px-4 py-2 text-xs uppercase tracking-wide text-slate-500">Total Rows</th>
+                  <th className="px-4 py-2 text-xs uppercase tracking-wide text-slate-500">
+                    Pulang Awal
+                  </th>
+                  <th className="px-4 py-2 text-xs uppercase tracking-wide text-slate-500">
+                    Anomaly
+                  </th>
+                  <th className="px-4 py-2 text-xs uppercase tracking-wide text-slate-500">
+                    Total Rows
+                  </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-800/40">
@@ -285,7 +349,9 @@ export default function AttendancePage() {
                     <td className="px-4 py-2 text-xs text-slate-500">{item.group}</td>
                     <td className="px-4 py-2 font-mono text-xs text-amber-300">{item.lateCount}</td>
                     <td className="px-4 py-2 font-mono text-xs text-rose-300">{item.earlyCount}</td>
-                    <td className="px-4 py-2 font-mono text-xs text-slate-300">{item.anomalyCount}</td>
+                    <td className="px-4 py-2 font-mono text-xs text-slate-300">
+                      {item.anomalyCount}
+                    </td>
                     <td className="px-4 py-2 font-mono text-xs text-slate-400">{item.totalRows}</td>
                   </tr>
                 ))}
@@ -295,7 +361,9 @@ export default function AttendancePage() {
         </div>
       )}
 
-      {editing && <NoteModal row={editing} onClose={() => setEditing(null)} onSave={saveNote} />}
+      {editing && canEditNotes && (
+        <NoteModal row={editing} onClose={() => setEditing(null)} onSave={saveNote} />
+      )}
     </div>
   );
 }

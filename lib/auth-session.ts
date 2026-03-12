@@ -23,6 +23,7 @@ type GroupAccessRow = {
   nama_group: string | null;
   can_schedule: number | string | null;
   can_dashboard: number | string | null;
+  is_leader: number | string | null;
 };
 
 export type GroupAccess = {
@@ -30,6 +31,7 @@ export type GroupAccess = {
   nama_group: string | null;
   can_schedule: boolean;
   can_dashboard: boolean;
+  is_leader: boolean;
 };
 
 export type AuthContext = {
@@ -39,6 +41,7 @@ export type AuthContext = {
   is_admin: boolean;
   can_schedule: boolean;
   can_dashboard: boolean;
+  is_leader: boolean;
   groups: GroupAccess[];
 };
 
@@ -120,7 +123,8 @@ export async function createAuthContextByPin(pin: string): Promise<AuthContext |
       `SELECT uga.group_id,
               g.nama_group,
               uga.can_schedule,
-              uga.can_dashboard
+              uga.can_dashboard,
+              uga.is_leader
        FROM tb_user_group_access uga
        LEFT JOIN tb_group g ON g.id = uga.group_id
        WHERE uga.pin = ?
@@ -133,18 +137,21 @@ export async function createAuthContextByPin(pin: string): Promise<AuthContext |
       nama_group: row.nama_group || null,
       can_schedule: Number(row.can_schedule ?? 0) === 1,
       can_dashboard: Number(row.can_dashboard ?? 0) === 1,
+      is_leader: Number(row.is_leader ?? 0) === 1,
     }));
   }
 
-  return {
-    pin: String(user.pin),
-    nama: user.nama || `PIN ${user.pin}`,
-    privilege,
-    is_admin: isAdmin,
-    can_schedule: isAdmin || groups.some((group) => group.can_schedule),
-    can_dashboard: isAdmin || groups.some((group) => group.can_dashboard),
-    groups,
-  };
+    return {
+      pin: String(user.pin),
+      nama: user.nama || `PIN ${user.pin}`,
+      privilege,
+      is_admin: isAdmin,
+      can_schedule: isAdmin || groups.some((group) => group.can_schedule),
+      can_dashboard: isAdmin || groups.some((group) => group.can_dashboard),
+      is_leader: isAdmin || groups.some((group) => group.is_leader),
+      groups,
+    };
+
 }
 
 export async function getAuthContextFromCookies(): Promise<AuthContext | null> {
@@ -190,21 +197,25 @@ export function verifyPlainPassword(stored: string | null | undefined, input: st
 export function isAllowedGroup(
   auth: AuthContext,
   groupId: number,
-  capability: 'schedule' | 'dashboard'
+  capability: 'schedule' | 'dashboard' | 'leader'
 ) {
   if (auth.is_admin) return true;
   const group = auth.groups.find((item) => Number(item.group_id) === Number(groupId));
   if (!group) return false;
+  if (capability === 'leader') return group.is_leader;
   return capability === 'schedule' ? group.can_schedule : group.can_dashboard;
 }
 
 export function getAllowedGroupIds(
   auth: AuthContext,
-  capability: 'schedule' | 'dashboard'
+  capability: 'schedule' | 'dashboard' | 'leader'
 ) {
   if (auth.is_admin) return null;
   return auth.groups
-    .filter((group) => (capability === 'schedule' ? group.can_schedule : group.can_dashboard))
+    .filter((group) => {
+      if (capability === 'leader') return group.is_leader;
+      return capability === 'schedule' ? group.can_schedule : group.can_dashboard;
+    })
     .map((group) => Number(group.group_id));
 }
 

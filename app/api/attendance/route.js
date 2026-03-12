@@ -3,15 +3,26 @@ export const dynamic = 'force-dynamic';
 import { NextResponse } from 'next/server';
 import pool from '@/lib/db';
 import { hasKaryawanColumn } from '@/lib/karyawan-schema';
+import {
+  getAuthContextFromCookies,
+  unauthorizedResponse,
+  forbiddenResponse,
+} from '@/lib/auth-session';
 
 function toMinutes(value) {
   if (!value || typeof value !== 'string') return null;
   const [hours, minutes] = value.split(':').map(Number);
   if (Number.isNaN(hours) || Number.isNaN(minutes)) return null;
-  return (hours * 60) + minutes;
+  return hours * 60 + minutes;
 }
 
 export async function GET(req) {
+  // Auth gate: need at least one approved group or admin
+  const auth = await getAuthContextFromCookies();
+  if (!auth) return unauthorizedResponse();
+  const hasAttendanceAccess = auth.is_admin || auth.can_schedule || auth.can_dashboard;
+  if (!hasAttendanceAccess) return forbiddenResponse('No attendance access.');
+
   const { searchParams } = new URL(req.url);
   const dateFrom = searchParams.get('from') || new Date().toISOString().slice(0, 10);
   const dateTo = searchParams.get('to') || dateFrom;
@@ -19,6 +30,25 @@ export async function GET(req) {
   const groupId = searchParams.get('group_id') || null;
   const parsedGroupId = Number.parseInt(groupId ?? '', 10);
   const canFilterDeleted = await hasKaryawanColumn('isDeleted');
+
+  const allowedGroupIds = auth.is_admin
+    ? null
+    : auth.groups
+        .filter((group) => group.can_schedule || group.can_dashboard)
+        .map((group) => Number(group.group_id));
+
+  if (!auth.is_admin && allowedGroupIds.length === 0) {
+    return NextResponse.json([]);
+  }
+
+  if (
+    !auth.is_admin &&
+    Number.isInteger(parsedGroupId) &&
+    !allowedGroupIds.includes(parsedGroupId)
+  ) {
+    return forbiddenResponse('This group is not in your access scope.');
+  }
+
 
   // tb_scanlog uses one timestamp column (scan_date), so date/time are derived from it.
   let query = `
@@ -69,11 +99,22 @@ export async function GET(req) {
     WHERE 1 = 1
   `;
 
-  if (Number.isInteger(parsedGroupId)) {
-    query += ' AND eg.group_id = ?';
-    params.push(parsedGroupId);
-  }
+  // Determine which groups to filter by
+  const groupsToFilter = auth.is_admin
+    ? Number.isInteger(parsedGroupId)
+      ? [parsedGroupId]
+      : null
+    : allowedGroupIds;
 
+  if (groupsToFilter !== null && groupsToFilter.length) {
+    if (groupsToFilter.length === 1) {
+      query += ' AND eg.group_id = ?';
+      params.push(groupsToFilter[0]);
+    } else {
+      query += ` AND eg.group_id IN (${groupsToFilter.map(() => '?').join(',')})`;
+      params.push(...groupsToFilter);
+    }
+  }
   query += ' ORDER BY logs.scan_date DESC, nama ASC';
 
   const [rows] = await pool.query(query, params);
@@ -108,7 +149,9 @@ export async function GET(req) {
       if (diff > 0) durationMinutes = diff;
     }
 
-    const hasReview = Boolean(row.note_status || (row.note_catatan && String(row.note_catatan).trim()));
+    const hasReview = Boolean(
+      row.note_status || (row.note_catatan && String(row.note_catatan).trim())
+    );
     const reviewedStatus = hasReview
       ? 'reviewed'
       : status !== 'normal'
@@ -133,13 +176,17 @@ export async function GET(req) {
 
 // Update note/status for a scan entry
 export async function POST(req) {
-  const { pin, tanggal, status, catatan, updated_by } = await req.json();
+  const auth = await getAuthContextFromCookies();
+  if (!auth) return unauthorizedResponse();
+  if (!auth.is_admin && !auth.is_leader) {
+    return forbiddenResponse('Only admins and group leaders can add notes.');
+  }
+  const { pin, tanggal, status, catatan } = await req.json();
   await pool.query(
     `INSERT INTO tb_attendance_note (pin, tanggal, status, catatan, updated_by)
      VALUES (?, ?, ?, ?, ?)
      ON DUPLICATE KEY UPDATE status = VALUES(status), catatan = VALUES(catatan), updated_by = VALUES(updated_by)`,
-    [pin, tanggal, status, catatan, updated_by ?? 'operator']
+    [pin, tanggal, status, catatan, auth.pin]
   );
   return NextResponse.json({ ok: true });
 }
-

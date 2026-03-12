@@ -115,13 +115,15 @@ export default function AttendanceTable({ loading, rows, onEdit }) {
                     )}
                   </td>
                   <td className="px-4 py-3">
-                    <button
-                      type="button"
-                      onClick={() => onEdit(row)}
-                      className="inline-flex items-center gap-1 rounded-lg border border-slate-700 bg-slate-800 px-2.5 py-1.5 text-xs text-slate-400 transition-all hover:border-teal-500/40 hover:bg-teal-500/20 hover:text-teal-400"
-                    >
-                      <Pencil className="h-3 w-3" /> Note
-                    </button>
+                    {onEdit && (
+                      <button
+                        type="button"
+                        onClick={() => onEdit(row)}
+                        className="inline-flex items-center gap-1 rounded-lg border border-slate-700 bg-slate-800 px-2.5 py-1.5 text-xs text-slate-400 transition-all hover:border-teal-500/40 hover:bg-teal-500/20 hover:text-teal-400"
+                      >
+                        <Pencil className="h-3 w-3" /> Note
+                      </button>
+                    )}
                   </td>
                 </tr>
               );

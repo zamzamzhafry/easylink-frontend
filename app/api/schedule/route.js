@@ -20,16 +20,29 @@ function buildInPlaceholders(values) {
   return values.map(() => '?').join(',');
 }
 
-async function ensureScheduleAccess() {
+// View-only: admin OR can_schedule (leaders + schedule members)
+async function ensureScheduleView() {
   const auth = await getAuthContextFromCookies();
   if (!auth) return { error: unauthorizedResponse('Login required.') };
   if (!auth.is_admin && !auth.can_schedule) {
     return { error: forbiddenResponse('You do not have schedule permission.') };
   }
-
   return {
     auth,
     allowedGroupIds: getAllowedGroupIds(auth, 'schedule'),
+  };
+}
+
+// Edit: admin OR group leader only
+async function ensureScheduleEdit() {
+  const auth = await getAuthContextFromCookies();
+  if (!auth) return { error: unauthorizedResponse('Login required.') };
+  if (!auth.is_admin && !auth.is_leader) {
+    return { error: forbiddenResponse('Only group leaders and admins can edit schedules.') };
+  }
+  return {
+    auth,
+    allowedGroupIds: getAllowedGroupIds(auth, 'leader'),
   };
 }
 
@@ -50,7 +63,7 @@ async function employeeAllowed(employeeId, allowedGroupIds) {
 }
 
 export async function GET(req) {
-  const authCheck = await ensureScheduleAccess();
+  const authCheck = await ensureScheduleView();
   if (authCheck.error) return authCheck.error;
 
   const { auth, allowedGroupIds } = authCheck;
@@ -168,7 +181,7 @@ export async function GET(req) {
 }
 
 export async function POST(req) {
-  const authCheck = await ensureScheduleAccess();
+  const authCheck = await ensureScheduleEdit();
   if (authCheck.error) return authCheck.error;
 
   const { auth, allowedGroupIds } = authCheck;
@@ -198,7 +211,10 @@ export async function POST(req) {
       return forbiddenResponse('Employee is outside your approved group scope.');
     }
 
-    await pool.query('DELETE FROM tb_schedule WHERE karyawan_id = ? AND tanggal = ?', [employeeId, body.tanggal]);
+    await pool.query('DELETE FROM tb_schedule WHERE karyawan_id = ? AND tanggal = ?', [
+      employeeId,
+      body.tanggal,
+    ]);
     return NextResponse.json({ ok: true });
   }
 
@@ -206,12 +222,15 @@ export async function POST(req) {
     const groupId = Number(body.group_id);
     if (!Number.isInteger(groupId)) return invalid('group_id is required.');
 
-    if (!auth.is_admin && !isAllowedGroup(auth, groupId, 'schedule')) {
-      return forbiddenResponse('This group is not approved for your schedule access.');
+    if (!auth.is_admin && !isAllowedGroup(auth, groupId, 'leader')) {
+      return forbiddenResponse('This group is not in your leader scope.');
     }
 
     const { shift_id, from, to } = body;
-    const [members] = await pool.query('SELECT karyawan_id FROM tb_employee_group WHERE group_id = ?', [groupId]);
+    const [members] = await pool.query(
+      'SELECT karyawan_id FROM tb_employee_group WHERE group_id = ?',
+      [groupId]
+    );
     const dates = [];
     const cur = new Date(from);
     const end = new Date(to);
@@ -256,10 +275,16 @@ export async function POST(req) {
            AND eg.group_id IN (${buildInPlaceholders(allowedGroupIds)})`,
         [...employeeIds, ...allowedGroupIds]
       );
-      const allowedEmployeeSet = new Set(allowedEmployeeRows.map((item) => Number(item.karyawan_id)));
-      const unauthorizedCount = employeeIds.filter((id) => !allowedEmployeeSet.has(Number(id))).length;
+      const allowedEmployeeSet = new Set(
+        allowedEmployeeRows.map((item) => Number(item.karyawan_id))
+      );
+      const unauthorizedCount = employeeIds.filter(
+        (id) => !allowedEmployeeSet.has(Number(id))
+      ).length;
       if (unauthorizedCount > 0) {
-        return forbiddenResponse(`Found ${unauthorizedCount} employee(s) outside your approved groups.`);
+        return forbiddenResponse(
+          `Found ${unauthorizedCount} employee(s) outside your approved groups.`
+        );
       }
     }
 
@@ -304,4 +329,3 @@ export async function POST(req) {
 
   return NextResponse.json({ ok: false, error: 'unknown action' }, { status: 400 });
 }
-

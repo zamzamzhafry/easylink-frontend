@@ -6,17 +6,18 @@ import {
   BarChart3,
   CalendarClock,
   CalendarRange,
-  LogOut,
+  Crown,
+  DatabaseZap,
   Fingerprint,
+  LayersIcon,
   LayoutDashboard,
-  Layers,
+  LogOut,
   PanelLeftClose,
   PanelLeftOpen,
   ShieldCheck,
   Timer,
   UserCog,
   Users,
-  DatabaseZap,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -24,9 +25,9 @@ const nav = [
   { href: '/', label: 'Dashboard', icon: LayoutDashboard, auth: 'all' },
   { href: '/schedule', label: 'Schedule', icon: CalendarRange, auth: 'schedule' },
   { href: '/performance', label: 'Performance', icon: BarChart3, auth: 'dashboard' },
-  { href: '/attendance', label: 'Absensi', icon: CalendarClock, auth: 'attendance' },
+  { href: '/attendance', label: 'Absensi', icon: CalendarClock, auth: 'member' },
   { href: '/employees', label: 'Employees', icon: Users, auth: 'admin' },
-  { href: '/groups', label: 'Groups', icon: Layers, auth: 'admin' },
+  { href: '/groups', label: 'Groups', icon: LayersIcon, auth: 'admin' },
   { href: '/shifts', label: 'Shift Maker', icon: Timer, auth: 'admin' },
   { href: '/users', label: 'Users', icon: UserCog, auth: 'admin' },
   { href: '/scanlog', label: 'Scan Log', icon: DatabaseZap, auth: 'admin' },
@@ -36,9 +37,12 @@ function canSeeNav(user, authType) {
   if (!user) return authType === 'all';
   if (user.is_admin) return true;
   if (authType === 'all') return true;
+  // 'member': any approved group access (can_schedule OR can_dashboard)
+  if (authType === 'member') return Boolean(user.can_schedule || user.can_dashboard);
+  // 'schedule': can view schedule (leader or can_schedule)
   if (authType === 'schedule') return Boolean(user.can_schedule);
+  // 'dashboard': performance view
   if (authType === 'dashboard') return Boolean(user.can_dashboard);
-  if (authType === 'attendance') return Boolean(user.can_schedule || user.can_dashboard);
   return false;
 }
 
@@ -112,8 +116,13 @@ export default function Sidebar({ collapsed = false, onToggle, currentUser = nul
           <div className="mb-2 rounded-lg border border-slate-800 bg-slate-950/70 px-3 py-2">
             <div className="text-xs font-semibold text-white">{currentUser.nama}</div>
             <div className="mt-0.5 inline-flex items-center gap-1 text-[11px] text-slate-500">
-              <ShieldCheck className="h-3 w-3" />
-              {currentUser.is_admin ? 'Admin' : 'Group User'}
+              {currentUser.is_admin ? (
+                <><ShieldCheck className="h-3 w-3" /> Admin</>
+              ) : currentUser.is_leader ? (
+                <><Crown className="h-3 w-3 text-amber-400" /> Group Leader</>
+              ) : (
+                <><ShieldCheck className="h-3 w-3" /> Member</>
+              )}
             </div>
           </div>
         )}
@@ -128,6 +137,7 @@ export default function Sidebar({ collapsed = false, onToggle, currentUser = nul
           <LogOut className="h-3.5 w-3.5 shrink-0" />
           {!collapsed && 'Logout'}
         </button>
+
         <div className={cn('mt-3 text-xs text-slate-600', collapsed ? 'text-center' : '')}>
           {collapsed ? 'v1.1' : 'demo_easylinksdk | v1.1'}
         </div>

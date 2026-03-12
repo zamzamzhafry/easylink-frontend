@@ -2,17 +2,25 @@ export const dynamic = 'force-dynamic';
 import { NextResponse } from 'next/server';
 import pool from '@/lib/db';
 import { hasKaryawanColumn } from '@/lib/karyawan-schema';
+import {
+  getAuthContextFromCookies,
+  unauthorizedResponse,
+  forbiddenResponse,
+} from '@/lib/auth-session';
 
 export async function GET(req) {
+  const auth = await getAuthContextFromCookies();
+  if (!auth) return unauthorizedResponse();
+  if (!auth.is_admin) return forbiddenResponse('Admin only.');
+
   const { searchParams } = new URL(req.url);
   const dateFrom = searchParams.get('from') || new Date().toISOString().slice(0, 10);
   const dateTo = searchParams.get('to') || dateFrom;
   const groupId = searchParams.get('group_id') || null;
   const parsedGroupId = Number.parseInt(groupId ?? '', 10);
   const requestedLimit = Number.parseInt(searchParams.get('limit') || '500', 10);
-  const limit = Number.isInteger(requestedLimit) && requestedLimit > 0
-    ? Math.min(requestedLimit, 5000)
-    : 500;
+  const limit =
+    Number.isInteger(requestedLimit) && requestedLimit > 0 ? Math.min(requestedLimit, 5000) : 500;
   const canFilterDeleted = await hasKaryawanColumn('isDeleted');
 
   let query = `
@@ -53,4 +61,3 @@ export async function GET(req) {
   const [rows] = await pool.query(query, params);
   return NextResponse.json(rows);
 }
-
