@@ -4,10 +4,17 @@ import { useState } from 'react';
 import ModalShell from '@/components/ui/modal-shell';
 import { useToast } from '@/components/ui/toast-provider';
 
-export default function CreateGroupModal({ onClose, onCreate }) {
+export default function CreateGroupModal({
+  onClose,
+  onCreate,
+  title = 'New Group',
+  submitLabel = 'Create',
+  initialName = '',
+  initialDescription = '',
+}) {
   const { warning } = useToast();
-  const [name, setName] = useState('');
-  const [description, setDescription] = useState('');
+  const [name, setName] = useState(initialName);
+  const [description, setDescription] = useState(initialDescription);
   const [saving, setSaving] = useState(false);
 
   const create = async () => {
@@ -23,19 +30,25 @@ export default function CreateGroupModal({ onClose, onCreate }) {
   };
 
   return (
-    <ModalShell title="New Group" onClose={onClose} maxWidth="max-w-sm">
+    <ModalShell title={title} onClose={onClose} maxWidth="max-w-sm">
       <div className="space-y-3">
         <div>
-          <label className="mb-1 block text-xs text-slate-400">Group Name *</label>
+          <label htmlFor="group-name" className="mb-1 block text-xs text-slate-400">
+            Group Name *
+          </label>
           <input
+            id="group-name"
             value={name}
             onChange={(event) => setName(event.target.value)}
             className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-white focus:border-teal-500 focus:outline-none"
           />
         </div>
         <div>
-          <label className="mb-1 block text-xs text-slate-400">Description</label>
+          <label htmlFor="group-description" className="mb-1 block text-xs text-slate-400">
+            Description
+          </label>
           <input
+            id="group-description"
             value={description}
             onChange={(event) => setDescription(event.target.value)}
             className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-white focus:border-teal-500 focus:outline-none"
@@ -57,7 +70,7 @@ export default function CreateGroupModal({ onClose, onCreate }) {
           disabled={saving}
           className="flex-1 rounded-lg bg-teal-500 px-4 py-2 text-sm font-semibold text-slate-900 transition-colors hover:bg-teal-400 disabled:opacity-50"
         >
-          {saving ? 'Creating...' : 'Create'}
+          {saving ? 'Saving...' : submitLabel}
         </button>
       </div>
     </ModalShell>

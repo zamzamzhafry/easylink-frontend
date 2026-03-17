@@ -4,57 +4,113 @@ import pool from '@/lib/db';
 import { hasKaryawanColumn } from '@/lib/karyawan-schema';
 import { getAuthContextFromCookies } from '@/lib/auth-session';
 
-async function getStats({ limit, page }) {
+async function getStats({ limit, page, auth }) {
   const today = new Date().toISOString().slice(0, 10);
   const canFilterDeleted = await hasKaryawanColumn('isDeleted');
 
+  const isAdmin = Boolean(auth?.is_admin);
+  const userPin = auth?.pin ? String(auth.pin) : null;
+  const allowedGroups = isAdmin
+    ? null
+    : Array.isArray(auth?.groups)
+      ? auth.groups
+          .filter((group) => group.can_schedule || group.can_dashboard)
+          .map((group) => Number(group.group_id))
+      : [];
+
+  const buildScopeClause = (groupAlias = 'eg', pinColumn = 'sl.pin') => {
+    if (isAdmin) return { clause: '', params: [] };
+
+    const predicates = [];
+    const params = [];
+
+    if (userPin) {
+      predicates.push(`${pinColumn} = ?`);
+      params.push(userPin);
+    }
+
+    if (allowedGroups.length > 0) {
+      predicates.push(`${groupAlias}.group_id IN (${allowedGroups.map(() => '?').join(',')})`);
+      params.push(...allowedGroups);
+    }
+
+    if (predicates.length === 0) return { clause: ' AND 1 = 0', params: [] };
+
+    return { clause: ` AND (${predicates.join(' OR ')})`, params };
+  };
+
+  const totalScope = buildScopeClause('eg', 'k.pin');
   const [[{ total }]] = await pool.query(
-    `SELECT COUNT(*) AS total FROM tb_karyawan ${canFilterDeleted ? 'WHERE isDeleted = 0' : ''}`
+    `SELECT COUNT(DISTINCT k.id) AS total
+     FROM tb_karyawan k
+     LEFT JOIN tb_employee_group eg ON eg.karyawan_id = k.id
+     WHERE 1=1
+       ${canFilterDeleted ? 'AND k.isDeleted = 0' : ''}
+       ${totalScope.clause}`,
+    totalScope.params
   );
 
+  const hadirScope = buildScopeClause('eg', 'sl.pin');
   const [[{ hadir }]] = await pool
     .query(
-      `SELECT COUNT(DISTINCT pin) AS hadir
-     FROM tb_scanlog
-     WHERE DATE(scan_date) = ?`,
-      [today]
+      `SELECT COUNT(DISTINCT sl.pin) AS hadir
+       FROM tb_scanlog sl
+       LEFT JOIN tb_karyawan k ON k.pin = sl.pin ${canFilterDeleted ? 'AND k.isDeleted = 0' : ''}
+       LEFT JOIN tb_employee_group eg ON eg.karyawan_id = k.id
+       WHERE DATE(sl.scan_date) = ?
+         ${hadirScope.clause}`,
+      [today, ...hadirScope.params]
     )
     .catch(() => [[{ hadir: 0 }]]);
 
+  const jadwalScope = buildScopeClause('eg', 'k.pin');
   const [[{ jadwal_hari }]] = await pool
     .query(
       `SELECT COUNT(*) AS jadwal_hari
-     FROM tb_schedule s
-     JOIN tb_shift_type st ON s.shift_id = st.id
-     JOIN tb_karyawan k ON k.id = s.karyawan_id
-     WHERE s.tanggal = ?
-       AND st.needs_scan = 1
-       ${canFilterDeleted ? 'AND k.isDeleted = 0' : ''}`,
-      [today]
+       FROM tb_schedule s
+       JOIN tb_shift_type st ON s.shift_id = st.id
+       JOIN tb_karyawan k ON k.id = s.karyawan_id
+       LEFT JOIN tb_employee_group eg ON eg.karyawan_id = k.id
+       WHERE s.tanggal = ?
+         AND st.needs_scan = 1
+         ${canFilterDeleted ? 'AND k.isDeleted = 0' : ''}
+         ${jadwalScope.clause}`,
+      [today, ...jadwalScope.params]
     )
     .catch(() => [[{ jadwal_hari: 0 }]]);
 
+  const lateScope = buildScopeClause('eg', 'logs.pin');
   const [[{ late_count }]] = await pool
     .query(
       `SELECT COUNT(*) AS late_count
-     FROM (
-       SELECT sl.pin, MIN(TIME(sl.scan_date)) AS first_scan
-       FROM tb_scanlog sl
-       WHERE DATE(sl.scan_date) = ?
-       GROUP BY sl.pin
-     ) logs
-     JOIN tb_karyawan k ON k.pin = logs.pin
-     JOIN tb_schedule sc ON sc.karyawan_id = k.id AND sc.tanggal = ?
-     JOIN tb_shift_type st ON sc.shift_id = st.id
-     WHERE st.jam_masuk IS NOT NULL
-       AND TIME_TO_SEC(logs.first_scan) - TIME_TO_SEC(st.jam_masuk) > 900
-       ${canFilterDeleted ? 'AND k.isDeleted = 0' : ''}`,
-      [today, today]
+       FROM (
+         SELECT sl.pin, MIN(TIME(sl.scan_date)) AS first_scan
+         FROM tb_scanlog sl
+         WHERE DATE(sl.scan_date) = ?
+         GROUP BY sl.pin
+       ) logs
+       JOIN tb_karyawan k ON k.pin = logs.pin
+       LEFT JOIN tb_employee_group eg ON eg.karyawan_id = k.id
+       JOIN tb_schedule sc ON sc.karyawan_id = k.id AND sc.tanggal = ?
+       JOIN tb_shift_type st ON sc.shift_id = st.id
+       WHERE st.jam_masuk IS NOT NULL
+         AND TIME_TO_SEC(logs.first_scan) - TIME_TO_SEC(st.jam_masuk) > 900
+         ${canFilterDeleted ? 'AND k.isDeleted = 0' : ''}
+         ${lateScope.clause}`,
+      [today, today, ...lateScope.params]
     )
     .catch(() => [[{ late_count: 0 }]]);
 
+  const recentScope = buildScopeClause('eg', 'sl.pin');
   const [[{ total_recent }]] = await pool
-    .query('SELECT COUNT(*) AS total_recent FROM tb_scanlog')
+    .query(
+      `SELECT COUNT(*) AS total_recent
+       FROM tb_scanlog sl
+       LEFT JOIN tb_karyawan k ON k.pin = sl.pin ${canFilterDeleted ? 'AND k.isDeleted = 0' : ''}
+       LEFT JOIN tb_employee_group eg ON eg.karyawan_id = k.id
+       WHERE 1=1 ${recentScope.clause}`,
+      recentScope.params
+    )
     .catch(() => [[{ total_recent: 0 }]]);
   const totalPages = Math.max(1, Math.ceil(Number(total_recent) / limit));
   const currentPage = Math.min(page, totalPages);
@@ -63,16 +119,18 @@ async function getStats({ limit, page }) {
   const [recent] = await pool
     .query(
       `SELECT sl.pin,
-            DATE(sl.scan_date) AS scan_date,
-            TIME(sl.scan_date) AS scan_time,
-            sl.verifymode,
-            COALESCE(k.nama, u.nama, sl.pin) AS nama
-     FROM tb_scanlog sl
-     LEFT JOIN tb_karyawan k ON k.pin = sl.pin ${canFilterDeleted ? 'AND k.isDeleted = 0' : ''}
-     LEFT JOIN tb_user     u ON u.pin = sl.pin
-     ORDER BY sl.scan_date DESC
-     LIMIT ? OFFSET ?`,
-      [limit, offset]
+              DATE(sl.scan_date) AS scan_date,
+              TIME(sl.scan_date) AS scan_time,
+              sl.verifymode,
+              COALESCE(k.nama, u.nama, sl.pin) AS nama
+       FROM tb_scanlog sl
+       LEFT JOIN tb_karyawan k ON k.pin = sl.pin ${canFilterDeleted ? 'AND k.isDeleted = 0' : ''}
+       LEFT JOIN tb_employee_group eg ON eg.karyawan_id = k.id
+       LEFT JOIN tb_user u ON u.pin = sl.pin
+       WHERE 1=1 ${recentScope.clause}
+       ORDER BY sl.scan_date DESC
+       LIMIT ? OFFSET ?`,
+      [...recentScope.params, limit, offset]
     )
     .catch(() => [[]]);
 
@@ -113,15 +171,15 @@ function pageLink(page, limit) {
 }
 
 export default async function Dashboard({ searchParams }) {
+  const auth = await getAuthContextFromCookies();
   const limit = normalizeLimit(searchParams?.limit);
   const page = normalizePage(searchParams?.page);
-  const stats = await getStats({ limit, page });
+  const stats = await getStats({ limit, page, auth });
   const absent = Math.max(0, stats.jadwal_hari - stats.hadir);
   const totalPages = stats.recentTotalPages;
   const safePage = stats.recentPage;
 
   // Auth — used to filter dashboard buttons
-  const auth = await getAuthContextFromCookies();
   const isAdmin = Boolean(auth?.is_admin);
   const canSchedule = isAdmin || Boolean(auth?.can_schedule);
   const canDashboard = isAdmin || Boolean(auth?.can_dashboard);

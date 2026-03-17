@@ -10,7 +10,9 @@ export default function UnassignedPanel({ rows }) {
 
       <div className="max-h-96 divide-y divide-slate-800/50 overflow-y-auto">
         {rows.length === 0 ? (
-          <p className="px-5 py-6 text-center text-xs italic text-slate-600">All employees assigned.</p>
+          <p className="px-5 py-6 text-center text-xs italic text-slate-600">
+            All employees assigned.
+          </p>
         ) : (
           rows.map((employee) => (
             <div key={employee.id} className="flex items-center gap-3 px-4 py-2.5">
@@ -19,7 +21,9 @@ export default function UnassignedPanel({ rows }) {
               </div>
               <div className="min-w-0 flex-1">
                 <div className="truncate text-xs text-white">{employee.nama}</div>
-                <div className="font-mono text-xs text-slate-600">PIN {employee.pin}</div>
+                <div className="font-mono text-xs text-slate-600">
+                  PIN {employee.pin} · privilege {employee.privilege ?? 0}
+                </div>
               </div>
             </div>
           ))

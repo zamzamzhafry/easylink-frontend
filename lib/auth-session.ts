@@ -115,7 +115,7 @@ export async function createAuthContextByPin(pin: string): Promise<AuthContext |
   if (!user) return null;
 
   const privilege = Number(user.privilege ?? 0) || 0;
-  const isAdmin = privilege >= 14;
+  const isAdmin = privilege >= 4;
   let groups: GroupAccess[] = [];
 
   if (!isAdmin && (await hasTable('tb_user_group_access'))) {
@@ -141,17 +141,16 @@ export async function createAuthContextByPin(pin: string): Promise<AuthContext |
     }));
   }
 
-    return {
-      pin: String(user.pin),
-      nama: user.nama || `PIN ${user.pin}`,
-      privilege,
-      is_admin: isAdmin,
-      can_schedule: isAdmin || groups.some((group) => group.can_schedule),
-      can_dashboard: isAdmin || groups.some((group) => group.can_dashboard),
-      is_leader: isAdmin || groups.some((group) => group.is_leader),
-      groups,
-    };
-
+  return {
+    pin: String(user.pin),
+    nama: user.nama || `PIN ${user.pin}`,
+    privilege,
+    is_admin: isAdmin,
+    can_schedule: isAdmin || groups.some((group) => group.can_schedule),
+    can_dashboard: isAdmin || groups.some((group) => group.can_dashboard),
+    is_leader: isAdmin || groups.some((group) => group.is_leader),
+    groups,
+  };
 }
 
 export async function getAuthContextFromCookies(): Promise<AuthContext | null> {
