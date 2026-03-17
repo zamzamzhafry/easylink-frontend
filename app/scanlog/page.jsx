@@ -1,7 +1,8 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { ChevronLeft, ChevronRight, DatabaseZap, Download, Filter, RefreshCw } from 'lucide-react';
+import { ChevronLeft, ChevronRight, DatabaseZap, Download, RefreshCw } from 'lucide-react';
+import SearchInput from '@/components/ui/search-input';
 import { useToast } from '@/components/ui/toast-provider';
 import {
   TableShell,
@@ -251,16 +252,12 @@ export default function ScanlogPage() {
           </div>
 
           {/* PIN filter */}
-          <div>
-            <label className="mb-1 block text-[11px] font-medium text-slate-500">PIN</label>
-            <input
-              type="text"
-              value={pinFilter}
-              onChange={(e) => setPinFilter(e.target.value)}
-              placeholder="Filter by PIN…"
-              className="w-36 rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-white placeholder-slate-500 focus:border-teal-500 focus:outline-none"
-            />
-          </div>
+          <SearchInput
+            value={pinFilter}
+            onChange={setPinFilter}
+            placeholder="Search PIN..."
+            className="w-48"
+          />
 
           {/* Limit */}
           <div>
@@ -282,9 +279,9 @@ export default function ScanlogPage() {
           <button
             type="button"
             onClick={apply}
-            className="flex items-center gap-1.5 rounded-lg bg-slate-700 px-4 py-2 text-sm text-white hover:bg-slate-600"
+            className="flex items-center gap-1.5 rounded-lg bg-teal-600 px-4 py-2 text-sm font-semibold text-white hover:bg-teal-500"
           >
-            <Filter className="h-3.5 w-3.5" />
+            <RefreshCw className={cn('h-3.5 w-3.5', loading && 'animate-spin')} />
             Apply
           </button>
 

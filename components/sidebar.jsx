@@ -12,9 +12,11 @@ import {
   LayersIcon,
   LayoutDashboard,
   LogOut,
+  Moon,
   PanelLeftClose,
   PanelLeftOpen,
   ShieldCheck,
+  Sun,
   Timer,
   UserCog,
   Users,
@@ -46,7 +48,13 @@ function canSeeNav(user, authType) {
   return false;
 }
 
-export default function Sidebar({ collapsed = false, onToggle, currentUser = null }) {
+export default function Sidebar({
+  collapsed = false,
+  onToggle,
+  currentUser = null,
+  theme = 'dark',
+  onThemeToggle,
+}) {
   const path = usePathname();
   const visibleNav = nav.filter((item) => canSeeNav(currentUser, item.auth));
 
@@ -73,10 +81,19 @@ export default function Sidebar({ collapsed = false, onToggle, currentUser = nul
           className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-700 text-slate-300 transition-colors hover:border-slate-500 hover:text-white"
           title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
         >
-          {collapsed ? <PanelLeftOpen className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
+          {collapsed ? (
+            <PanelLeftOpen className="h-4 w-4" />
+          ) : (
+            <PanelLeftClose className="h-4 w-4" />
+          )}
         </button>
 
-        <div className={cn('ml-3 flex items-center gap-3 overflow-hidden transition-all', collapsed ? 'w-0 opacity-0' : 'w-auto opacity-100')}>
+        <div
+          className={cn(
+            'ml-3 flex items-center gap-3 overflow-hidden transition-all',
+            collapsed ? 'w-0 opacity-0' : 'w-auto opacity-100'
+          )}
+        >
           <Fingerprint className="h-6 w-6 shrink-0 text-teal-400" />
           <span className="text-sm font-semibold leading-tight text-white">
             EasyLink
@@ -112,16 +129,39 @@ export default function Sidebar({ collapsed = false, onToggle, currentUser = nul
       </nav>
 
       <div className="border-t border-slate-800 px-3 py-3">
+        <button
+          type="button"
+          onClick={onThemeToggle}
+          className={cn(
+            'mb-2 flex w-full items-center rounded-lg border border-slate-700 px-2.5 py-2 text-xs text-slate-300 transition-colors hover:border-slate-500 hover:text-white',
+            collapsed ? 'justify-center' : 'gap-2'
+          )}
+          title={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}
+        >
+          {theme === 'dark' ? (
+            <Sun className="h-3.5 w-3.5 shrink-0 text-amber-300" />
+          ) : (
+            <Moon className="h-3.5 w-3.5 shrink-0 text-teal-500" />
+          )}
+          {!collapsed && (theme === 'dark' ? 'Light Mode' : 'Dark Mode')}
+        </button>
+
         {currentUser && !collapsed && (
           <div className="mb-2 rounded-lg border border-slate-800 bg-slate-950/70 px-3 py-2">
             <div className="text-xs font-semibold text-white">{currentUser.nama}</div>
             <div className="mt-0.5 inline-flex items-center gap-1 text-[11px] text-slate-500">
               {currentUser.is_admin ? (
-                <><ShieldCheck className="h-3 w-3" /> Admin</>
+                <>
+                  <ShieldCheck className="h-3 w-3" /> Admin
+                </>
               ) : currentUser.is_leader ? (
-                <><Crown className="h-3 w-3 text-amber-400" /> Group Leader</>
+                <>
+                  <Crown className="h-3 w-3 text-amber-400" /> Group Leader
+                </>
               ) : (
-                <><ShieldCheck className="h-3 w-3" /> Member</>
+                <>
+                  <ShieldCheck className="h-3 w-3" /> Member
+                </>
               )}
             </div>
           </div>

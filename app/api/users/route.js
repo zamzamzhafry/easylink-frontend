@@ -33,13 +33,15 @@ export async function GET(request) {
        u.nama,
        u.rfid,
        u.privilege,
+       k.id AS karyawan_id,
        COUNT(DISTINCT sl.scan_date) AS scan_days,
        COUNT(sl.pin)               AS scan_total,
        MAX(sl.scan_date)           AS last_scan
      FROM tb_user u
+     LEFT JOIN tb_karyawan k ON k.pin = u.pin
      LEFT JOIN tb_scanlog sl ON sl.pin = u.pin
      ${whereSQL}
-     GROUP BY u.pin, u.nama, u.rfid, u.privilege
+     GROUP BY u.pin, u.nama, u.rfid, u.privilege, k.id
      ORDER BY u.nama, u.pin`,
     params
   );
@@ -76,6 +78,7 @@ export async function GET(request) {
     nama: u.nama || null,
     rfid: u.rfid || null,
     privilege: Number(u.privilege ?? 0),
+    karyawan_id: u.karyawan_id != null ? Number(u.karyawan_id) : null,
     scan_days: Number(u.scan_days ?? 0),
     scan_total: Number(u.scan_total ?? 0),
     last_scan: u.last_scan || null,

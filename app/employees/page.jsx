@@ -1,7 +1,8 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { AlertCircle, Plus, Search } from 'lucide-react';
+import { AlertCircle, Plus } from 'lucide-react';
+import SearchInput from '@/components/ui/search-input';
 import EditEmployeeModal from '@/components/employees/edit-employee-modal';
 import EmployeesTable from '@/components/employees/employees-table';
 import { useToast } from '@/components/ui/toast-provider';
@@ -138,15 +139,12 @@ export default function EmployeesPage() {
         </div>
       )}
 
-      <div className="relative">
-        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
-        <input
-          value={search}
-          onChange={(event) => setSearch(event.target.value)}
-          placeholder="Search name, PIN, or NIP..."
-          className="w-full rounded-xl border border-slate-800 bg-slate-900 py-2.5 pl-9 pr-4 text-sm text-white placeholder-slate-600 transition-colors focus:border-teal-500 focus:outline-none"
-        />
-      </div>
+      <SearchInput
+        value={search}
+        onChange={setSearch}
+        placeholder="Search name, PIN, or NIP..."
+        className="w-full"
+      />
 
       <EmployeesTable
         loading={loading}

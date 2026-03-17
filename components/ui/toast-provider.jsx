@@ -47,18 +47,18 @@ function ToastViewport({ toasts, dismiss }) {
         return (
           <div
             key={toast.id}
-            className={`pointer-events-auto rounded-xl border p-3 shadow-2xl ${style.borderClass} ${style.bgClass}`}
+            className={`toast-card pointer-events-auto rounded-xl border p-3 shadow-2xl ${style.borderClass} ${style.bgClass}`}
           >
             <div className="flex items-start gap-2">
               <Icon className={`mt-0.5 h-4 w-4 shrink-0 ${style.iconClass}`} />
               <div className="min-w-0 flex-1">
-                <p className="text-sm font-semibold text-white">{toast.title || style.title}</p>
-                <p className="mt-0.5 text-xs text-slate-200/90">{toast.message}</p>
+                <p className="toast-title text-sm font-semibold">{toast.title || style.title}</p>
+                <p className="toast-message mt-0.5 text-xs">{toast.message}</p>
               </div>
               <button
                 type="button"
                 onClick={() => dismiss(toast.id)}
-                className="rounded p-0.5 text-slate-400 transition-colors hover:bg-slate-700/60 hover:text-white"
+                className="toast-close rounded p-0.5 transition-colors"
               >
                 <X className="h-3.5 w-3.5" />
               </button>

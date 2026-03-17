@@ -72,8 +72,8 @@ export async function GET(request, { params }) {
   const isSelf = emp.pin && auth.pin === String(emp.pin);
   const isTeamMember =
     emp.group_id != null &&
-    (isAllowedGroup(auth, emp.group_id, 'can_dashboard') ||
-      isAllowedGroup(auth, emp.group_id, 'can_schedule'));
+    (isAllowedGroup(auth, emp.group_id, 'dashboard') ||
+      isAllowedGroup(auth, emp.group_id, 'schedule'));
 
   if (!isAdmin && !isSelf && !isTeamMember) {
     return forbiddenResponse('Not authorized to view this profile');

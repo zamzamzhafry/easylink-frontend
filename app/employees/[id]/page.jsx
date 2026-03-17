@@ -3,7 +3,15 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, Briefcase, Calendar, CalendarCheck, DatabaseZap, User } from 'lucide-react';
+import {
+  ArrowLeft,
+  Briefcase,
+  Calendar,
+  CalendarCheck,
+  DatabaseZap,
+  Download,
+  User,
+} from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
   TableShell,
@@ -23,6 +31,42 @@ const IO_MAP = {
   4: { label: 'OT In', cls: 'text-purple-300' },
   5: { label: 'OT Out', cls: 'text-pink-300' },
 };
+
+const SHIFT_ICON_EMOJI = {
+  sun: '☀️',
+  sunset: '🌇',
+  moon: '🌙',
+  briefcase: '💼',
+  bed: '🛌',
+  plane: '✈️',
+  star: '⭐',
+  shield: '🛡️',
+};
+
+function shiftIconForKey(key) {
+  return SHIFT_ICON_EMOJI[key] || '🕒';
+}
+
+function csvEscape(value) {
+  const text = value == null ? '' : String(value);
+  return `"${text.replace(/"/g, '""')}"`;
+}
+
+function downloadCsv(filename, headers, rows) {
+  const csv = [
+    headers.map(csvEscape).join(','),
+    ...rows.map((row) => row.map(csvEscape).join(',')),
+  ].join('\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
 
 // ─── Shift Radar / Pentagon Chart ─────────────────────────────────────────────
 /**
@@ -73,12 +117,13 @@ function ShiftRadarChart({ shiftStats }) {
   return (
     <div className="flex flex-col items-center gap-4">
       <svg width="280" height="280" viewBox="0 0 280 280" className="overflow-visible">
+        <title>Shift radar chart</title>
         {/* Background rings */}
         {Array.from({ length: levels }, (_, lvl) => {
           const f = (lvl + 1) / levels;
           return (
             <polygon
-              key={lvl}
+              key={`ring-${f.toFixed(2)}`}
               points={polygonPoints(f)}
               fill="none"
               stroke="#334155"
@@ -88,11 +133,11 @@ function ShiftRadarChart({ shiftStats }) {
         })}
 
         {/* Axis lines */}
-        {data.map((_, i) => {
+        {data.map((d, i) => {
           const outer = axisPoint(i, 1);
           return (
             <line
-              key={i}
+              key={`axis-${d.nama_shift}`}
               x1={cx}
               y1={cy}
               x2={outer.x}
@@ -117,7 +162,7 @@ function ShiftRadarChart({ shiftStats }) {
           const p = axisPoint(i, Math.max(fraction, 0.04));
           return (
             <circle
-              key={i}
+              key={`dot-${d.nama_shift}`}
               cx={p.x}
               cy={p.y}
               r="4"
@@ -134,7 +179,7 @@ function ShiftRadarChart({ shiftStats }) {
           const anchor = lp.x < cx - 4 ? 'end' : lp.x > cx + 4 ? 'start' : 'middle';
           return (
             <text
-              key={i}
+              key={`label-${d.nama_shift}`}
               x={lp.x}
               y={lp.y}
               textAnchor={anchor}
@@ -287,6 +332,81 @@ export default function EmployeeProfilePage() {
   const shiftStats = data?.shiftStats ?? [];
 
   const totalScheduled = shiftStats.reduce((s, d) => s + d.total, 0);
+
+  const exportSummaryCsv = useCallback(() => {
+    if (!employee) return;
+    const todayDate = new Date();
+    todayDate.setHours(0, 0, 0, 0);
+    const upcomingCount = schedule.filter((item) => {
+      const date = new Date(item.tanggal);
+      return date >= todayDate;
+    }).length;
+    const uniqueDays = new Set(scanlogs.map((r) => `${r.scan_date}`)).size;
+
+    const rows = [
+      ['Name', employee.nama || ''],
+      ['PIN', employee.pin || ''],
+      ['Group', employee.nama_group || ''],
+      ['Total Scheduled Days', totalScheduled],
+      ['Upcoming Days', upcomingCount],
+      ['Scan Days (90d)', uniqueDays],
+      ['Total Scans (90d)', scanlogs.length],
+      ...shiftStats.map((item) => [`Shift ${item.nama_shift}`, item.total]),
+    ];
+    downloadCsv(`employee_summary_${employee.pin || id}.csv`, ['Metric', 'Value'], rows);
+  }, [employee, id, scanlogs, schedule, shiftStats, totalScheduled]);
+
+  const exportScheduleCsv = useCallback(() => {
+    if (!employee) return;
+    const rows = schedule.map((s) => [
+      s.tanggal,
+      s.nama_shift,
+      shiftIconForKey(s.icon_key),
+      s.icon_key || '',
+      s.color_hex || '',
+      s.jam_masuk || '',
+      s.jam_keluar || '',
+      s.next_day ? 'yes' : 'no',
+      s.is_paid ? 'paid' : 'unpaid',
+      s.needs_scan ? 'scan-required' : 'no-scan',
+      s.catatan || '',
+    ]);
+    downloadCsv(
+      `employee_schedule_${employee.pin || id}.csv`,
+      [
+        'Date',
+        'Shift',
+        'Shift Icon',
+        'Icon Key',
+        'Color Hex',
+        'Time In',
+        'Time Out',
+        'Next Day',
+        'Pay Type',
+        'Needs Scan',
+        'Note',
+      ],
+      rows
+    );
+  }, [employee, id, schedule]);
+
+  const exportScanlogCsv = useCallback(() => {
+    if (!employee) return;
+    const rows = scanlogs.map((r) => [
+      r.scan_date,
+      r.scan_time,
+      r.pin,
+      VERIFY_MAP[r.verifymode] ?? r.verifymode,
+      IO_MAP[r.iomode]?.label ?? String(r.iomode),
+      r.workcode,
+      r.sn || '',
+    ]);
+    downloadCsv(
+      `employee_scanlog_${employee.pin || id}.csv`,
+      ['Date', 'Time', 'PIN', 'Verify', 'IO Mode', 'Workcode', 'Device SN'],
+      rows
+    );
+  }, [employee, id, scanlogs]);
   const uniqueScanDays = useMemo(() => {
     const s = new Set(scanlogs.map((r) => r.scan_date));
     return s.size;
@@ -324,27 +444,48 @@ export default function EmployeeProfilePage() {
   return (
     <div className="space-y-6 p-6">
       {/* Back + title */}
-      <div className="flex items-center gap-3">
-        <Link
-          href="/employees"
-          className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-700 text-slate-400 hover:border-teal-500/50 hover:text-white"
-        >
-          <ArrowLeft className="h-4 w-4" />
-        </Link>
-        <div>
-          <h1 className="text-xl font-bold text-white">
-            {employee.nama || employee.pin || 'Unknown'}
-          </h1>
-          <p className="text-xs text-slate-500">
-            PIN {employee.pin ?? '—'}
-            {employee.nama_group && (
-              <>
-                {' '}
-                · <span className="text-teal-400">{employee.nama_group}</span>
-              </>
-            )}
-          </p>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <Link
+            href="/employees"
+            className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-700 text-slate-400 hover:border-teal-500/50 hover:text-white"
+          >
+            <ArrowLeft className="h-4 w-4" />
+          </Link>
+          <div>
+            <h1 className="text-xl font-bold text-white">
+              {employee.nama || employee.pin || 'Unknown'}
+            </h1>
+            <p className="text-xs text-slate-500">
+              PIN {employee.pin ?? '—'}
+              {employee.nama_group && (
+                <>
+                  {' '}
+                  · <span className="text-teal-400">{employee.nama_group}</span>
+                </>
+              )}
+            </p>
+          </div>
         </div>
+
+        <button
+          type="button"
+          onClick={
+            tab === 'scanlog'
+              ? exportScanlogCsv
+              : tab === 'schedule'
+                ? exportScheduleCsv
+                : exportSummaryCsv
+          }
+          className="inline-flex items-center gap-2 rounded-lg border border-teal-500/30 bg-teal-500/10 px-3 py-2 text-xs font-medium text-teal-300 hover:bg-teal-500/20"
+        >
+          <Download className="h-3.5 w-3.5" />
+          {tab === 'scanlog'
+            ? 'Export Scan Log'
+            : tab === 'schedule'
+              ? 'Export Schedule'
+              : 'Export Summary'}
+        </button>
       </div>
 
       {/* Stats row */}
@@ -491,6 +632,7 @@ export default function EmployeeProfilePage() {
                               color: s.color_hex,
                             }}
                           >
+                            <span className="mr-1">{shiftIconForKey(s.icon_key)}</span>
                             {s.nama_shift}
                           </span>
                         </td>
@@ -552,11 +694,11 @@ export default function EmployeeProfilePage() {
                     label="No scans in the last 90 days"
                   />
                 ) : (
-                  scanlogs.map((r, i) => {
+                  scanlogs.map((r) => {
                     const io = IO_MAP[r.iomode];
                     return (
                       <tr
-                        key={`${r.scan_date}-${r.scan_time}-${i}`}
+                        key={`${r.scan_date}-${r.scan_time}-${r.pin}-${r.sn || 'nosn'}-${r.workcode}`}
                         className="hover:bg-slate-800/40"
                       >
                         <td className="px-4 py-2 font-mono text-xs text-slate-300">

@@ -28,21 +28,188 @@
 }
 
 @layer base {
-  * { @apply border-border; }
-  body { @apply bg-background text-foreground; }
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
 }
 
 /* Monospace for data cells */
-.font-data { font-family: var(--font-mono), monospace; }
+.font-data {
+  font-family: var(--font-mono), monospace;
+}
 
 /* Table row hover */
-.data-row:hover td { background-color: rgb(15 23 42 / 0.6); }
+.data-row:hover td {
+  background-color: rgb(15 23 42 / 0.6);
+}
 
 /* Shift badge colours */
-.badge-pagi     { background: #0D948820; color: #2DD4BF; border: 1px solid #0D948840; }
-.badge-siang    { background: #F59E0B20; color: #FCD34D; border: 1px solid #F59E0B40; }
-.badge-malam    { background: #6366F120; color: #A5B4FC; border: 1px solid #6366F140; }
-.badge-middle   { background: #8B5CF620; color: #C4B5FD; border: 1px solid #8B5CF640; }
-.badge-libur    { background: #6B728020; color: #9CA3AF; border: 1px solid #6B728040; }
-.badge-cuti     { background: #10B98120; color: #6EE7B7; border: 1px solid #10B98140; }
-.badge-nonshift { background: #94A3B820; color: #CBD5E1; border: 1px solid #94A3B840; }
+.badge-pagi {
+  background: #0d948820;
+  color: #2dd4bf;
+  border: 1px solid #0d948840;
+}
+.badge-siang {
+  background: #f59e0b20;
+  color: #fcd34d;
+  border: 1px solid #f59e0b40;
+}
+.badge-malam {
+  background: #6366f120;
+  color: #a5b4fc;
+  border: 1px solid #6366f140;
+}
+.badge-middle {
+  background: #8b5cf620;
+  color: #c4b5fd;
+  border: 1px solid #8b5cf640;
+}
+.badge-libur {
+  background: #6b728020;
+  color: #9ca3af;
+  border: 1px solid #6b728040;
+}
+.badge-cuti {
+  background: #10b98120;
+  color: #6ee7b7;
+  border: 1px solid #10b98140;
+}
+.badge-nonshift {
+  background: #94a3b820;
+  color: #cbd5e1;
+  border: 1px solid #94a3b840;
+}
+
+/* Theme system: dark/light with green-orange tones */
+html[data-theme='light'] {
+  --background: 144 25% 97%;
+  --foreground: 220 16% 15%;
+  --card: 0 0% 100%;
+  --card-foreground: 220 16% 15%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 220 16% 15%;
+  --primary: 158 67% 35%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 45 100% 96%;
+  --secondary-foreground: 220 16% 15%;
+  --muted: 145 28% 94%;
+  --muted-foreground: 220 9% 42%;
+  --accent: 28 95% 55%;
+  --accent-foreground: 0 0% 100%;
+  --destructive: 0 84% 60%;
+  --destructive-foreground: 0 0% 100%;
+  --border: 145 22% 84%;
+  --input: 145 22% 84%;
+  --ring: 158 67% 35%;
+}
+
+.theme-root {
+  min-height: 100vh;
+  position: relative;
+}
+
+.theme-root::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: -1;
+}
+
+html[data-theme='dark'] .theme-root::before {
+  background:
+    radial-gradient(55rem 28rem at 50% 10%, rgb(13 148 136 / 0.16), transparent 65%),
+    radial-gradient(44rem 22rem at 80% 2%, rgb(249 115 22 / 0.12), transparent 70%),
+    linear-gradient(to bottom, rgb(2 8 23) 0%, rgb(2 6 23) 45%, rgb(2 8 23) 100%);
+}
+
+html[data-theme='light'] .theme-root::before {
+  background:
+    radial-gradient(58rem 28rem at 50% 5%, rgb(16 185 129 / 0.22), transparent 70%),
+    radial-gradient(44rem 20rem at 82% 8%, rgb(251 146 60 / 0.2), transparent 65%),
+    linear-gradient(to bottom, rgb(236 253 245) 0%, rgb(255 255 255) 58%, rgb(254 243 199) 100%);
+}
+
+/* Light mode overrides for existing slate-heavy utility classes */
+html[data-theme='light'] .bg-slate-950 {
+  background-color: rgb(247 252 249) !important;
+}
+html[data-theme='light'] .bg-slate-900 {
+  background-color: rgb(255 255 255 / 0.92) !important;
+}
+html[data-theme='light'] .bg-slate-800 {
+  background-color: rgb(240 253 244 / 0.88) !important;
+}
+html[data-theme='light'] .border-slate-900,
+html[data-theme='light'] .border-slate-800,
+html[data-theme='light'] .border-slate-700 {
+  border-color: rgb(190 242 218 / 0.9) !important;
+}
+html[data-theme='light'] .text-white {
+  color: rgb(15 23 42) !important;
+}
+html[data-theme='light'] .text-slate-100 {
+  color: rgb(30 41 59) !important;
+}
+html[data-theme='light'] .text-slate-200 {
+  color: rgb(51 65 85) !important;
+}
+html[data-theme='light'] .text-slate-300 {
+  color: rgb(71 85 105) !important;
+}
+html[data-theme='light'] .text-slate-400,
+html[data-theme='light'] .text-slate-500 {
+  color: rgb(100 116 139) !important;
+}
+
+html[data-theme='light'] .data-row:hover td {
+  background-color: rgb(220 252 231 / 0.62);
+}
+
+/* Toast theme polish */
+.toast-card {
+  backdrop-filter: blur(8px);
+  animation: toast-enter 220ms ease-out;
+}
+
+.toast-title {
+  color: rgb(248 250 252);
+}
+.toast-message {
+  color: rgb(226 232 240);
+}
+.toast-close {
+  color: rgb(148 163 184);
+}
+.toast-close:hover {
+  background: rgb(51 65 85 / 0.45);
+  color: rgb(255 255 255);
+}
+
+html[data-theme='light'] .toast-title {
+  color: rgb(15 23 42);
+}
+html[data-theme='light'] .toast-message {
+  color: rgb(71 85 105);
+}
+html[data-theme='light'] .toast-close {
+  color: rgb(71 85 105);
+}
+html[data-theme='light'] .toast-close:hover {
+  background: rgb(226 232 240 / 0.7);
+  color: rgb(15 23 42);
+}
+
+@keyframes toast-enter {
+  from {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}

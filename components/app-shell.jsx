@@ -7,6 +7,7 @@ import { cn } from '@/lib/utils';
 import { requestJson } from '@/lib/request-json';
 
 const STORAGE_KEY = 'easylink_sidebar_collapsed';
+const THEME_KEY = 'easylink_theme';
 
 export default function AppShell({ children }) {
   const pathname = usePathname();
@@ -15,6 +16,28 @@ export default function AppShell({ children }) {
   const [collapsed, setCollapsed] = useState(false);
   const [authLoading, setAuthLoading] = useState(() => !isLoginPage);
   const [authUser, setAuthUser] = useState(null);
+  const [theme, setTheme] = useState('dark');
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const saved = window.localStorage.getItem(THEME_KEY);
+    const nextTheme = saved === 'light' ? 'light' : 'dark';
+    setTheme(nextTheme);
+    document.documentElement.setAttribute('data-theme', nextTheme);
+  }, []);
+
+  const toggleTheme = () => {
+    setTheme((prev) => {
+      const next = prev === 'dark' ? 'light' : 'dark';
+      document.documentElement.setAttribute('data-theme', next);
+      try {
+        window.localStorage.setItem(THEME_KEY, next);
+      } catch {
+        // noop
+      }
+      return next;
+    });
+  };
 
   useEffect(() => {
     if (isLoginPage) return;
@@ -95,7 +118,13 @@ export default function AppShell({ children }) {
 
   return (
     <>
-      <Sidebar collapsed={collapsed} onToggle={toggleSidebar} currentUser={authUser} />
+      <Sidebar
+        collapsed={collapsed}
+        onToggle={toggleSidebar}
+        currentUser={authUser}
+        theme={theme}
+        onThemeToggle={toggleTheme}
+      />
       <main
         className={cn(
           'min-h-screen p-6 transition-all duration-200',

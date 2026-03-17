@@ -1,17 +1,19 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
 import {
+  BarChart3,
   Eye,
   EyeOff,
   KeyRound,
   Pencil,
   Plus,
-  Search,
   ShieldCheck,
   Trash2,
   Users,
 } from 'lucide-react';
+import SearchInput from '@/components/ui/search-input';
 import { requestJson } from '@/lib/request-json';
 import { useToast } from '@/components/ui/toast-provider';
 import ModalShell from '@/components/ui/modal-shell';
@@ -349,16 +351,12 @@ export default function UsersPage() {
 
         <div className="flex items-center gap-3">
           {/* Search */}
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-500" />
-            <input
-              type="text"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search PIN or name…"
-              className="w-56 rounded-lg border border-slate-700 bg-slate-800 py-2 pl-8 pr-3 text-sm text-white placeholder-slate-500 focus:border-teal-500 focus:outline-none"
-            />
-          </div>
+          <SearchInput
+            value={search}
+            onChange={setSearch}
+            placeholder="Search PIN, name, or RFID..."
+            className="w-64"
+          />
 
           {/* Create */}
           <button
@@ -486,6 +484,16 @@ export default function UsersPage() {
                         >
                           <KeyRound className="h-3.5 w-3.5" />
                         </button>
+                        {user.karyawan_id && (
+                          <Link
+                            href={`/employees/${user.karyawan_id}`}
+                            title="Open profile report"
+                            className="rounded p-1.5 text-slate-400 hover:bg-teal-500/10 hover:text-teal-300"
+                          >
+                            <BarChart3 className="h-3.5 w-3.5" />
+                          </Link>
+                        )}
+
                         <button
                           type="button"
                           onClick={() => handleDelete(user)}
