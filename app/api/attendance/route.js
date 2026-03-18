@@ -49,7 +49,6 @@ export async function GET(req) {
     return forbiddenResponse('This group is not in your access scope.');
   }
 
-
   // tb_scanlog uses one timestamp column (scan_date), so date/time are derived from it.
   let query = `
     SELECT
@@ -58,6 +57,7 @@ export async function GET(req) {
       logs.masuk,
       logs.keluar,
       logs.scan_count,
+      k.id AS karyawan_id,
       COALESCE(k.nama, u.nama, logs.pin) AS nama,
       eg.group_id,
       g.nama_group,
@@ -67,6 +67,8 @@ export async function GET(req) {
       st.jam_keluar,
       st.next_day,
       st.needs_scan,
+      st.color_hex,
+      st.icon_key,
       an.status  AS note_status,
       an.catatan AS note_catatan
     FROM (

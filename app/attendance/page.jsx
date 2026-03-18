@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Download } from 'lucide-react';
 import AttendanceFilters from '@/components/attendance/attendance-filters';
@@ -182,13 +183,21 @@ export default function AttendancePage() {
             Raw scanlog linked to employee fullname, group filtering, and late dashboard.
           </p>
         </div>
-        <button
-          type="button"
-          onClick={exportCsv}
-          className="flex items-center gap-2 rounded-xl border border-teal-500/30 bg-teal-500/10 px-4 py-2.5 text-sm text-teal-400 transition-colors hover:bg-teal-500/20"
-        >
-          <Download className="h-4 w-4" /> Export CSV
-        </button>
+        <div className="flex flex-wrap gap-2">
+          <Link
+            href="/attendance/review"
+            className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-2.5 text-sm text-amber-300 transition-colors hover:bg-amber-500/20"
+          >
+            Review Punches
+          </Link>
+          <button
+            type="button"
+            onClick={exportCsv}
+            className="flex items-center gap-2 rounded-xl border border-teal-500/30 bg-teal-500/10 px-4 py-2.5 text-sm text-teal-400 transition-colors hover:bg-teal-500/20"
+          >
+            <Download className="h-4 w-4" /> Export CSV
+          </button>
+        </div>
       </div>
 
       <AttendanceFilters
@@ -251,8 +260,10 @@ export default function AttendancePage() {
               ) : rawRows.length === 0 ? (
                 <TableEmptyRow colSpan={7} label="No raw scanlog rows in range" />
               ) : (
-                rawRows.map((row, index) => (
-                  <tr key={`${row.pin}-${row.scan_date}-${row.scan_time}-${index}`}>
+                rawRows.map((row) => (
+                  <tr
+                    key={`${row.pin}-${row.scan_date}-${row.scan_time}-${row.verifymode}-${row.iomode}-${row.workcode}`}
+                  >
                     <td className="px-4 py-3 font-mono text-xs text-slate-400">
                       {String(row.scan_date).slice(0, 10)}
                     </td>
@@ -260,7 +271,18 @@ export default function AttendancePage() {
                       {String(row.scan_time).slice(0, 8)}
                     </td>
                     <td className="px-4 py-3 font-mono text-xs text-slate-300">{row.pin}</td>
-                    <td className="px-4 py-3 text-white">{row.nama}</td>
+                    <td className="px-4 py-3 text-white">
+                      {row.karyawan_id ? (
+                        <Link
+                          href={`/employees/${row.karyawan_id}`}
+                          className="hover:text-teal-300"
+                        >
+                          {row.nama}
+                        </Link>
+                      ) : (
+                        row.nama
+                      )}
+                    </td>
                     <td className="px-4 py-3 text-xs text-slate-500">{row.nama_group || '-'}</td>
                     <td className="px-4 py-3">
                       {row.reviewed_status === 'reviewed' ? (
@@ -298,7 +320,17 @@ export default function AttendancePage() {
                   <div key={`${item.pin}-${item.nama}`} className="space-y-1">
                     <div className="flex items-center justify-between text-xs">
                       <span className="text-slate-300">
-                        {item.nama} <span className="text-slate-500">(PIN {item.pin})</span>
+                        {item.karyawan_id ? (
+                          <Link
+                            href={`/employees/${item.karyawan_id}`}
+                            className="hover:text-teal-300"
+                          >
+                            {item.nama}
+                          </Link>
+                        ) : (
+                          item.nama
+                        )}{' '}
+                        <span className="text-slate-500">(PIN {item.pin})</span>
                       </span>
                       <span className="font-mono text-amber-300">{item.lateCount} late</span>
                     </div>
@@ -345,7 +377,18 @@ export default function AttendancePage() {
               <tbody className="divide-y divide-slate-800/40">
                 {lateData.map((item) => (
                   <tr key={`dashboard-${item.pin}-${item.nama}`}>
-                    <td className="px-4 py-2 text-white">{item.nama}</td>
+                    <td className="px-4 py-2 text-white">
+                      {item.karyawan_id ? (
+                        <Link
+                          href={`/employees/${item.karyawan_id}`}
+                          className="hover:text-teal-300"
+                        >
+                          {item.nama}
+                        </Link>
+                      ) : (
+                        item.nama
+                      )}
+                    </td>
                     <td className="px-4 py-2 text-xs text-slate-500">{item.group}</td>
                     <td className="px-4 py-2 font-mono text-xs text-amber-300">{item.lateCount}</td>
                     <td className="px-4 py-2 font-mono text-xs text-rose-300">{item.earlyCount}</td>

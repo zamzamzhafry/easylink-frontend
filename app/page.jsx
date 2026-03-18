@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { redirect } from 'next/navigation';
 import { Clock, Fingerprint, Monitor, UserCheck, Users, UserX } from 'lucide-react';
 import pool from '@/lib/db';
 import { hasKaryawanColumn } from '@/lib/karyawan-schema';
@@ -119,6 +120,7 @@ async function getStats({ limit, page, auth }) {
   const [recent] = await pool
     .query(
       `SELECT sl.pin,
+              k.id AS karyawan_id,
               DATE(sl.scan_date) AS scan_date,
               TIME(sl.scan_date) AS scan_time,
               sl.verifymode,
@@ -172,6 +174,9 @@ function pageLink(page, limit) {
 
 export default async function Dashboard({ searchParams }) {
   const auth = await getAuthContextFromCookies();
+  if (auth && !auth.is_admin) {
+    redirect('/attendance/review');
+  }
   const limit = normalizeLimit(searchParams?.limit);
   const page = normalizePage(searchParams?.page);
   const stats = await getStats({ limit, page, auth });
@@ -370,7 +375,18 @@ export default async function Dashboard({ searchParams }) {
               ) : (
                 stats.recent.map((row) => (
                   <tr key={`${row.pin}-${row.scan_date}-${row.scan_time}`} className="data-row">
-                    <td className="px-5 py-2.5 text-white">{row.nama}</td>
+                    <td className="px-5 py-2.5 text-white">
+                      {row.karyawan_id ? (
+                        <Link
+                          href={`/employees/${row.karyawan_id}`}
+                          className="hover:text-teal-300"
+                        >
+                          {row.nama}
+                        </Link>
+                      ) : (
+                        row.nama
+                      )}
+                    </td>
                     <td className="px-4 py-2.5 font-mono text-xs text-slate-400">{row.pin}</td>
                     <td className="px-4 py-2.5 font-mono text-xs text-slate-400">
                       {String(row.scan_date).slice(0, 10)}

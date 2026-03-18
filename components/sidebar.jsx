@@ -107,11 +107,15 @@ export default function Sidebar({
 
       <nav className="flex-1 space-y-1 px-2 py-4 overflow-y-auto">
         {visibleNav.map(({ href, label, icon: Icon }) => {
-          const active = path === href || (href !== '/' && path.startsWith(href));
+          const navHref =
+            href === '/attendance' && currentUser && !currentUser.is_admin
+              ? '/attendance/review'
+              : href;
+          const active = path === navHref || (navHref !== '/' && path.startsWith(navHref));
           return (
             <Link
               key={href}
-              href={href}
+              href={navHref}
               title={label}
               className={cn(
                 'flex items-center rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-150',

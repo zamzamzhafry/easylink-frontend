@@ -28,6 +28,7 @@ export async function GET(req) {
       DATE(sl.scan_date) AS scan_date,
       TIME(sl.scan_date) AS scan_time,
       sl.pin,
+      k.id AS karyawan_id,
       COALESCE(k.nama, u.nama, sl.pin) AS nama,
       eg.group_id,
       g.nama_group,

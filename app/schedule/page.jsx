@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ChevronLeft,
@@ -570,8 +571,8 @@ export default function SchedulePage() {
             <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3">
               <p className="mb-2 text-xs font-semibold text-amber-300">Import check errors</p>
               <ul className="space-y-1 text-xs text-amber-200">
-                {importResult.errors.slice(0, 20).map((error, index) => (
-                  <li key={index}>
+                {importResult.errors.slice(0, 20).map((error) => (
+                  <li key={`${error.row}-${error.message}`}>
                     Row {error.row}: {error.message}
                   </li>
                 ))}
@@ -657,7 +658,11 @@ export default function SchedulePage() {
                 <tbody className="divide-y divide-slate-800/40">
                   {filteredSummary.map(({ employee, metrics }) => (
                     <tr key={employee.id}>
-                      <td className="px-4 py-3 text-white">{employee.nama}</td>
+                      <td className="px-4 py-3 text-white">
+                        <Link href={`/employees/${employee.id}`} className="hover:text-teal-300">
+                          {employee.nama}
+                        </Link>
+                      </td>
                       <td className="px-4 py-3 text-xs text-slate-400">
                         {employee.nama_group || '-'}
                       </td>

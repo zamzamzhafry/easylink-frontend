@@ -1,7 +1,13 @@
 'use client';
 
 import { AlertTriangle, CheckCircle2, Clock, Pencil } from 'lucide-react';
-import { TableEmptyRow, TableHeadRow, TableLoadingRow, TableShell } from '@/components/ui/table-shell';
+import Link from 'next/link';
+import {
+  TableEmptyRow,
+  TableHeadRow,
+  TableLoadingRow,
+  TableShell,
+} from '@/components/ui/table-shell';
 import { STATUS_MAP } from '@/lib/attendance-helpers';
 import { shiftClassName } from '@/lib/shift-helpers';
 
@@ -38,14 +44,30 @@ export default function AttendanceTable({ loading, rows, onEdit }) {
           ) : rows.length === 0 ? (
             <TableEmptyRow colSpan={11} label="No records in range" />
           ) : (
-            rows.map((row, index) => {
+            rows.map((row) => {
               const status = STATUS_MAP[row.computed_status] ?? STATUS_MAP.lainnya;
               const isAnomaly = row.computed_status !== 'normal';
 
               return (
-                <tr key={`${row.pin}-${row.scan_date}-${index}`} className={`data-row ${isAnomaly ? 'bg-amber-500/3' : ''}`}>
-                  <td className="px-4 py-3 font-mono text-xs text-slate-400">{displayDate(row.scan_date)}</td>
-                  <td className="px-4 py-3 font-medium text-white">{row.nama}</td>
+                <tr
+                  key={`${row.pin}-${row.scan_date}`}
+                  className={`data-row ${isAnomaly ? 'bg-amber-500/3' : ''}`}
+                >
+                  <td className="px-4 py-3 font-mono text-xs text-slate-400">
+                    {displayDate(row.scan_date)}
+                  </td>
+                  <td className="px-4 py-3 font-medium">
+                    {row.karyawan_id ? (
+                      <Link
+                        href={`/employees/${row.karyawan_id}`}
+                        className="text-white transition-colors hover:text-teal-300"
+                      >
+                        {row.nama}
+                      </Link>
+                    ) : (
+                      <span className="text-white">{row.nama}</span>
+                    )}
+                  </td>
                   <td className="px-4 py-3 text-xs text-slate-500">{row.nama_group || '-'}</td>
                   <td className="px-4 py-3">
                     {row.nama_shift ? (
@@ -69,7 +91,9 @@ export default function AttendanceTable({ loading, rows, onEdit }) {
                       )}
                     </div>
                     {row.jam_masuk && (
-                      <div className="mt-0.5 font-mono text-xs text-slate-600">Jadwal: {row.jam_masuk.slice(0, 5)}</div>
+                      <div className="mt-0.5 font-mono text-xs text-slate-600">
+                        Jadwal: {row.jam_masuk.slice(0, 5)}
+                      </div>
                     )}
                   </td>
                   <td className="px-4 py-3">
@@ -80,7 +104,9 @@ export default function AttendanceTable({ loading, rows, onEdit }) {
                       )}
                     </div>
                     {row.jam_keluar && (
-                      <div className="mt-0.5 font-mono text-xs text-slate-600">Jadwal: {row.jam_keluar.slice(0, 5)}</div>
+                      <div className="mt-0.5 font-mono text-xs text-slate-600">
+                        Jadwal: {row.jam_keluar.slice(0, 5)}
+                      </div>
                     )}
                   </td>
                   <td className="px-4 py-3 font-mono text-xs text-slate-400">{row.durasi_label}</td>
@@ -88,7 +114,11 @@ export default function AttendanceTable({ loading, rows, onEdit }) {
                     <span
                       className={`inline-flex items-center gap-1 rounded border px-2 py-0.5 text-xs font-medium ${status.cls}`}
                     >
-                      {isAnomaly ? <AlertTriangle className="h-2.5 w-2.5" /> : <CheckCircle2 className="h-2.5 w-2.5" />}
+                      {isAnomaly ? (
+                        <AlertTriangle className="h-2.5 w-2.5" />
+                      ) : (
+                        <CheckCircle2 className="h-2.5 w-2.5" />
+                      )}
                       {status.label}
                     </span>
                   </td>
@@ -109,7 +139,9 @@ export default function AttendanceTable({ loading, rows, onEdit }) {
                   </td>
                   <td className="max-w-[200px] px-4 py-3">
                     {row.note_catatan ? (
-                      <span className="block truncate text-xs text-slate-400">{row.note_catatan}</span>
+                      <span className="block truncate text-xs text-slate-400">
+                        {row.note_catatan}
+                      </span>
                     ) : (
                       <span className="text-xs italic text-slate-700">-</span>
                     )}
