@@ -99,7 +99,7 @@ export default function AppShell({ children }) {
   if (authLoading) {
     return (
       <main className="flex min-h-screen items-center justify-center p-6">
-        <div className="rounded-xl border border-slate-800 bg-slate-900 px-5 py-4 text-sm text-slate-300">
+        <div className="app-shell-status rounded-xl border border-slate-800 bg-slate-900 px-5 py-4 text-sm text-slate-300">
           Checking session...
         </div>
       </main>
@@ -109,7 +109,7 @@ export default function AppShell({ children }) {
   if (!authUser) {
     return (
       <main className="flex min-h-screen items-center justify-center p-6">
-        <div className="rounded-xl border border-slate-800 bg-slate-900 px-5 py-4 text-sm text-slate-300">
+        <div className="app-shell-status rounded-xl border border-slate-800 bg-slate-900 px-5 py-4 text-sm text-slate-300">
           Redirecting to login...
         </div>
       </main>
@@ -127,7 +127,7 @@ export default function AppShell({ children }) {
       />
       <main
         className={cn(
-          'min-h-screen p-6 transition-all duration-200',
+          'app-shell-main min-h-screen p-6 transition-all duration-200',
           collapsed ? 'ml-20' : 'ml-60'
         )}
       >

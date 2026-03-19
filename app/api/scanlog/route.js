@@ -7,7 +7,9 @@ import {
 } from '@/lib/auth-session';
 
 const VERIFY_LABEL = {
-  1: 'Finger',
+  1: 'Fingerprint',
+  20: 'Face Recognition',
+  30: 'Vein Scan',
   4: 'Face',
   8: 'Palm',
   200: 'Card',
@@ -33,10 +35,24 @@ function normalizePage(raw) {
   return !n || n < 1 ? 1 : n;
 }
 
+async function tableExists(tableName) {
+  const [rows] = await pool.query(
+    `
+      SELECT 1
+      FROM information_schema.TABLES
+      WHERE TABLE_SCHEMA = DATABASE()
+        AND TABLE_NAME = ?
+      LIMIT 1
+    `,
+    [tableName]
+  );
+  return rows.length > 0;
+}
+
 // ─────────────────────────────────────────────
 // GET /api/scanlog
-// Query params: from, to, pin (filter), limit, page
-// Returns raw tb_scanlog rows — NO karyawan join
+// Query params: from, to, pin (filter), limit, page, source=(legacy|safe)
+// Returns raw scanlog rows — NO karyawan join
 // ─────────────────────────────────────────────
 export async function GET(request) {
   const auth = await getAuthContextFromCookies();
@@ -52,16 +68,23 @@ export async function GET(request) {
   const page = normalizePage(searchParams.get('page'));
   const offset = (page - 1) * limit;
   const download = searchParams.get('download') === '1';
+  const source =
+    (searchParams.get('source') || 'legacy').toLowerCase() === 'safe' ? 'safe' : 'legacy';
+
+  const hasSafeTable = await tableExists('tb_scanlog_safe_events');
+  const useSafe = source === 'safe' && hasSafeTable;
+  const timeColumn = useSafe ? 'sl.scan_at' : 'sl.scan_date';
+  const baseTable = useSafe ? 'tb_scanlog_safe_events' : 'tb_scanlog';
 
   const whereClauses = [];
   const params = [];
 
   if (from) {
-    whereClauses.push('DATE(sl.scan_date) >= ?');
+    whereClauses.push(`DATE(${timeColumn}) >= ?`);
     params.push(from);
   }
   if (to) {
-    whereClauses.push('DATE(sl.scan_date) <= ?');
+    whereClauses.push(`DATE(${timeColumn}) <= ?`);
     params.push(to);
   }
   if (pinFilter) {
@@ -73,7 +96,7 @@ export async function GET(request) {
 
   // Count query (for pagination)
   const [countRows] = await pool.query(
-    `SELECT COUNT(*) AS total FROM tb_scanlog sl ${whereSQL}`,
+    `SELECT COUNT(*) AS total FROM ${baseTable} sl ${whereSQL}`,
     params
   );
   const total = Number(Array.isArray(countRows) ? (countRows[0]?.total ?? 0) : 0);
@@ -83,15 +106,15 @@ export async function GET(request) {
   const [rows] = await pool.query(
     `SELECT
        sl.sn,
-       DATE(sl.scan_date)    AS scan_date,
-       TIME(sl.scan_date)    AS scan_time,
+       DATE(${timeColumn})   AS scan_date,
+       TIME(${timeColumn})   AS scan_time,
        sl.pin,
        sl.verifymode,
        sl.iomode,
        sl.workcode
-     FROM tb_scanlog sl
+     FROM ${baseTable} sl
      ${whereSQL}
-     ORDER BY sl.scan_date DESC
+     ORDER BY ${timeColumn} DESC
      LIMIT ? OFFSET ?`,
     dataParams
   );
@@ -130,6 +153,7 @@ export async function GET(request) {
 
   return NextResponse.json({
     ok: true,
+    source: useSafe ? 'safe' : 'legacy',
     total,
     page,
     limit,

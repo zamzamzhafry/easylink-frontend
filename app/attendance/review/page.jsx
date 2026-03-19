@@ -32,7 +32,14 @@ const STATUS_BADGE = {
   tidak_hadir: 'border-slate-600 bg-slate-800 text-slate-300',
 };
 
-const VERIFY_MAP = { 1: 'Finger', 2: 'Card', 4: 'Face', 15: 'Palm' };
+const VERIFY_MAP = {
+  1: 'Fingerprint',
+  20: 'Face Recognition',
+  30: 'Vein Scan',
+  2: 'Card',
+  4: 'Face',
+  15: 'Palm',
+};
 const IO_MAP = { 0: 'Check In', 1: 'Check Out', 2: 'Break Out', 3: 'Break In' };
 
 function statusLabel(value) {

@@ -107,15 +107,15 @@ export default function Sidebar({
   return (
     <aside
       className={cn(
-        'fixed inset-y-0 left-0 z-40 flex flex-col border-r border-slate-800 bg-slate-900 transition-all duration-200',
+        'app-sidebar fixed inset-y-0 left-0 z-40 flex flex-col border-r border-slate-800 bg-slate-900 transition-all duration-200',
         collapsed ? 'w-20' : 'w-60'
       )}
     >
-      <div className="flex h-16 items-center border-b border-slate-800 px-3">
+      <div className="app-sidebar-header flex h-16 items-center border-b border-slate-800 px-3">
         <button
           type="button"
           onClick={onToggle}
-          className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-700 text-slate-300 transition-colors hover:border-slate-500 hover:text-white"
+          className="app-sidebar-toggle inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-700 text-slate-300 transition-colors hover:border-slate-500 hover:text-white"
           title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
         >
           {collapsed ? (
@@ -142,7 +142,7 @@ export default function Sidebar({
         {collapsed && <Fingerprint className="ml-2 h-5 w-5 text-teal-400" />}
       </div>
 
-      <nav className="flex-1 space-y-2 overflow-y-auto px-2 py-4">
+      <nav className="app-sidebar-nav flex-1 space-y-2 overflow-y-auto px-2 py-4">
         {visibleSections.map((section) => {
           if (collapsed) {
             return section.items.map(({ href, label, icon: Icon }) => {
@@ -153,9 +153,9 @@ export default function Sidebar({
                   href={href}
                   title={label}
                   className={cn(
-                    'flex items-center justify-center rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-150',
+                    'app-sidebar-link flex items-center justify-center rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-150',
                     active
-                      ? 'border border-teal-500/20 bg-teal-500/15 text-teal-400'
+                      ? 'app-sidebar-link-active border border-teal-500/20 bg-teal-500/15 text-teal-400'
                       : 'text-slate-400 hover:bg-slate-800 hover:text-slate-100'
                   )}
                 >
@@ -170,7 +170,10 @@ export default function Sidebar({
           );
 
           return (
-            <div key={section.key} className="rounded-xl border border-slate-800 bg-slate-950/60">
+            <div
+              key={section.key}
+              className="app-sidebar-section rounded-xl border border-slate-800 bg-slate-950/60"
+            >
               <button
                 type="button"
                 onClick={() =>
@@ -180,7 +183,7 @@ export default function Sidebar({
                   }))
                 }
                 className={cn(
-                  'flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide transition-colors',
+                  'app-sidebar-section-toggle flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide transition-colors',
                   sectionActive ? 'text-teal-300' : 'text-slate-400 hover:text-slate-200'
                 )}
               >
@@ -202,9 +205,9 @@ export default function Sidebar({
                         href={href}
                         title={label}
                         className={cn(
-                          'flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all duration-150',
+                          'app-sidebar-link flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all duration-150',
                           active
-                            ? 'border border-teal-500/20 bg-teal-500/15 text-teal-400'
+                            ? 'app-sidebar-link-active border border-teal-500/20 bg-teal-500/15 text-teal-400'
                             : 'text-slate-400 hover:bg-slate-800 hover:text-slate-100'
                         )}
                       >
@@ -220,12 +223,12 @@ export default function Sidebar({
         })}
       </nav>
 
-      <div className="border-t border-slate-800 px-3 py-3">
+      <div className="app-sidebar-footer border-t border-slate-800 px-3 py-3">
         <button
           type="button"
           onClick={onThemeToggle}
           className={cn(
-            'mb-2 flex w-full items-center rounded-lg border border-slate-700 px-2.5 py-2 text-xs text-slate-300 transition-colors hover:border-slate-500 hover:text-white',
+            'app-sidebar-theme-btn mb-2 flex w-full items-center rounded-lg border border-slate-700 px-2.5 py-2 text-xs text-slate-300 transition-colors hover:border-slate-500 hover:text-white',
             collapsed ? 'justify-center' : 'gap-2'
           )}
           title={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}
@@ -239,7 +242,7 @@ export default function Sidebar({
         </button>
 
         {currentUser && !collapsed && (
-          <div className="mb-2 rounded-lg border border-slate-800 bg-slate-950/70 px-3 py-2">
+          <div className="app-sidebar-userbox mb-2 rounded-lg border border-slate-800 bg-slate-950/70 px-3 py-2">
             <div className="text-xs font-semibold text-white">{currentUser.nama}</div>
             <div className="mt-0.5 inline-flex items-center gap-1 text-[11px] text-slate-500">
               {currentUser.is_admin ? (
@@ -262,7 +265,7 @@ export default function Sidebar({
           type="button"
           onClick={logout}
           className={cn(
-            'flex w-full items-center rounded-lg border border-slate-700 px-2.5 py-2 text-xs text-slate-300 transition-colors hover:border-slate-500 hover:text-white',
+            'app-sidebar-logout flex w-full items-center rounded-lg border border-slate-700 px-2.5 py-2 text-xs text-slate-300 transition-colors hover:border-slate-500 hover:text-white',
             collapsed ? 'justify-center' : 'gap-2'
           )}
         >

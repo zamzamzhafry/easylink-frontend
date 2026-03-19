@@ -22,7 +22,14 @@ import {
 import { useToast } from '@/components/ui/toast-provider';
 
 // ─── verify/io maps ────────────────────────────────────────────────────────────
-const VERIFY_MAP = { 1: 'Finger', 4: 'Face', 8: 'Palm', 200: 'Card' };
+const VERIFY_MAP = {
+  1: 'Fingerprint',
+  20: 'Face Recognition',
+  30: 'Vein Scan',
+  4: 'Face',
+  8: 'Palm',
+  200: 'Card',
+};
 const IO_MAP = {
   0: { label: 'Check In', cls: 'text-teal-400' },
   1: { label: 'Check Out', cls: 'text-rose-400' },

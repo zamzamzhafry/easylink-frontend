@@ -37,7 +37,9 @@ const PRESETS = [
 
 // ─── label maps ────────────────────────────────────────────────────────────────
 const VERIFY_LABELS = {
-  1: { label: 'Finger', cls: 'text-blue-300 bg-blue-500/10 border-blue-500/30' },
+  1: { label: 'Fingerprint', cls: 'text-blue-300 bg-blue-500/10 border-blue-500/30' },
+  20: { label: 'Face Recognition', cls: 'text-violet-300 bg-violet-500/10 border-violet-500/30' },
+  30: { label: 'Vein Scan', cls: 'text-fuchsia-300 bg-fuchsia-500/10 border-fuchsia-500/30' },
   4: { label: 'Face', cls: 'text-violet-300 bg-violet-500/10 border-violet-500/30' },
   8: { label: 'Palm', cls: 'text-emerald-300 bg-emerald-500/10 border-emerald-500/30' },
   200: { label: 'Card', cls: 'text-amber-300 bg-amber-500/10 border-amber-500/30' },
@@ -98,12 +100,14 @@ export default function ScanlogPage() {
   const [pinFilter, setPinFilter] = useState('');
   const [limit, setLimit] = useState(250);
   const [page, setPage] = useState(1);
+  const [source, setSource] = useState('legacy');
 
   const [records, setRecords] = useState([]);
   const [total, setTotal] = useState(0);
   const [pages, setPages] = useState(1);
   const [loading, setLoading] = useState(false);
   const [downloading, setDownloading] = useState(false);
+  const [syncing, setSyncing] = useState(false);
 
   const toast = useToast();
 
@@ -118,6 +122,7 @@ export default function ScanlogPage() {
           to,
           limit: String(limit),
           page: String(p),
+          source,
         });
         if (pinFilter.trim()) params.set('pin', pinFilter.trim());
 
@@ -133,7 +138,7 @@ export default function ScanlogPage() {
         setLoading(false);
       }
     },
-    [from, to, pinFilter, limit, page, toast]
+    [from, to, pinFilter, limit, page, source, toast]
   );
 
   useEffect(() => {
@@ -167,7 +172,14 @@ export default function ScanlogPage() {
   const handleDownload = async () => {
     setDownloading(true);
     try {
-      const params = new URLSearchParams({ from, to, limit: '5000', page: '1', download: '1' });
+      const params = new URLSearchParams({
+        from,
+        to,
+        limit: '5000',
+        page: '1',
+        source,
+        download: '1',
+      });
       if (pinFilter.trim()) params.set('pin', pinFilter.trim());
       const res = await fetch(`/api/scanlog?${params.toString()}`);
       if (!res.ok) throw new Error(`Export failed (${res.status})`);
@@ -186,6 +198,33 @@ export default function ScanlogPage() {
     }
   };
 
+  const syncFromMachine = async () => {
+    setSyncing(true);
+    try {
+      const res = await fetch('/api/scanlog/sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ from, to, source: 'auto', mode: 'new' }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.ok) {
+        throw new Error(data?.error || `Sync failed (${res.status})`);
+      }
+      toast.success(
+        `Machine sync done. Pulled ${data.pulled_count || 0}, inserted ${data.inserted_count || 0}, skipped ${data.skipped_count || 0}.`
+      );
+      if (source !== 'safe') {
+        setSource('safe');
+      }
+      setPage(1);
+      setTimeout(() => load(1), 0);
+    } catch (err) {
+      toast.error(err.message || 'Failed to sync from machine');
+    } finally {
+      setSyncing(false);
+    }
+  };
+
   // ─── render ───────────────────────────────────────────────────────────────────
   return (
     <div className="space-y-5 p-6">
@@ -200,9 +239,23 @@ export default function ScanlogPage() {
             Primary analysis should focus on time, date, PIN, and machine SN. IO mode is shown as
             reference only.
           </p>
+          <p className="mt-1 text-[11px] text-slate-500">
+            Data source:{' '}
+            <span className="font-semibold text-teal-300">
+              {source === 'safe' ? 'Safe Immutable Store' : 'Legacy Scanlog Table'}
+            </span>
+          </p>
         </div>
 
         <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={syncFromMachine}
+            disabled={syncing}
+            className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs font-semibold text-emerald-300 hover:bg-emerald-500/20 disabled:opacity-50"
+          >
+            {syncing ? 'Syncing…' : 'Fetch From Machine'}
+          </button>
           <button
             type="button"
             onClick={() => {
@@ -312,6 +365,28 @@ export default function ScanlogPage() {
                   {l}
                 </option>
               ))}
+            </select>
+          </div>
+
+          <div>
+            <label
+              htmlFor="scanlog-source"
+              className="mb-1 block text-[11px] font-medium text-slate-500"
+            >
+              Source
+            </label>
+            <select
+              id="scanlog-source"
+              value={source}
+              onChange={(event) => {
+                setSource(event.target.value);
+                setPage(1);
+                setTimeout(() => load(1), 0);
+              }}
+              className="rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-white focus:border-teal-500 focus:outline-none"
+            >
+              <option value="legacy">Legacy (tb_scanlog)</option>
+              <option value="safe">Safe Store (tb_scanlog_safe_events)</option>
             </select>
           </div>
 

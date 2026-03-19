@@ -152,7 +152,14 @@ async function getStats({ limit, page, auth }) {
 }
 
 const verifyLabel = (value) => {
-  const map = { 1: 'Finger', 4: 'Face', 15: 'Palm', 2: 'Card' };
+  const map = {
+    1: 'Fingerprint',
+    20: 'Face Recognition',
+    30: 'Vein Scan',
+    4: 'Face',
+    15: 'Palm',
+    2: 'Card',
+  };
   return map[value] ?? `Mode ${value}`;
 };
 

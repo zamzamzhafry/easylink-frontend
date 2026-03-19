@@ -242,7 +242,7 @@ export default function SchedulePage() {
   }, [employeePage, filteredEmployees, rowsPerPage, totalEmployeePages]);
 
   const punchRows = useMemo(() => {
-    return attendanceRows
+    const sourceRows = attendanceRows
       .filter((row) => {
         if (groupTab === 'all') return true;
         if (groupTab === 'ungrouped') return !row.group_id;
@@ -253,6 +253,59 @@ export default function SchedulePage() {
           String(b.scan_date).localeCompare(String(a.scan_date)) ||
           String(a.nama).localeCompare(String(b.nama))
       );
+
+    const byDay = new Map();
+    sourceRows.forEach((row) => {
+      const key = `${row.pin}|${row.scan_date}`;
+      const current = byDay.get(key);
+      if (!current) {
+        byDay.set(key, row);
+        return;
+      }
+
+      const currentCount = Number(current.scan_count || 0);
+      const nextCount = Number(row.scan_count || 0);
+      const currentOut = String(current.keluar || '');
+      const nextOut = String(row.keluar || '');
+      if (nextCount > currentCount || nextOut > currentOut) {
+        byDay.set(key, row);
+      }
+    });
+
+    return [...byDay.values()].map((row) => {
+      const scanCount = Number(row.scan_count || 0);
+      const hasMultiplePunches =
+        scanCount > 1 && row.masuk && row.keluar && row.masuk !== row.keluar;
+      const manualHours = Number(row.note_manual_hours || 0);
+      const manualApproved = Boolean(Number(row.note_manual_approved || 0));
+      const durationHours =
+        Number(row.durasi_menit || 0) > 0 ? Number(row.durasi_menit || 0) / 60 : 0;
+      const shiftHours = Number(row.jam_kerja || 0);
+
+      let totalHours = durationHours;
+      if (manualApproved && manualHours > 0) {
+        totalHours = manualHours;
+      } else if (
+        !hasMultiplePunches &&
+        shiftHours > 0 &&
+        ['normal', 'reviewed'].includes(String(row.computed_status || ''))
+      ) {
+        totalHours = shiftHours;
+      }
+
+      const decision = ['normal', 'reviewed'].includes(String(row.computed_status || ''))
+        ? 'Accepted'
+        : 'Needs Review';
+
+      return {
+        ...row,
+        punch_in: row.masuk || '-',
+        punch_out: hasMultiplePunches ? row.keluar : '-',
+        punch_count: scanCount,
+        total_hours: Number.isFinite(totalHours) ? totalHours : 0,
+        decision,
+      };
+    });
   }, [attendanceRows, groupTab]);
 
   const metricsByEmployee = useMemo(
@@ -777,7 +830,9 @@ export default function SchedulePage() {
                   <th className="px-3 py-2">Shift</th>
                   <th className="px-3 py-2">Punch In</th>
                   <th className="px-3 py-2">Punch Out</th>
-                  <th className="px-3 py-2">Status</th>
+                  <th className="px-3 py-2">Punch Count</th>
+                  <th className="px-3 py-2">Total Hours</th>
+                  <th className="px-3 py-2">Decision</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-800/50">
@@ -786,11 +841,21 @@ export default function SchedulePage() {
                     <td className="px-3 py-2 text-white">{row.nama || row.pin}</td>
                     <td className="px-3 py-2 font-mono text-slate-300">{row.scan_date}</td>
                     <td className="px-3 py-2 text-slate-300">{row.shift || '-'}</td>
-                    <td className="px-3 py-2 font-mono text-emerald-300">{row.masuk || '-'}</td>
-                    <td className="px-3 py-2 font-mono text-amber-300">{row.keluar || '-'}</td>
+                    <td className="px-3 py-2 font-mono text-emerald-300">{row.punch_in || '-'}</td>
+                    <td className="px-3 py-2 font-mono text-amber-300">{row.punch_out || '-'}</td>
+                    <td className="px-3 py-2 font-mono text-slate-300">{row.punch_count || 0}</td>
+                    <td className="px-3 py-2 font-mono text-cyan-300">
+                      {Number(row.total_hours || 0).toFixed(1)}h
+                    </td>
                     <td className="px-3 py-2">
-                      <span className="rounded-full border border-slate-700 px-2 py-0.5 text-[11px] text-slate-300">
-                        {row.computed_status || 'pending'}
+                      <span
+                        className={`rounded-full border px-2 py-0.5 text-[11px] ${
+                          row.decision === 'Accepted'
+                            ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
+                            : 'border-amber-500/30 bg-amber-500/10 text-amber-300'
+                        }`}
+                      >
+                        {row.decision}
                       </span>
                     </td>
                   </tr>

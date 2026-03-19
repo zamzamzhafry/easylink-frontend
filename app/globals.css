@@ -169,6 +169,96 @@ html[data-theme='light'] .data-row:hover td {
   background-color: rgb(220 252 231 / 0.62);
 }
 
+/* Sidebar and shell theme overhaul */
+.app-shell-main {
+  position: relative;
+}
+
+.app-shell-status {
+  backdrop-filter: blur(6px);
+}
+
+html[data-theme='dark'] .app-sidebar {
+  background:
+    linear-gradient(180deg, rgb(2 8 23 / 0.94) 0%, rgb(2 6 23 / 0.98) 100%),
+    radial-gradient(35rem 20rem at 10% 0%, rgb(20 184 166 / 0.14), transparent 75%);
+  border-right-color: rgb(30 41 59 / 0.9);
+}
+
+html[data-theme='dark'] .app-sidebar-header,
+html[data-theme='dark'] .app-sidebar-footer {
+  border-color: rgb(30 41 59 / 0.9);
+}
+
+html[data-theme='light'] .app-sidebar {
+  background:
+    linear-gradient(
+      180deg,
+      rgb(255 255 255 / 0.98) 0%,
+      rgb(248 252 250 / 0.98) 72%,
+      rgb(241 245 249 / 0.95) 100%
+    ),
+    radial-gradient(40rem 20rem at 0% 0%, rgb(16 185 129 / 0.16), transparent 72%);
+  border-right-color: rgb(186 230 253 / 0.8);
+  box-shadow: 10px 0 36px rgb(15 23 42 / 0.07);
+}
+
+html[data-theme='light'] .app-sidebar-header,
+html[data-theme='light'] .app-sidebar-footer {
+  border-color: rgb(203 213 225 / 0.8);
+}
+
+html[data-theme='light'] .app-sidebar-toggle,
+html[data-theme='light'] .app-sidebar-theme-btn,
+html[data-theme='light'] .app-sidebar-logout {
+  border-color: rgb(186 230 253 / 0.95) !important;
+  background: rgb(255 255 255 / 0.9);
+  color: rgb(30 41 59) !important;
+}
+
+html[data-theme='light'] .app-sidebar-toggle:hover,
+html[data-theme='light'] .app-sidebar-theme-btn:hover,
+html[data-theme='light'] .app-sidebar-logout:hover {
+  border-color: rgb(45 212 191 / 0.9) !important;
+  color: rgb(15 118 110) !important;
+  background: rgb(240 253 250);
+}
+
+html[data-theme='light'] .app-sidebar-section {
+  border-color: rgb(203 213 225 / 0.8) !important;
+  background: rgb(255 255 255 / 0.86) !important;
+}
+
+html[data-theme='light'] .app-sidebar-section-toggle {
+  color: rgb(71 85 105) !important;
+}
+
+html[data-theme='light'] .app-sidebar-link {
+  color: rgb(71 85 105) !important;
+}
+
+html[data-theme='light'] .app-sidebar-link:hover {
+  background: rgb(240 249 255) !important;
+  color: rgb(14 116 144) !important;
+}
+
+html[data-theme='light'] .app-sidebar-link-active {
+  border-color: rgb(45 212 191 / 0.45) !important;
+  background: linear-gradient(90deg, rgb(204 251 241) 0%, rgb(224 242 254) 100%) !important;
+  color: rgb(15 118 110) !important;
+}
+
+html[data-theme='light'] .app-sidebar-userbox {
+  border-color: rgb(203 213 225 / 0.8) !important;
+  background: rgb(248 250 252 / 0.95) !important;
+}
+
+html[data-theme='light'] .app-shell-status {
+  border-color: rgb(186 230 253 / 0.8) !important;
+  background: rgb(255 255 255 / 0.9) !important;
+  color: rgb(30 41 59) !important;
+}
+
 /* Toast theme polish */
 .toast-card {
   backdrop-filter: blur(8px);
