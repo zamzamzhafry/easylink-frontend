@@ -16,6 +16,21 @@ function toMinutes(value) {
   return hours * 60 + minutes;
 }
 
+async function hasAttendanceNoteColumn(columnName) {
+  const [rows] = await pool.query(
+    `
+      SELECT 1
+      FROM information_schema.COLUMNS
+      WHERE TABLE_SCHEMA = DATABASE()
+        AND TABLE_NAME = 'tb_attendance_note'
+        AND COLUMN_NAME = ?
+      LIMIT 1
+    `,
+    [columnName]
+  );
+  return rows.length > 0;
+}
+
 export async function GET(req) {
   // Auth gate: need at least one approved group or admin
   const auth = await getAuthContextFromCookies();
@@ -30,6 +45,8 @@ export async function GET(req) {
   const groupId = searchParams.get('group_id') || null;
   const parsedGroupId = Number.parseInt(groupId ?? '', 10);
   const canFilterDeleted = await hasKaryawanColumn('isDeleted');
+  const hasManualHours = await hasAttendanceNoteColumn('manual_hours');
+  const hasManualApproved = await hasAttendanceNoteColumn('is_manual_approved');
 
   const allowedGroupIds = auth.is_admin
     ? null
@@ -70,7 +87,9 @@ export async function GET(req) {
       st.color_hex,
       st.icon_key,
       an.status  AS note_status,
-      an.catatan AS note_catatan
+      an.catatan AS note_catatan,
+      ${hasManualHours ? 'an.manual_hours' : 'NULL'} AS note_manual_hours,
+      ${hasManualApproved ? 'an.is_manual_approved' : '0'} AS note_manual_approved
     FROM (
       SELECT
         sl.pin,
@@ -151,6 +170,14 @@ export async function GET(req) {
       if (diff > 0) durationMinutes = diff;
     }
 
+    const manualHours = Number(row.note_manual_hours || 0);
+    const manualApproved = Boolean(Number(row.note_manual_approved || 0));
+    if (manualHours > 0 && manualApproved) {
+      durationMinutes = Math.round(manualHours * 60);
+      flags.push('manual_adjustment');
+      if (status === 'normal') status = 'reviewed';
+    }
+
     const hasReview = Boolean(
       row.note_status || (row.note_catatan && String(row.note_catatan).trim())
     );
@@ -166,6 +193,8 @@ export async function GET(req) {
       flags,
       reviewed_status: reviewedStatus,
       has_review: hasReview ? 1 : 0,
+      note_manual_hours: manualHours || null,
+      note_manual_approved: manualApproved ? 1 : 0,
       durasi_menit: durationMinutes,
       durasi_label: durationMinutes
         ? `${Math.floor(durationMinutes / 60)}j ${durationMinutes % 60}m`
@@ -183,12 +212,47 @@ export async function POST(req) {
   if (!auth.is_admin && !auth.is_leader) {
     return forbiddenResponse('Only admins and group leaders can add notes.');
   }
-  const { pin, tanggal, status, catatan } = await req.json();
-  await pool.query(
-    `INSERT INTO tb_attendance_note (pin, tanggal, status, catatan, updated_by)
-     VALUES (?, ?, ?, ?, ?)
-     ON DUPLICATE KEY UPDATE status = VALUES(status), catatan = VALUES(catatan), updated_by = VALUES(updated_by)`,
-    [pin, tanggal, status, catatan, auth.pin]
-  );
+  const { pin, tanggal, status, catatan, manual_hours, manual_approved } = await req.json();
+  const hasManualHours = await hasAttendanceNoteColumn('manual_hours');
+  const hasManualApproved = await hasAttendanceNoteColumn('is_manual_approved');
+
+  if (hasManualHours || hasManualApproved) {
+    await pool.query(
+      `INSERT INTO tb_attendance_note (
+        pin, tanggal, status, catatan, updated_by,
+        ${hasManualHours ? 'manual_hours,' : ''}
+        ${hasManualApproved ? 'is_manual_approved,' : ''}
+        updated_at
+      ) VALUES (
+        ?, ?, ?, ?, ?,
+        ${hasManualHours ? '?,' : ''}
+        ${hasManualApproved ? '?,' : ''}
+        NOW()
+      )
+      ON DUPLICATE KEY UPDATE
+        status = VALUES(status),
+        catatan = VALUES(catatan),
+        updated_by = VALUES(updated_by),
+        ${hasManualHours ? 'manual_hours = VALUES(manual_hours),' : ''}
+        ${hasManualApproved ? 'is_manual_approved = VALUES(is_manual_approved),' : ''}
+        updated_at = NOW()`,
+      [
+        pin,
+        tanggal,
+        status,
+        catatan,
+        auth.pin,
+        ...(hasManualHours ? [manual_hours || null] : []),
+        ...(hasManualApproved ? [manual_approved ? 1 : 0] : []),
+      ]
+    );
+  } else {
+    await pool.query(
+      `INSERT INTO tb_attendance_note (pin, tanggal, status, catatan, updated_by)
+       VALUES (?, ?, ?, ?, ?)
+       ON DUPLICATE KEY UPDATE status = VALUES(status), catatan = VALUES(catatan), updated_by = VALUES(updated_by)`,
+      [pin, tanggal, status, catatan, auth.pin]
+    );
+  }
   return NextResponse.json({ ok: true });
 }

@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Download } from 'lucide-react';
+import { Download, FileSpreadsheet, Printer } from 'lucide-react';
 import AttendanceFilters from '@/components/attendance/attendance-filters';
 import AttendanceTable from '@/components/attendance/attendance-table';
 import NoteModal from '@/components/attendance/note-modal';
@@ -42,6 +42,12 @@ export default function AttendancePage() {
   const [loading, setLoading] = useState(false);
   const [rawLoading, setRawLoading] = useState(false);
   const [editing, setEditing] = useState(null);
+  const [employeeFilter, setEmployeeFilter] = useState('');
+  const [incompleteOnly, setIncompleteOnly] = useState(false);
+  const [summaryPage, setSummaryPage] = useState(1);
+  const [rawPage, setRawPage] = useState(1);
+  const [dashboardPage, setDashboardPage] = useState(1);
+  const [rowsPerPage, setRowsPerPage] = useState(20);
 
   // Fetch user role on mount
   useEffect(() => {
@@ -138,7 +144,7 @@ export default function AttendancePage() {
 
   const exportCsv = () => {
     const isRawTab = activeTab === 'raw';
-    const csv = isRawTab ? rawScanlogCsv(rawRows) : attendanceCsv(rows);
+    const csv = isRawTab ? rawScanlogCsv(filteredRawRows) : attendanceCsv(filteredSummaryRows);
     const blob = new Blob([csv], { type: 'text/csv' });
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
@@ -146,7 +152,7 @@ export default function AttendancePage() {
     link.click();
   };
 
-  const saveNote = async ({ status, catatan }) => {
+  const saveNote = async ({ status, catatan, manual_hours, manual_approved }) => {
     if (!editing) return false;
     const dateValue = String(editing.scan_date ?? '');
     const normalizedDate = dateValue.includes('T') ? dateValue.slice(0, 10) : dateValue;
@@ -160,6 +166,8 @@ export default function AttendancePage() {
           tanggal: normalizedDate,
           status,
           catatan,
+          manual_hours,
+          manual_approved,
         }),
       });
       await load();
@@ -172,6 +180,174 @@ export default function AttendancePage() {
 
   const lateData = useMemo(() => lateChartData(rows).slice(0, 12), [rows]);
   const maxLate = lateData.length ? Math.max(...lateData.map((item) => item.lateCount), 1) : 1;
+
+  const employeeOptions = useMemo(() => {
+    const map = new Map();
+    rows.forEach((row) => {
+      const id = row.karyawan_id ? `emp-${row.karyawan_id}` : `pin-${row.pin}`;
+      if (map.has(id)) return;
+      map.set(id, {
+        id,
+        name: row.nama || `PIN ${row.pin}`,
+      });
+    });
+    return [...map.values()].sort((a, b) => a.name.localeCompare(b.name));
+  }, [rows]);
+
+  const filteredSummaryRows = useMemo(() => {
+    return rows.filter((row) => {
+      if (employeeFilter) {
+        if (
+          employeeFilter.startsWith('emp-') &&
+          String(row.karyawan_id) !== employeeFilter.slice(4)
+        ) {
+          return false;
+        }
+        if (employeeFilter.startsWith('pin-') && String(row.pin) !== employeeFilter.slice(4)) {
+          return false;
+        }
+      }
+
+      if (!incompleteOnly) return true;
+      const status = String(row.computed_status || '').toLowerCase();
+      return status !== 'normal' && status !== 'reviewed';
+    });
+  }, [rows, employeeFilter, incompleteOnly]);
+
+  const filteredRawRows = useMemo(() => {
+    return rawRows.filter((row) => {
+      if (!employeeFilter) return true;
+      if (employeeFilter.startsWith('emp-')) {
+        return String(row.karyawan_id || '') === employeeFilter.slice(4);
+      }
+      return String(row.pin || '') === employeeFilter.slice(4);
+    });
+  }, [rawRows, employeeFilter]);
+
+  const filteredLateData = useMemo(() => {
+    if (!employeeFilter) return lateData;
+    if (employeeFilter.startsWith('emp-')) {
+      const target = employeeFilter.slice(4);
+      return lateData.filter((item) => String(item.karyawan_id || '') === target);
+    }
+    const pin = employeeFilter.slice(4);
+    return lateData.filter((item) => String(item.pin || '') === pin);
+  }, [lateData, employeeFilter]);
+
+  const pageMeta = (total) => {
+    const pages = Math.max(1, Math.ceil(total / rowsPerPage));
+    return { pages, total };
+  };
+
+  const summaryMeta = pageMeta(filteredSummaryRows.length);
+  const rawMeta = pageMeta(filteredRawRows.length);
+  const dashboardMeta = pageMeta(filteredLateData.length);
+
+  const pagedSummaryRows = filteredSummaryRows.slice(
+    (summaryPage - 1) * rowsPerPage,
+    summaryPage * rowsPerPage
+  );
+  const pagedRawRows = filteredRawRows.slice((rawPage - 1) * rowsPerPage, rawPage * rowsPerPage);
+  const pagedLateData = filteredLateData.slice(
+    (dashboardPage - 1) * rowsPerPage,
+    dashboardPage * rowsPerPage
+  );
+
+  const exportExcel = async () => {
+    const XLSX = await import('xlsx');
+    const isRawTab = activeTab === 'raw';
+    const records = isRawTab ? filteredRawRows : filteredSummaryRows;
+    const worksheet = XLSX.utils.json_to_sheet(records);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, isRawTab ? 'Raw Scanlog' : 'Attendance');
+    XLSX.writeFile(
+      workbook,
+      isRawTab ? `raw_scanlog_${from}_${to}.xlsx` : `absensi_${from}_${to}.xlsx`
+    );
+  };
+
+  const printCurrentTab = () => {
+    const isRawTab = activeTab === 'raw';
+    const records = isRawTab ? filteredRawRows : filteredSummaryRows;
+    const headers = records.length ? Object.keys(records[0]) : [];
+    const rowsHtml = records
+      .slice(0, 1000)
+      .map(
+        (row) => `<tr>${headers.map((key) => `<td>${String(row[key] ?? '-')}</td>`).join('')}</tr>`
+      )
+      .join('');
+
+    const html = `<!doctype html><html><head><meta charset="utf-8"/><title>Attendance Print</title><style>
+      body { font-family: Arial, sans-serif; padding: 16px; }
+      table { border-collapse: collapse; width: 100%; font-size: 11px; }
+      th, td { border: 1px solid #ddd; padding: 6px; text-align: left; }
+      th { background: #f1f5f9; }
+    </style></head><body>
+      <h2>${isRawTab ? 'Raw Scanlog' : 'Daily Attendance'} (${from} to ${to})</h2>
+      <table><thead><tr>${headers.map((key) => `<th>${key}</th>`).join('')}</tr></thead><tbody>${rowsHtml}</tbody></table>
+    </body></html>`;
+
+    const popup = window.open('', '_blank', 'width=1200,height=900');
+    if (!popup) return;
+    popup.document.write(html);
+    popup.document.close();
+    popup.focus();
+    popup.print();
+  };
+
+  const resetPages = () => {
+    setSummaryPage(1);
+    setRawPage(1);
+    setDashboardPage(1);
+  };
+
+  const renderPager = (page, setPage, meta) => (
+    <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-800 px-4 py-3 text-xs text-slate-400">
+      <div>
+        Showing {(page - 1) * rowsPerPage + 1}-{Math.min(page * rowsPerPage, meta.total)} of{' '}
+        {meta.total}
+      </div>
+      <div className="flex items-center gap-2">
+        <label htmlFor="attendance-rows" className="text-slate-500">
+          Rows
+        </label>
+        <select
+          id="attendance-rows"
+          value={rowsPerPage}
+          onChange={(event) => {
+            setRowsPerPage(Number(event.target.value));
+            resetPages();
+          }}
+          className="rounded border border-slate-700 bg-slate-950 px-2 py-1 text-slate-200"
+        >
+          {[10, 20, 30, 50, 100].map((size) => (
+            <option key={size} value={size}>
+              {size}
+            </option>
+          ))}
+        </select>
+        <button
+          type="button"
+          onClick={() => setPage((prev) => Math.max(1, prev - 1))}
+          disabled={page <= 1}
+          className="rounded border border-slate-700 px-2 py-1 text-slate-200 disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          Previous
+        </button>
+        <span className="font-mono text-slate-300">
+          {page}/{meta.pages}
+        </span>
+        <button
+          type="button"
+          onClick={() => setPage((prev) => Math.min(meta.pages, prev + 1))}
+          disabled={page >= meta.pages}
+          className="rounded border border-slate-700 px-2 py-1 text-slate-200 disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          Next
+        </button>
+      </div>
+    </div>
+  );
 
   return (
     <div className="max-w-7xl space-y-6">
@@ -192,10 +368,24 @@ export default function AttendancePage() {
           </Link>
           <button
             type="button"
+            onClick={exportExcel}
+            className="flex items-center gap-2 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-2.5 text-sm text-emerald-300 transition-colors hover:bg-emerald-500/20"
+          >
+            <FileSpreadsheet className="h-4 w-4" /> Export Excel
+          </button>
+          <button
+            type="button"
             onClick={exportCsv}
             className="flex items-center gap-2 rounded-xl border border-teal-500/30 bg-teal-500/10 px-4 py-2.5 text-sm text-teal-400 transition-colors hover:bg-teal-500/20"
           >
             <Download className="h-4 w-4" /> Export CSV
+          </button>
+          <button
+            type="button"
+            onClick={printCurrentTab}
+            className="flex items-center gap-2 rounded-xl border border-slate-700 bg-slate-900 px-4 py-2.5 text-sm text-slate-300 transition-colors hover:border-slate-500 hover:text-white"
+          >
+            <Printer className="h-4 w-4" /> Print / PDF
           </button>
         </div>
       </div>
@@ -203,14 +393,37 @@ export default function AttendancePage() {
       <AttendanceFilters
         from={from}
         to={to}
-        count={activeTab === 'raw' ? rawRows.length : rows.length}
-        anomalyCount={countAnomalies(rows)}
+        count={activeTab === 'raw' ? filteredRawRows.length : filteredSummaryRows.length}
+        anomalyCount={countAnomalies(filteredSummaryRows)}
         groupId={groupId}
         groups={groups}
-        onFromChange={setFrom}
-        onToChange={setTo}
-        onGroupChange={setGroupId}
-        onSetRange={setRange}
+        employeeId={employeeFilter}
+        employees={employeeOptions}
+        incompleteOnly={incompleteOnly}
+        onFromChange={(value) => {
+          setFrom(value);
+          resetPages();
+        }}
+        onToChange={(value) => {
+          setTo(value);
+          resetPages();
+        }}
+        onGroupChange={(value) => {
+          setGroupId(value);
+          resetPages();
+        }}
+        onEmployeeChange={(value) => {
+          setEmployeeFilter(value);
+          resetPages();
+        }}
+        onIncompleteOnlyChange={(checked) => {
+          setIncompleteOnly(checked);
+          resetPages();
+        }}
+        onSetRange={(unit) => {
+          setRange(unit);
+          resetPages();
+        }}
       />
 
       <div className="flex flex-wrap gap-2 rounded-xl border border-slate-800 bg-slate-900 p-2">
@@ -218,7 +431,10 @@ export default function AttendancePage() {
           <button
             key={tab.key}
             type="button"
-            onClick={() => setActiveTab(tab.key)}
+            onClick={() => {
+              setActiveTab(tab.key);
+              resetPages();
+            }}
             className={`rounded-lg px-3 py-2 text-xs font-medium transition-colors ${
               activeTab === tab.key
                 ? 'bg-teal-500 text-slate-900'
@@ -231,79 +447,93 @@ export default function AttendancePage() {
       </div>
 
       {activeTab === 'summary' && (
-        <AttendanceTable loading={loading} rows={rows} onEdit={canEditNotes ? setEditing : null} />
+        <div className="overflow-hidden rounded-xl border border-slate-800 bg-slate-900">
+          <AttendanceTable
+            loading={loading}
+            rows={pagedSummaryRows}
+            onEdit={canEditNotes ? setEditing : null}
+          />
+          {renderPager(summaryPage, setSummaryPage, summaryMeta)}
+        </div>
       )}
 
       {activeTab === 'raw' && (
-        <TableShell>
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-slate-800 text-left">
-                <th className="px-4 py-3 text-xs uppercase tracking-wide text-slate-500">
-                  Tanggal
-                </th>
-                <th className="px-4 py-3 text-xs uppercase tracking-wide text-slate-500">Jam</th>
-                <th className="px-4 py-3 text-xs uppercase tracking-wide text-slate-500">PIN</th>
-                <th className="px-4 py-3 text-xs uppercase tracking-wide text-slate-500">
-                  Employee Fullname
-                </th>
-                <th className="px-4 py-3 text-xs uppercase tracking-wide text-slate-500">Group</th>
-                <th className="px-4 py-3 text-xs uppercase tracking-wide text-slate-500">Review</th>
-                <th className="px-4 py-3 text-xs uppercase tracking-wide text-slate-500">
-                  Verify / IO / Workcode
-                </th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-800/40">
-              {rawLoading ? (
-                <TableLoadingRow colSpan={7} />
-              ) : rawRows.length === 0 ? (
-                <TableEmptyRow colSpan={7} label="No raw scanlog rows in range" />
-              ) : (
-                rawRows.map((row) => (
-                  <tr
-                    key={`${row.pin}-${row.scan_date}-${row.scan_time}-${row.verifymode}-${row.iomode}-${row.workcode}`}
-                  >
-                    <td className="px-4 py-3 font-mono text-xs text-slate-400">
-                      {String(row.scan_date).slice(0, 10)}
-                    </td>
-                    <td className="px-4 py-3 font-mono text-xs text-teal-300">
-                      {String(row.scan_time).slice(0, 8)}
-                    </td>
-                    <td className="px-4 py-3 font-mono text-xs text-slate-300">{row.pin}</td>
-                    <td className="px-4 py-3 text-white">
-                      {row.karyawan_id ? (
-                        <Link
-                          href={`/employees/${row.karyawan_id}`}
-                          className="hover:text-teal-300"
-                        >
-                          {row.nama}
-                        </Link>
-                      ) : (
-                        row.nama
-                      )}
-                    </td>
-                    <td className="px-4 py-3 text-xs text-slate-500">{row.nama_group || '-'}</td>
-                    <td className="px-4 py-3">
-                      {row.reviewed_status === 'reviewed' ? (
-                        <span className="inline-flex rounded border border-emerald-500/20 bg-emerald-500/10 px-2 py-0.5 text-xs text-emerald-300">
-                          Reviewed
-                        </span>
-                      ) : (
-                        <span className="inline-flex rounded border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-xs text-amber-300">
-                          Pending
-                        </span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3 font-mono text-xs text-slate-500">
-                      {row.verifymode}/{row.iomode}/{row.workcode}
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </TableShell>
+        <div className="overflow-hidden rounded-xl border border-slate-800 bg-slate-900">
+          <TableShell>
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-slate-800 text-left">
+                  <th className="px-4 py-3 text-xs uppercase tracking-wide text-slate-500">
+                    Tanggal
+                  </th>
+                  <th className="px-4 py-3 text-xs uppercase tracking-wide text-slate-500">Jam</th>
+                  <th className="px-4 py-3 text-xs uppercase tracking-wide text-slate-500">PIN</th>
+                  <th className="px-4 py-3 text-xs uppercase tracking-wide text-slate-500">
+                    Employee Fullname
+                  </th>
+                  <th className="px-4 py-3 text-xs uppercase tracking-wide text-slate-500">
+                    Group
+                  </th>
+                  <th className="px-4 py-3 text-xs uppercase tracking-wide text-slate-500">
+                    Review
+                  </th>
+                  <th className="px-4 py-3 text-xs uppercase tracking-wide text-slate-500">
+                    Verify / IO / Workcode
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-800/40">
+                {rawLoading ? (
+                  <TableLoadingRow colSpan={7} />
+                ) : filteredRawRows.length === 0 ? (
+                  <TableEmptyRow colSpan={7} label="No raw scanlog rows in range" />
+                ) : (
+                  pagedRawRows.map((row) => (
+                    <tr
+                      key={`${row.pin}-${row.scan_date}-${row.scan_time}-${row.verifymode}-${row.iomode}-${row.workcode}`}
+                    >
+                      <td className="px-4 py-3 font-mono text-xs text-slate-400">
+                        {String(row.scan_date).slice(0, 10)}
+                      </td>
+                      <td className="px-4 py-3 font-mono text-xs text-teal-300">
+                        {String(row.scan_time).slice(0, 8)}
+                      </td>
+                      <td className="px-4 py-3 font-mono text-xs text-slate-300">{row.pin}</td>
+                      <td className="px-4 py-3 text-white">
+                        {row.karyawan_id ? (
+                          <Link
+                            href={`/employees/${row.karyawan_id}`}
+                            className="hover:text-teal-300"
+                          >
+                            {row.nama}
+                          </Link>
+                        ) : (
+                          row.nama
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-xs text-slate-500">{row.nama_group || '-'}</td>
+                      <td className="px-4 py-3">
+                        {row.reviewed_status === 'reviewed' ? (
+                          <span className="inline-flex rounded border border-emerald-500/20 bg-emerald-500/10 px-2 py-0.5 text-xs text-emerald-300">
+                            Reviewed
+                          </span>
+                        ) : (
+                          <span className="inline-flex rounded border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-xs text-amber-300">
+                            Pending
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 font-mono text-xs text-slate-500">
+                        {row.verifymode}/{row.iomode}/{row.workcode}
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </TableShell>
+          {renderPager(rawPage, setRawPage, rawMeta)}
+        </div>
       )}
 
       {activeTab === 'dashboard' && (
@@ -313,10 +543,10 @@ export default function AttendancePage() {
               How Many Times Employee Is Late (Top 12)
             </h2>
             <div className="mt-4 space-y-2">
-              {lateData.length === 0 ? (
+              {filteredLateData.length === 0 ? (
                 <p className="text-xs text-slate-500">No attendance rows in selected range.</p>
               ) : (
-                lateData.map((item) => (
+                pagedLateData.map((item) => (
                   <div key={`${item.pin}-${item.nama}`} className="space-y-1">
                     <div className="flex items-center justify-between text-xs">
                       <span className="text-slate-300">
@@ -375,7 +605,7 @@ export default function AttendancePage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-800/40">
-                {lateData.map((item) => (
+                {pagedLateData.map((item) => (
                   <tr key={`dashboard-${item.pin}-${item.nama}`}>
                     <td className="px-4 py-2 text-white">
                       {item.karyawan_id ? (
@@ -401,6 +631,7 @@ export default function AttendancePage() {
               </tbody>
             </table>
           </TableShell>
+          {renderPager(dashboardPage, setDashboardPage, dashboardMeta)}
         </div>
       )}
 

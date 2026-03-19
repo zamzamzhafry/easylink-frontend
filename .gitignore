@@ -6,3 +6,4 @@ node_modules/
 !auth_group_shift_revision.sql
 *.tsbuildinfo
 .sysyphus/
+.docs/

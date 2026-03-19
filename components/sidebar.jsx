@@ -1,11 +1,13 @@
 'use client';
 
 import Link from 'next/link';
+import { useMemo, useState } from 'react';
 import { usePathname } from 'next/navigation';
 import {
   BarChart3,
   CalendarClock,
   CalendarRange,
+  ChevronDown,
   Crown,
   DatabaseZap,
   Fingerprint,
@@ -23,16 +25,38 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
-const nav = [
-  { href: '/', label: 'Dashboard', icon: LayoutDashboard, auth: 'all' },
-  { href: '/schedule', label: 'Schedule', icon: CalendarRange, auth: 'schedule' },
-  { href: '/performance', label: 'Performance', icon: BarChart3, auth: 'dashboard' },
-  { href: '/attendance', label: 'Absensi', icon: CalendarClock, auth: 'member' },
-  { href: '/employees', label: 'Employees', icon: Users, auth: 'admin' },
-  { href: '/groups', label: 'Groups', icon: LayersIcon, auth: 'admin' },
-  { href: '/shifts', label: 'Shift Maker', icon: Timer, auth: 'admin' },
-  { href: '/users', label: 'Users', icon: UserCog, auth: 'admin' },
-  { href: '/scanlog', label: 'Scan Log', icon: DatabaseZap, auth: 'admin' },
+const navSections = [
+  {
+    key: 'overview',
+    label: 'Overview',
+    items: [{ href: '/', label: 'Dashboard', icon: LayoutDashboard, auth: 'all' }],
+  },
+  {
+    key: 'planning',
+    label: 'Planning & Attendance',
+    items: [
+      { href: '/schedule', label: 'Schedule', icon: CalendarRange, auth: 'schedule' },
+      { href: '/attendance', label: 'Absensi', icon: CalendarClock, auth: 'member' },
+      {
+        href: '/attendance/review',
+        label: 'Attendance Review',
+        icon: CalendarClock,
+        auth: 'member',
+      },
+      { href: '/performance', label: 'Performance', icon: BarChart3, auth: 'dashboard' },
+    ],
+  },
+  {
+    key: 'master',
+    label: 'Master Data',
+    items: [
+      { href: '/employees', label: 'Employees', icon: Users, auth: 'admin' },
+      { href: '/groups', label: 'Groups', icon: LayersIcon, auth: 'admin' },
+      { href: '/shifts', label: 'Shift Maker', icon: Timer, auth: 'admin' },
+      { href: '/users', label: 'Users', icon: UserCog, auth: 'admin' },
+      { href: '/scanlog', label: 'Scan Log', icon: DatabaseZap, auth: 'admin' },
+    ],
+  },
 ];
 
 function canSeeNav(user, authType) {
@@ -56,7 +80,20 @@ export default function Sidebar({
   onThemeToggle,
 }) {
   const path = usePathname();
-  const visibleNav = nav.filter((item) => canSeeNav(currentUser, item.auth));
+  const [openSections, setOpenSections] = useState({
+    overview: true,
+    planning: true,
+    master: true,
+  });
+
+  const visibleSections = useMemo(() => {
+    return navSections
+      .map((section) => ({
+        ...section,
+        items: section.items.filter((item) => canSeeNav(currentUser, item.auth)),
+      }))
+      .filter((section) => section.items.length > 0);
+  }, [currentUser]);
 
   const logout = async () => {
     try {
@@ -105,29 +142,80 @@ export default function Sidebar({
         {collapsed && <Fingerprint className="ml-2 h-5 w-5 text-teal-400" />}
       </div>
 
-      <nav className="flex-1 space-y-1 px-2 py-4 overflow-y-auto">
-        {visibleNav.map(({ href, label, icon: Icon }) => {
-          const navHref =
-            href === '/attendance' && currentUser && !currentUser.is_admin
-              ? '/attendance/review'
-              : href;
-          const active = path === navHref || (navHref !== '/' && path.startsWith(navHref));
+      <nav className="flex-1 space-y-2 overflow-y-auto px-2 py-4">
+        {visibleSections.map((section) => {
+          if (collapsed) {
+            return section.items.map(({ href, label, icon: Icon }) => {
+              const active = path === href || (href !== '/' && path.startsWith(href));
+              return (
+                <Link
+                  key={href}
+                  href={href}
+                  title={label}
+                  className={cn(
+                    'flex items-center justify-center rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-150',
+                    active
+                      ? 'border border-teal-500/20 bg-teal-500/15 text-teal-400'
+                      : 'text-slate-400 hover:bg-slate-800 hover:text-slate-100'
+                  )}
+                >
+                  <Icon className="h-4 w-4 shrink-0" />
+                </Link>
+              );
+            });
+          }
+
+          const sectionActive = section.items.some(
+            (item) => path === item.href || (item.href !== '/' && path.startsWith(item.href))
+          );
+
           return (
-            <Link
-              key={href}
-              href={navHref}
-              title={label}
-              className={cn(
-                'flex items-center rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-150',
-                collapsed ? 'justify-center' : 'gap-3',
-                active
-                  ? 'border border-teal-500/20 bg-teal-500/15 text-teal-400'
-                  : 'text-slate-400 hover:bg-slate-800 hover:text-slate-100'
+            <div key={section.key} className="rounded-xl border border-slate-800 bg-slate-950/60">
+              <button
+                type="button"
+                onClick={() =>
+                  setOpenSections((prev) => ({
+                    ...prev,
+                    [section.key]: !prev[section.key],
+                  }))
+                }
+                className={cn(
+                  'flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide transition-colors',
+                  sectionActive ? 'text-teal-300' : 'text-slate-400 hover:text-slate-200'
+                )}
+              >
+                <span>{section.label}</span>
+                <ChevronDown
+                  className={cn(
+                    'h-3.5 w-3.5 transition-transform',
+                    openSections[section.key] ? 'rotate-180' : 'rotate-0'
+                  )}
+                />
+              </button>
+              {openSections[section.key] && (
+                <div className="space-y-1 px-2 pb-2">
+                  {section.items.map(({ href, label, icon: Icon }) => {
+                    const active = path === href || (href !== '/' && path.startsWith(href));
+                    return (
+                      <Link
+                        key={href}
+                        href={href}
+                        title={label}
+                        className={cn(
+                          'flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all duration-150',
+                          active
+                            ? 'border border-teal-500/20 bg-teal-500/15 text-teal-400'
+                            : 'text-slate-400 hover:bg-slate-800 hover:text-slate-100'
+                        )}
+                      >
+                        <Icon className="h-4 w-4 shrink-0" />
+                        {label}
+                      </Link>
+                    );
+                  })}
+                </div>
               )}
-            >
-              <Icon className="h-4 w-4 shrink-0" />
-              {!collapsed && label}
-            </Link>
+            </div>
           );
         })}
       </nav>

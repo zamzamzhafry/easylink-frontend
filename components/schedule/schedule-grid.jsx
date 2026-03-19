@@ -16,7 +16,9 @@ function ShiftPicker({ schedule, shifts, fontScale, anomalyStatus, onSetShift, r
   const [open, setOpen] = useState(false);
   const wrapperRef = useRef(null);
   const selectedLabel = schedule?.nama_shift || 'Not Assigned';
-  const selectedClass = schedule ? shiftClassName(schedule.nama_shift) : 'border-slate-700 text-slate-400';
+  const selectedClass = schedule
+    ? shiftClassName(schedule.nama_shift)
+    : 'border-slate-700 text-slate-400';
   const selectedStyle = schedule ? shiftBadgeInlineStyle(schedule) : null;
   const SelectedIcon = schedule ? getShiftIcon(schedule) : Circle;
   const anomalyClass =
@@ -119,6 +121,8 @@ export default function ScheduleGrid({
   getShift,
   metricsByEmployee,
   anomalyByKey,
+  holidayMap,
+  selectedGroupLabel,
   zoomPercent = 100,
   onSetShift,
   readOnly = false,
@@ -130,9 +134,24 @@ export default function ScheduleGrid({
   const dayColWidth = Math.round(100 * (clampedZoom / 100));
   const fontScale = clampedZoom / 100;
   const tableMinWidth = Math.max(1100, employeeColWidth + dayColWidth * dates.length);
+  const tableRef = useRef(null);
+
+  useEffect(() => {
+    const holder = tableRef.current;
+    if (!holder || !dates.length) return;
+    const todayIndex = dates.findIndex((date) => formatIsoDate(date) === today);
+    if (todayIndex < 0) return;
+
+    const scrollTarget = employeeColWidth + todayIndex * dayColWidth - holder.clientWidth * 0.35;
+    holder.scrollLeft = Math.max(0, scrollTarget);
+  }, [dates, dayColWidth, today]);
 
   return (
-    <TableShell innerClassName="overflow-x-auto">
+    <TableShell innerClassName="overflow-x-auto" bodyRef={tableRef}>
+      <div className="border-b border-slate-800 px-4 py-3 text-xs text-slate-300">
+        <span className="font-semibold text-white">Selected Group:</span>{' '}
+        <span className="text-teal-300">{selectedGroupLabel || 'All Groups'}</span>
+      </div>
       <table className="w-full text-sm" style={{ minWidth: `${tableMinWidth}px` }}>
         <thead className="sticky top-0 z-30 bg-slate-900">
           <tr className="border-b border-slate-800">
@@ -145,18 +164,37 @@ export default function ScheduleGrid({
             {dates.map((date) => {
               const iso = formatIsoDate(date);
               const isToday = iso === today;
+              const day = new Date(iso).getDay();
+              const isSunday = day === 0;
+              const isFriday = day === 5;
+              const holiday = holidayMap?.[iso] || null;
               return (
                 <th
                   key={iso}
                   className={`px-2 py-3 text-center text-xs font-medium ${
-                    isToday ? 'text-teal-400' : 'text-slate-500'
+                    holiday
+                      ? 'bg-rose-500/10 text-rose-300'
+                      : isSunday
+                        ? 'bg-rose-500/5 text-rose-300'
+                        : isFriday
+                          ? 'bg-emerald-500/10 text-emerald-300'
+                          : isToday
+                            ? 'bg-cyan-500/10 text-cyan-300'
+                            : 'text-slate-500'
                   }`}
                   style={{ width: `${dayColWidth}px`, minWidth: `${dayColWidth}px` }}
                 >
                   <div>{dayLabel(date)}</div>
-                  <div className={`mt-0.5 font-mono text-base ${isToday ? 'text-teal-400' : 'text-slate-300'}`}>
+                  <div
+                    className={`mt-0.5 font-mono text-base ${isToday ? 'text-cyan-300' : 'text-slate-300'}`}
+                  >
                     {date.getDate()}
                   </div>
+                  {holiday && (
+                    <div className="mt-1 line-clamp-2 text-[10px] font-normal text-rose-200">
+                      {holiday.name}
+                    </div>
+                  )}
                 </th>
               );
             })}
@@ -187,10 +225,14 @@ export default function ScheduleGrid({
                     >
                       {employee.nama}
                     </Link>
-                    <div className="font-mono text-xs text-slate-600">PIN {employee.pin || '-'}</div>
-                    <div className="mt-1 text-[11px] text-slate-500">
-                      Shifted: {metrics.shifted_days}d | Done: {metrics.done_hours.toFixed(1)}h | Pending:{' '}
-                      {metrics.pending_hours.toFixed(1)}h | Future: {metrics.future_hours.toFixed(1)}h
+                    <div className="font-mono text-xs text-slate-600">
+                      PIN {employee.pin || '-'}
+                    </div>
+                    <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] text-slate-500">
+                      <span>Shifted: {metrics.shifted_days}d</span>
+                      <span>Done: {metrics.done_hours.toFixed(1)}h</span>
+                      <span>Pending: {metrics.pending_hours.toFixed(1)}h</span>
+                      <span>Future: {metrics.future_hours.toFixed(1)}h</span>
                     </div>
                     {employee.nama_group && (
                       <div className="mt-0.5 text-xs text-teal-500/70">{employee.nama_group}</div>
@@ -201,12 +243,35 @@ export default function ScheduleGrid({
                     const dateString = formatIsoDate(date);
                     const schedule = getShift(employee.id, dateString);
                     const isToday = dateString === today;
+                    const weekday = new Date(dateString).getDay();
+                    const isSunday = weekday === 0;
+                    const isFriday = weekday === 5;
+                    const holiday = holidayMap?.[dateString] || null;
+                    const isPaidLeave =
+                      String(schedule?.nama_shift || '')
+                        .toLowerCase()
+                        .includes('cuti') ||
+                      String(schedule?.nama_shift || '')
+                        .toLowerCase()
+                        .includes('libur');
                     const anomalyStatus = anomalyByKey?.get(`${employee.id}|${dateString}`) || null;
+
+                    const bgClass = holiday
+                      ? 'bg-rose-500/10'
+                      : isSunday
+                        ? 'bg-rose-500/5'
+                        : isFriday
+                          ? 'bg-emerald-500/5'
+                          : isPaidLeave
+                            ? 'bg-sky-500/5'
+                            : isToday
+                              ? 'bg-cyan-950/30'
+                              : '';
 
                     return (
                       <td
                         key={`${employee.id}-${dateString}`}
-                        className={`px-1.5 py-2 text-center ${isToday ? 'bg-teal-950/30' : ''}`}
+                        className={`px-1.5 py-2 text-center ${bgClass}`}
                       >
                         <ShiftPicker
                           schedule={schedule}

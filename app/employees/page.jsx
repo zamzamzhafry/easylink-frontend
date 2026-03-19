@@ -16,6 +16,11 @@ export default function EmployeesPage() {
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [sortKey, setSortKey] = useState('name');
+  const [sortDir, setSortDir] = useState('asc');
+  const [page, setPage] = useState(1);
+  const [rowsPerPage, setRowsPerPage] = useState(15);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -39,18 +44,50 @@ export default function EmployeesPage() {
 
   const filteredRows = useMemo(() => {
     const query = search.toLowerCase();
-    return rows.filter((employee) => {
-      return (
-        (employee.nama_karyawan ?? '').toLowerCase().includes(query) ||
-        (employee.nama_user ?? '').toLowerCase().includes(query) ||
-        (employee.pin ?? '').toLowerCase().includes(query) ||
-        (employee.nip ?? '').toLowerCase().includes(query)
-      );
-    });
-  }, [rows, search]);
+    return rows
+      .filter((employee) => {
+        const statusMatch =
+          statusFilter === 'all'
+            ? true
+            : statusFilter === 'active'
+              ? Boolean(employee.isActiveDuty)
+              : !Boolean(employee.isActiveDuty);
+        if (!statusMatch) return false;
+
+        return (
+          (employee.nama_karyawan ?? '').toLowerCase().includes(query) ||
+          (employee.nama_user ?? '').toLowerCase().includes(query) ||
+          (employee.pin ?? '').toLowerCase().includes(query) ||
+          (employee.nip ?? '').toLowerCase().includes(query)
+        );
+      })
+      .sort((a, b) => {
+        const getName = (item) => String(item.nama_karyawan || item.nama_user || '').toLowerCase();
+        const getPin = (item) => String(item.pin || '').toLowerCase();
+        const getNip = (item) => String(item.nip || '').toLowerCase();
+
+        const lhs = sortKey === 'pin' ? getPin(a) : sortKey === 'nip' ? getNip(a) : getName(a);
+        const rhs = sortKey === 'pin' ? getPin(b) : sortKey === 'nip' ? getNip(b) : getName(b);
+
+        if (lhs === rhs) return 0;
+        if (sortDir === 'asc') return lhs > rhs ? 1 : -1;
+        return lhs < rhs ? 1 : -1;
+      });
+  }, [rows, search, statusFilter, sortKey, sortDir]);
+
+  const pages = useMemo(
+    () => Math.max(1, Math.ceil(filteredRows.length / rowsPerPage)),
+    [filteredRows.length, rowsPerPage]
+  );
+  const pagedRows = useMemo(() => {
+    const start = (page - 1) * rowsPerPage;
+    return filteredRows.slice(start, start + rowsPerPage);
+  }, [filteredRows, page, rowsPerPage]);
 
   const unlinkedCount = useMemo(
-    () => rows.filter((employee) => !employee.nama_karyawan || employee.nama_karyawan.trim() === '').length,
+    () =>
+      rows.filter((employee) => !employee.nama_karyawan || employee.nama_karyawan.trim() === '')
+        .length,
     [rows]
   );
 
@@ -92,7 +129,10 @@ export default function EmployeesPage() {
     try {
       await requestJson(`/api/employees/${employee.id}`, { method: 'DELETE' });
       await load();
-      success(`Employee ${employee.nama_karyawan || employee.pin || employee.id} was deleted.`, 'Soft deleted');
+      success(
+        `Employee ${employee.nama_karyawan || employee.pin || employee.id} was deleted.`,
+        'Soft deleted'
+      );
     } catch (error) {
       warning(error.message || 'Failed to delete employee.', 'Unable to delete employee');
     }
@@ -102,7 +142,9 @@ export default function EmployeesPage() {
     <div className="max-w-6xl space-y-6">
       <div className="flex items-end justify-between">
         <div>
-          <p className="mb-1 text-xs font-mono uppercase tracking-widest text-teal-400">Management</p>
+          <p className="mb-1 text-xs font-mono uppercase tracking-widest text-teal-400">
+            Management
+          </p>
           <h1 className="text-3xl font-bold text-white">Employees</h1>
           <p className="mt-1 text-sm text-slate-400">
             Link device users (tb_user) to employee records (tb_karyawan)
@@ -139,19 +181,98 @@ export default function EmployeesPage() {
         </div>
       )}
 
-      <SearchInput
-        value={search}
-        onChange={setSearch}
-        placeholder="Search name, PIN, or NIP..."
-        className="w-full"
-      />
+      <div className="grid gap-3 rounded-xl border border-slate-800 bg-slate-900 p-3 md:grid-cols-4">
+        <SearchInput
+          value={search}
+          onChange={(value) => {
+            setSearch(value);
+            setPage(1);
+          }}
+          placeholder="Search name, PIN, or NIP..."
+          className="md:col-span-2"
+        />
+        <select
+          value={statusFilter}
+          onChange={(event) => {
+            setStatusFilter(event.target.value);
+            setPage(1);
+          }}
+          className="rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-white"
+        >
+          <option value="all">All duty status</option>
+          <option value="active">Active duty only</option>
+          <option value="inactive">Not active duty</option>
+        </select>
+        <div className="flex gap-2">
+          <select
+            value={sortKey}
+            onChange={(event) => {
+              setSortKey(event.target.value);
+              setPage(1);
+            }}
+            className="flex-1 rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-white"
+          >
+            <option value="name">Sort by name</option>
+            <option value="pin">Sort by PIN</option>
+            <option value="nip">Sort by NIP</option>
+          </select>
+          <button
+            type="button"
+            onClick={() => setSortDir((dir) => (dir === 'asc' ? 'desc' : 'asc'))}
+            className="rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-xs font-semibold text-slate-200"
+          >
+            {sortDir === 'asc' ? 'ASC' : 'DESC'}
+          </button>
+        </div>
+      </div>
 
       <EmployeesTable
         loading={loading}
-        rows={filteredRows}
+        rows={pagedRows}
         onEdit={setEditing}
         onDelete={deleteEmployee}
       />
+
+      <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-800 bg-slate-900 px-4 py-3 text-xs text-slate-400">
+        <div>
+          Showing {(page - 1) * rowsPerPage + 1}-{Math.min(page * rowsPerPage, filteredRows.length)}{' '}
+          of {filteredRows.length}
+        </div>
+        <div className="flex items-center gap-2">
+          <label htmlFor="employees-rows">Rows</label>
+          <select
+            id="employees-rows"
+            value={rowsPerPage}
+            onChange={(event) => setRowsPerPage(Number(event.target.value))}
+            className="rounded border border-slate-700 bg-slate-950 px-2 py-1 text-slate-200"
+          >
+            {[10, 15, 20, 30, 50].map((size) => (
+              <option key={size} value={size}>
+                {size}
+              </option>
+            ))}
+          </select>
+          <button
+            type="button"
+            onClick={() => setPage((p) => Math.max(1, p - 1))}
+            disabled={page <= 1}
+            className="rounded border border-slate-700 px-2 py-1 text-slate-200 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            Previous
+          </button>
+          <span className="font-mono text-slate-300">
+            {page}/{pages}
+          </span>
+          <button
+            type="button"
+            onClick={() => setPage((p) => Math.min(pages, p + 1))}
+            disabled={page >= pages}
+            className="rounded border border-slate-700 px-2 py-1 text-slate-200 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            Next
+          </button>
+        </div>
+      </div>
 
       {creating && (
         <EditEmployeeModal

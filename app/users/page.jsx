@@ -57,9 +57,9 @@ const EMPTY_FORM = { pin: '', nama: '', pwd: '', rfid: '', privilege: '0' };
 function Field({ label, required, children }) {
   return (
     <div>
-      <label className="mb-1 block text-xs font-medium text-slate-400">
+      <div className="mb-1 block text-xs font-medium text-slate-400">
         {label} {required && <span className="text-rose-400">*</span>}
-      </label>
+      </div>
       {children}
     </div>
   );
@@ -255,6 +255,8 @@ export default function UsersPage() {
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const [page, setPage] = useState(1);
+  const [rowsPerPage, setRowsPerPage] = useState(20);
 
   // modal: null | { mode: 'create'|'edit'|'password', user?: User }
   const [modal, setModal] = useState(null);
@@ -289,6 +291,15 @@ export default function UsersPage() {
         (u.rfid ?? '').toLowerCase().includes(q)
     );
   }, [users, search]);
+
+  const pages = useMemo(
+    () => Math.max(1, Math.ceil(filtered.length / rowsPerPage)),
+    [filtered.length, rowsPerPage]
+  );
+  const pagedUsers = useMemo(() => {
+    const start = (page - 1) * rowsPerPage;
+    return filtered.slice(start, start + rowsPerPage);
+  }, [filtered, page, rowsPerPage]);
 
   // ── save (create) ─────────────────────────────────────────────────────────────
   const handleCreate = async (payload) => {
@@ -353,7 +364,10 @@ export default function UsersPage() {
           {/* Search */}
           <SearchInput
             value={search}
-            onChange={setSearch}
+            onChange={(value) => {
+              setSearch(value);
+              setPage(1);
+            }}
             placeholder="Search PIN, name, or RFID..."
             className="w-64"
           />
@@ -382,7 +396,7 @@ export default function UsersPage() {
             ) : filtered.length === 0 ? (
               <TableEmptyRow colSpan={HEADERS.length} label="No users found" />
             ) : (
-              filtered.map((user) => {
+              pagedUsers.map((user) => {
                 const { label: roleLabel, cls: roleCls } = privilegeLabel(user.privilege);
                 return (
                   <tr key={user.pin} className="group hover:bg-slate-800/40">
@@ -467,7 +481,7 @@ export default function UsersPage() {
 
                     {/* Actions */}
                     <td className="px-4 py-3">
-                      <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+                      <div className="flex items-center gap-1 opacity-100">
                         <button
                           type="button"
                           onClick={() => setModal({ mode: 'edit', user })}
@@ -511,6 +525,50 @@ export default function UsersPage() {
           </tbody>
         </table>
       </TableShell>
+
+      <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-800 bg-slate-900 px-4 py-3 text-xs text-slate-400">
+        <div>
+          Showing {(page - 1) * rowsPerPage + 1}-{Math.min(page * rowsPerPage, filtered.length)} of{' '}
+          {filtered.length}
+        </div>
+        <div className="flex items-center gap-2">
+          <label htmlFor="users-rows">Rows</label>
+          <select
+            id="users-rows"
+            value={rowsPerPage}
+            onChange={(event) => {
+              setRowsPerPage(Number(event.target.value));
+              setPage(1);
+            }}
+            className="rounded border border-slate-700 bg-slate-950 px-2 py-1 text-slate-200"
+          >
+            {[10, 20, 30, 50, 100].map((size) => (
+              <option key={size} value={size}>
+                {size}
+              </option>
+            ))}
+          </select>
+          <button
+            type="button"
+            onClick={() => setPage((p) => Math.max(1, p - 1))}
+            disabled={page <= 1}
+            className="rounded border border-slate-700 px-2 py-1 text-slate-200 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            Previous
+          </button>
+          <span className="font-mono text-slate-300">
+            {page}/{pages}
+          </span>
+          <button
+            type="button"
+            onClick={() => setPage((p) => Math.min(pages, p + 1))}
+            disabled={page >= pages}
+            className="rounded border border-slate-700 px-2 py-1 text-slate-200 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            Next
+          </button>
+        </div>
+      </div>
 
       {/* Modal */}
       {modal && (

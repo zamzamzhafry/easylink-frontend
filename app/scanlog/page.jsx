@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import Link from 'next/link';
 import { ChevronLeft, ChevronRight, DatabaseZap, Download, RefreshCw } from 'lucide-react';
 import SearchInput from '@/components/ui/search-input';
 import { useToast } from '@/components/ui/toast-provider';
@@ -71,7 +72,7 @@ function IoLabel({ mode }) {
   const n = Number(mode ?? 0);
   const map = IO_LABELS[n];
   return (
-    <span className={cn('text-xs font-medium', map?.cls ?? 'text-slate-400')}>
+    <span className={cn('text-[11px] font-medium opacity-70', map?.cls ?? 'text-slate-500')}>
       {map?.label ?? String(n)}
     </span>
   );
@@ -83,7 +84,7 @@ const HEADERS = [
   { key: 'scan_time', label: 'Time', className: 'w-24' },
   { key: 'pin', label: 'PIN', className: 'w-28' },
   { key: 'verifymode', label: 'Verify', className: 'w-28' },
-  { key: 'iomode', label: 'IO Mode', className: 'w-28' },
+  { key: 'iomode', label: 'IO Tag', className: 'w-28' },
   { key: 'workcode', label: 'Work Code', className: 'w-24 text-right' },
   { key: 'sn', label: 'Device SN', className: 'min-w-[140px]' },
 ];
@@ -137,8 +138,7 @@ export default function ScanlogPage() {
 
   useEffect(() => {
     load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [load]);
 
   // ── apply / search ────────────────────────────────────────────────────────────
   const apply = () => {
@@ -197,7 +197,8 @@ export default function ScanlogPage() {
             Scan Log
           </h1>
           <p className="mt-0.5 text-xs text-slate-500">
-            Raw tb_scanlog — no employee data — {total.toLocaleString()} total records
+            Primary analysis should focus on time, date, PIN, and machine SN. IO mode is shown as
+            reference only.
           </p>
         </div>
 
@@ -226,13 +227,40 @@ export default function ScanlogPage() {
         </div>
       </div>
 
+      <div className="flex flex-wrap gap-2 rounded-xl border border-slate-800 bg-slate-900 p-3 text-xs">
+        <Link
+          href="/attendance"
+          className="rounded-lg border border-slate-700 px-3 py-1.5 text-slate-300 transition-colors hover:border-teal-500 hover:text-teal-300"
+        >
+          Attendance Summary
+        </Link>
+        <Link
+          href="/attendance/review"
+          className="rounded-lg border border-slate-700 px-3 py-1.5 text-slate-300 transition-colors hover:border-amber-500 hover:text-amber-300"
+        >
+          Attendance Review
+        </Link>
+        <Link
+          href="/schedule"
+          className="rounded-lg border border-slate-700 px-3 py-1.5 text-slate-300 transition-colors hover:border-violet-500 hover:text-violet-300"
+        >
+          Schedule Planner
+        </Link>
+      </div>
+
       {/* Filters */}
       <div className="rounded-xl border border-slate-800 bg-slate-900 p-4">
         <div className="flex flex-wrap items-end gap-3">
           {/* From */}
           <div>
-            <label className="mb-1 block text-[11px] font-medium text-slate-500">From</label>
+            <label
+              htmlFor="scanlog-from"
+              className="mb-1 block text-[11px] font-medium text-slate-500"
+            >
+              From
+            </label>
             <input
+              id="scanlog-from"
               type="date"
               value={from}
               onChange={(e) => setFrom(e.target.value)}
@@ -242,8 +270,14 @@ export default function ScanlogPage() {
 
           {/* To */}
           <div>
-            <label className="mb-1 block text-[11px] font-medium text-slate-500">To</label>
+            <label
+              htmlFor="scanlog-to"
+              className="mb-1 block text-[11px] font-medium text-slate-500"
+            >
+              To
+            </label>
             <input
+              id="scanlog-to"
               type="date"
               value={to}
               onChange={(e) => setTo(e.target.value)}
@@ -261,8 +295,14 @@ export default function ScanlogPage() {
 
           {/* Limit */}
           <div>
-            <label className="mb-1 block text-[11px] font-medium text-slate-500">Per page</label>
+            <label
+              htmlFor="scanlog-limit"
+              className="mb-1 block text-[11px] font-medium text-slate-500"
+            >
+              Per page
+            </label>
             <select
+              id="scanlog-limit"
               value={limit}
               onChange={(e) => setLimit(Number(e.target.value))}
               className="rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-white focus:border-teal-500 focus:outline-none"
@@ -327,9 +367,9 @@ export default function ScanlogPage() {
             ) : records.length === 0 ? (
               <TableEmptyRow colSpan={HEADERS.length} label="No scan records found" />
             ) : (
-              records.map((r, i) => (
+              records.map((r) => (
                 <tr
-                  key={`${r.pin}-${r.scan_date}-${r.scan_time}-${i}`}
+                  key={`${r.pin}-${r.scan_date}-${r.scan_time}-${r.verifymode}-${r.iomode}-${r.workcode}-${r.sn}`}
                   className="hover:bg-slate-800/40"
                 >
                   {/* Date */}
@@ -387,13 +427,13 @@ export default function ScanlogPage() {
           {Array.from({ length: pages }, (_, i) => i + 1)
             .filter((p) => p === 1 || p === pages || Math.abs(p - page) <= 2)
             .reduce((acc, p, idx, arr) => {
-              if (idx > 0 && arr[idx - 1] !== p - 1) acc.push('…');
+              if (idx > 0 && arr[idx - 1] !== p - 1) acc.push(`ellipsis-${arr[idx - 1]}-${p}`);
               acc.push(p);
               return acc;
             }, [])
-            .map((item, idx) =>
-              item === '…' ? (
-                <span key={`ellipsis-${idx}`} className="px-1 text-xs text-slate-600">
+            .map((item) =>
+              typeof item === 'string' && item.startsWith('ellipsis-') ? (
+                <span key={item} className="px-1 text-xs text-slate-600">
                   …
                 </span>
               ) : (
