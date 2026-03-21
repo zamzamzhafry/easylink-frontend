@@ -17,6 +17,7 @@ import {
   Moon,
   PanelLeftClose,
   PanelLeftOpen,
+  PlugZap,
   ShieldCheck,
   Sun,
   Timer,
@@ -55,6 +56,7 @@ const navSections = [
       { href: '/shifts', label: 'Shift Maker', icon: Timer, auth: 'admin' },
       { href: '/users', label: 'Users', icon: UserCog, auth: 'admin' },
       { href: '/scanlog', label: 'Scan Log', icon: DatabaseZap, auth: 'admin' },
+      { href: '/machine', label: 'Machine Connect', icon: PlugZap, auth: 'admin' },
     ],
   },
 ];
