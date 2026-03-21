@@ -1,0 +1,7 @@
+[
+  { "monthDay": "01-01", "name": "Tahun Baru Masehi", "is_cuti_bersama": false },
+  { "monthDay": "05-01", "name": "Hari Buruh Internasional", "is_cuti_bersama": false },
+  { "monthDay": "06-01", "name": "Hari Lahir Pancasila", "is_cuti_bersama": false },
+  { "monthDay": "08-17", "name": "Hari Kemerdekaan Republik Indonesia", "is_cuti_bersama": false },
+  { "monthDay": "12-25", "name": "Hari Raya Natal", "is_cuti_bersama": false }
+]

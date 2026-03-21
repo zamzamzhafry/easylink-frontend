@@ -1,0 +1,21 @@
+{
+  "scheduling": {
+    "enabled": false,
+    "source": "auto",
+    "intervalMinutes": 30,
+    "startTime": "06:00",
+    "endTime": "22:00",
+    "daysOfWeek": [1, 2, 3, 4, 5],
+    "pullMode": "new",
+    "retryOnFail": true,
+    "maxRetries": 3
+  },
+  "device": {
+    "sdkSource": "auto",
+    "windowsSdkIp": "192.168.1.111",
+    "windowsSdkPort": "8090",
+    "deviceIp": "192.168.1.200",
+    "devicePort": "5005",
+    "deviceSn": ""
+  }
+}

@@ -1,0 +1,26 @@
+[
+  { "date": "2026-01-01", "name": "Tahun Baru Masehi", "is_cuti_bersama": false },
+  { "date": "2026-01-29", "name": "Tahun Baru Imlek 2577 Kongzili", "is_cuti_bersama": false },
+  {
+    "date": "2026-03-19",
+    "name": "Hari Raya Nyepi Tahun Baru Saka 1948",
+    "is_cuti_bersama": false
+  },
+  { "date": "2026-03-20", "name": "Cuti Bersama Nyepi", "is_cuti_bersama": true },
+  { "date": "2026-03-22", "name": "Isra Mikraj Nabi Muhammad SAW", "is_cuti_bersama": false },
+  { "date": "2026-04-03", "name": "Wafat Isa Al Masih", "is_cuti_bersama": false },
+  { "date": "2026-04-12", "name": "Hari Raya Idulfitri 1447 Hijriah", "is_cuti_bersama": false },
+  { "date": "2026-04-13", "name": "Hari Raya Idulfitri 1447 Hijriah", "is_cuti_bersama": false },
+  { "date": "2026-04-14", "name": "Cuti Bersama Idulfitri", "is_cuti_bersama": true },
+  { "date": "2026-04-15", "name": "Cuti Bersama Idulfitri", "is_cuti_bersama": true },
+  { "date": "2026-05-01", "name": "Hari Buruh Internasional", "is_cuti_bersama": false },
+  { "date": "2026-05-14", "name": "Kenaikan Isa Al Masih", "is_cuti_bersama": false },
+  { "date": "2026-05-27", "name": "Hari Raya Waisak 2570 BE", "is_cuti_bersama": false },
+  { "date": "2026-06-01", "name": "Hari Lahir Pancasila", "is_cuti_bersama": false },
+  { "date": "2026-06-19", "name": "Hari Raya Iduladha 1447 Hijriah", "is_cuti_bersama": false },
+  { "date": "2026-07-10", "name": "Tahun Baru Islam 1448 Hijriah", "is_cuti_bersama": false },
+  { "date": "2026-08-17", "name": "Hari Kemerdekaan Republik Indonesia", "is_cuti_bersama": false },
+  { "date": "2026-09-19", "name": "Maulid Nabi Muhammad SAW", "is_cuti_bersama": false },
+  { "date": "2026-12-25", "name": "Hari Raya Natal", "is_cuti_bersama": false },
+  { "date": "2026-12-24", "name": "Cuti Bersama Natal", "is_cuti_bersama": true }
+]
