@@ -1,5 +1,11 @@
 import { NextResponse } from 'next/server';
-import { fallbackIndonesianHolidays } from '@/lib/id-holidays-fallback';
+import {
+  fallbackIndonesianHolidays,
+  readCustomHolidays,
+  saveCustomHolidays,
+} from '@/lib/id-holidays-fallback';
+
+/* ── helpers ──────────────────────────────────────────────── */
 
 function toIsoDate(value) {
   if (!value) return null;
@@ -22,7 +28,7 @@ function normalizeHolidayRow(row) {
   return {
     date,
     name,
-    is_national_holiday: true,
+    is_national_holiday: Boolean(row?.is_national_holiday ?? true),
     is_cuti_bersama: isCuti,
     source: row?.source || 'api',
   };
@@ -38,6 +44,8 @@ function mergeRows(primaryRows, fallbackRows) {
   });
   return [...map.values()].sort((a, b) => a.date.localeCompare(b.date));
 }
+
+/* ── GET  /api/holidays?year=YYYY ─────────────────────────── */
 
 export async function GET(request) {
   const url = new URL(request.url);
@@ -70,5 +78,71 @@ export async function GET(request) {
     return NextResponse.json({ ok: true, source: 'guangrei+fallback', rows: merged });
   } catch {
     return NextResponse.json({ ok: true, source: 'fallback', rows: fallbackRows });
+  }
+}
+
+/* ── POST  /api/holidays  { date, name, is_cuti_bersama? } ── */
+
+export async function POST(request) {
+  try {
+    const body = await request.json();
+    const date = toIsoDate(body?.date);
+    const name = (body?.name || '').trim();
+
+    if (!date) {
+      return NextResponse.json({ ok: false, error: 'Invalid date (YYYY-MM-DD)' }, { status: 400 });
+    }
+    if (!name) {
+      return NextResponse.json({ ok: false, error: 'Name is required' }, { status: 400 });
+    }
+
+    const custom = readCustomHolidays();
+    const existing = custom.findIndex((h) => h.date === date);
+
+    const entry = {
+      date,
+      name,
+      is_national_holiday: Boolean(body?.is_national_holiday ?? false),
+      is_cuti_bersama: Boolean(body?.is_cuti_bersama ?? false),
+    };
+
+    if (existing >= 0) {
+      custom[existing] = entry;
+    } else {
+      custom.push(entry);
+    }
+
+    custom.sort((a, b) => a.date.localeCompare(b.date));
+    saveCustomHolidays(custom);
+
+    return NextResponse.json({ ok: true, entry, total: custom.length });
+  } catch (err) {
+    return NextResponse.json({ ok: false, error: String(err?.message) }, { status: 500 });
+  }
+}
+
+/* ── DELETE  /api/holidays  { date } ─────────────────────── */
+
+export async function DELETE(request) {
+  try {
+    const body = await request.json();
+    const date = toIsoDate(body?.date);
+
+    if (!date) {
+      return NextResponse.json({ ok: false, error: 'Invalid date (YYYY-MM-DD)' }, { status: 400 });
+    }
+
+    const custom = readCustomHolidays();
+    const filtered = custom.filter((h) => h.date !== date);
+
+    if (filtered.length === custom.length) {
+      return NextResponse.json({ ok: false, error: 'Custom holiday not found' }, { status: 404 });
+    }
+
+    saveCustomHolidays(filtered);
+
+    return NextResponse.json({ ok: true, deleted: date, total: filtered.length });
+  } catch (err) {
+    return NextResponse.json({ ok: false, error: String(err?.message) }, { status: 500 });
   }
 }

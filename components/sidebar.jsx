@@ -18,6 +18,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   PlugZap,
+  Settings,
   ShieldCheck,
   Sun,
   Timer,
@@ -25,6 +26,7 @@ import {
   Users,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import SettingsModal from '@/components/settings/settings-modal';
 
 const navSections = [
   {
@@ -87,6 +89,7 @@ export default function Sidebar({
     planning: true,
     master: true,
   });
+  const [showSettings, setShowSettings] = useState(false);
 
   const visibleSections = useMemo(() => {
     return navSections
@@ -226,6 +229,19 @@ export default function Sidebar({
       </nav>
 
       <div className="app-sidebar-footer border-t border-slate-800 px-3 py-3">
+        {/* settings button */}
+        <button
+          type="button"
+          onClick={() => setShowSettings(true)}
+          className={cn(
+            'app-sidebar-settings mb-2 flex w-full items-center rounded-lg border border-slate-700 px-2.5 py-2 text-xs text-slate-300 transition-colors hover:border-slate-500 hover:text-white',
+            collapsed ? 'justify-center' : 'gap-2'
+          )}
+          title="Settings"
+        >
+          <Settings className="h-3.5 w-3.5 shrink-0" />
+          {!collapsed && 'Settings'}
+        </button>
         <button
           type="button"
           onClick={onThemeToggle}
@@ -276,9 +292,11 @@ export default function Sidebar({
         </button>
 
         <div className={cn('mt-3 text-xs text-slate-600', collapsed ? 'text-center' : '')}>
-          {collapsed ? 'v1.1' : 'demo_easylinksdk | v1.1'}
+          {collapsed ? 'v1.2' : 'demo_easylinksdk | v1.2'}
         </div>
       </div>
+
+      {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
     </aside>
   );
 }

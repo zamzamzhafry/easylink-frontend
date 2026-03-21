@@ -101,7 +101,8 @@ export default function MachinePage() {
           onChange={(event) => setSource(event.target.value)}
           className="rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-white"
         >
-          <option value="auto">Auto (fingerspot-easylink-ts)</option>
+          <option value="auto">Auto (prefer Windows SDK)</option>
+          <option value="windows-sdk">Windows SDK (REST API)</option>
           <option value="fingerspot-easylink-ts">fingerspot-easylink-ts</option>
         </select>
       </div>
