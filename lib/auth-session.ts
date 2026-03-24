@@ -102,6 +102,75 @@ async function hasTable(tableName: string) {
   return exists;
 }
 
+
+// NEW: Auth Restructure based on NIP
+export async function createAuthContextByNip(nip, connectionParam = null) {
+  let connection = connectionParam;
+  let shouldRelease = false;
+
+  try {
+    if (!connection) {
+      connection = await pool.getConnection();
+      shouldRelease = true;
+    }
+
+    const [users] = await connection.query(
+      'SELECT a.karyawan_id, a.nip, k.nama FROM tb_karyawan_auth a JOIN tb_karyawan k ON a.karyawan_id = k.id WHERE a.nip = ? AND a.is_active = 1',
+      [nip]
+    );
+
+    if (users.length === 0) return null;
+    const user = users[0];
+
+    // Fetch roles
+    const [roles] = await connection.query(
+      'SELECT role_key, group_id FROM tb_karyawan_roles WHERE karyawan_id = ?',
+      [user.karyawan_id]
+    );
+
+    const is_admin = roles.some(r => r.role_key === 'admin');
+    const is_leader = roles.some(r => r.role_key === 'group_leader');
+    const is_hr = roles.some(r => r.role_key === 'hr');
+
+    // Fetch groups if leader
+    let groups = [];
+    if (is_leader) {
+      const groupIds = roles.filter(r => r.role_key === 'group_leader' && r.group_id).map(r => r.group_id);
+      if (groupIds.length > 0) {
+        const [groupRows] = await connection.query(
+          'SELECT id as group_id, nama_group FROM tb_group WHERE id IN (?)',
+          [groupIds]
+        );
+        groups = groupRows.map(g => ({
+          group_id: g.group_id,
+          nama_group: g.nama_group,
+          can_schedule: 1,
+          can_dashboard: 1,
+          is_leader: true
+        }));
+      }
+    }
+
+    return {
+      nip: user.nip,
+      karyawan_id: user.karyawan_id,
+      nama: user.nama,
+      privilege: is_admin ? 4 : 1, // Legacy shim
+      is_admin,
+      is_leader,
+      is_hr,
+      can_schedule: is_admin || is_leader,
+      can_dashboard: is_admin || is_leader,
+      groups
+    };
+  } catch (error) {
+    console.error('Error in createAuthContextByNip:', error);
+    return null;
+  } finally {
+    if (shouldRelease && connection) connection.release();
+  }
+}
+
 export async function createAuthContextByPin(pin: string): Promise<AuthContext | null> {
   const [userRows] = await pool.query(
     `SELECT pin, nama, privilege
@@ -167,7 +236,7 @@ export function setAuthCookie(response: NextResponse, pin: string) {
     name: SESSION_COOKIE,
     value: token,
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
+    secure: process.env.NODE_ENV === 'production' && process.env.ALLOW_INSECURE_COOKIES !== 'true',
     sameSite: 'lax',
     path: '/',
     maxAge: SESSION_TTL_SECONDS,
@@ -179,7 +248,7 @@ export function clearAuthCookie(response: NextResponse) {
     name: SESSION_COOKIE,
     value: '',
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
+    secure: process.env.NODE_ENV === 'production' && process.env.ALLOW_INSECURE_COOKIES !== 'true',
     sameSite: 'lax',
     path: '/',
     maxAge: 0,
