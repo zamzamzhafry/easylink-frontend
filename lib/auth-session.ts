@@ -104,7 +104,7 @@ async function hasTable(tableName: string) {
 
 
 // NEW: Auth Restructure based on NIP
-export async function createAuthContextByNip(nip, connectionParam = null) {
+export async function createAuthContextByNip(nip: string, connectionParam: any = null): Promise<any> {
   let connection = connectionParam;
   let shouldRelease = false;
 
@@ -128,20 +128,20 @@ export async function createAuthContextByNip(nip, connectionParam = null) {
       [user.karyawan_id]
     );
 
-    const is_admin = roles.some(r => r.role_key === 'admin');
-    const is_leader = roles.some(r => r.role_key === 'group_leader');
-    const is_hr = roles.some(r => r.role_key === 'hr');
+    const is_admin = roles.some((r: any) => r.role_key === 'admin');
+    const is_leader = roles.some((r: any) => r.role_key === 'group_leader');
+    const is_hr = roles.some((r: any) => r.role_key === 'hr');
 
     // Fetch groups if leader
-    let groups = [];
+    let groups: any[] = [];
     if (is_leader) {
-      const groupIds = roles.filter(r => r.role_key === 'group_leader' && r.group_id).map(r => r.group_id);
+      const groupIds = roles.filter((r: any) => r.role_key === 'group_leader' && r.group_id).map((r: any) => r.group_id);
       if (groupIds.length > 0) {
         const [groupRows] = await connection.query(
           'SELECT id as group_id, nama_group FROM tb_group WHERE id IN (?)',
           [groupIds]
         );
-        groups = groupRows.map(g => ({
+        groups = (groupRows as any[]).map((g: any) => ({
           group_id: g.group_id,
           nama_group: g.nama_group,
           can_schedule: 1,
