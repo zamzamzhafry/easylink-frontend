@@ -115,7 +115,7 @@ export async function createAuthContextByNip(nip: string, connectionParam: any =
     }
 
     const [users] = await connection.query(
-      'SELECT a.karyawan_id, a.nip, k.nama FROM tb_karyawan_auth a JOIN tb_karyawan k ON a.karyawan_id = k.id WHERE a.nip = ? AND a.is_active = 1',
+      'SELECT a.karyawan_id, a.nip, k.nama, k.pin FROM tb_karyawan_auth a JOIN tb_karyawan k ON a.karyawan_id = k.id WHERE a.nip = ? AND a.is_active = 1',
       [nip]
     );
 
@@ -153,6 +153,7 @@ export async function createAuthContextByNip(nip: string, connectionParam: any =
 
     return {
       nip: user.nip,
+      pin: user.pin || user.nip,
       karyawan_id: user.karyawan_id,
       nama: user.nama,
       privilege: is_admin ? 4 : 1, // Legacy shim
@@ -226,6 +227,12 @@ export async function getAuthContextFromCookies(): Promise<AuthContext | null> {
   const token = cookies().get(SESSION_COOKIE)?.value;
   const payload = decodeSession(token);
   if (!payload) return null;
+  
+  // Try NIP-based auth first
+  const nipContext = await createAuthContextByNip(payload.pin);
+  if (nipContext) return nipContext;
+
+  // Fallback to legacy PIN-based auth
   return createAuthContextByPin(payload.pin);
 }
 
