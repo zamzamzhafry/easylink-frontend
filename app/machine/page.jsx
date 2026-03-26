@@ -7,7 +7,7 @@ export default function MachinePage() {
   const [source, setSource] = useState('auto');
   const [busy, setBusy] = useState('');
   const [deviceInfo, setDeviceInfo] = useState(null);
-  const [deviceTime, setDeviceTime] = useState('');
+  const [deviceTime, setDeviceTime] = useState(null);
   const [userSyncResult, setUserSyncResult] = useState(null);
   const [scanSyncResult, setScanSyncResult] = useState(null);
   const [error, setError] = useState('');
@@ -24,12 +24,20 @@ export default function MachinePage() {
     }
   };
 
+  const formatInlineValue = (value) => {
+    if (value == null || value === '') return '-';
+    if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+      return String(value);
+    }
+    return JSON.stringify(value);
+  };
+
   const loadDeviceInfo = () =>
     run('info', async () => {
       const res = await fetch(`/api/machine?action=info&source=${source}`);
       const data = await res.json();
       if (!res.ok || !data?.ok) throw new Error(data?.error || 'Failed to load device info');
-      setDeviceInfo(data.info);
+      setDeviceInfo(data.raw ?? data.info ?? null);
     });
 
   const loadDeviceTime = () =>
@@ -37,7 +45,7 @@ export default function MachinePage() {
       const res = await fetch(`/api/machine?action=time&source=${source}`);
       const data = await res.json();
       if (!res.ok || !data?.ok) throw new Error(data?.error || 'Failed to load device time');
-      setDeviceTime(data.time || '-');
+      setDeviceTime(data.time ?? data.raw?.DEVINFO?.Jam ?? data.raw ?? '-');
     });
 
   const syncDeviceTime = () =>
@@ -49,7 +57,7 @@ export default function MachinePage() {
       });
       const data = await res.json();
       if (!res.ok || !data?.ok) throw new Error(data?.error || 'Failed to sync time');
-      setDeviceTime(data.synced_at || '-');
+      setDeviceTime(data.synced_at ?? data.time ?? data.raw ?? '-');
     });
 
   const pullUsers = () =>
@@ -164,7 +172,9 @@ export default function MachinePage() {
           <pre className="max-h-64 overflow-auto rounded-lg bg-slate-950 p-3 text-xs text-slate-300">
             {deviceInfo ? JSON.stringify(deviceInfo, null, 2) : 'No device info loaded yet.'}
           </pre>
-          <p className="mt-2 text-xs text-slate-500">Device time: {deviceTime || '-'}</p>
+          <p className="mt-2 text-xs text-slate-500">
+            Device time: {formatInlineValue(deviceTime)}
+          </p>
         </div>
 
         <div className="space-y-4">

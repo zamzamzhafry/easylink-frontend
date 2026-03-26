@@ -2,7 +2,14 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
-import { ChevronLeft, ChevronRight, DatabaseZap, Download, RefreshCw } from 'lucide-react';
+import {
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  DatabaseZap,
+  Download,
+  RefreshCw,
+} from 'lucide-react';
 import SearchInput from '@/components/ui/search-input';
 import { useToast } from '@/components/ui/toast-provider';
 import {
@@ -26,6 +33,33 @@ function daysAgo(n) {
   const d = new Date();
   d.setDate(d.getDate() - n);
   return toIso(d);
+}
+
+async function parseApiResponse(res) {
+  const text = await res.text();
+  if (!text) return {};
+  try {
+    return JSON.parse(text);
+  } catch {
+    return { raw: text };
+  }
+}
+
+function formatJson(value) {
+  if (value == null || value === '') return '';
+  if (typeof value === 'string') {
+    try {
+      return JSON.stringify(JSON.parse(value), null, 2);
+    } catch {
+      return value;
+    }
+  }
+
+  try {
+    return JSON.stringify(value, null, 2);
+  } catch {
+    return String(value);
+  }
 }
 
 // ─── quick presets ─────────────────────────────────────────────────────────────
@@ -108,6 +142,13 @@ export default function ScanlogPage() {
   const [loading, setLoading] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  const [syncMode, setSyncMode] = useState('new');
+  const [syncMaxPages, setSyncMaxPages] = useState(3);
+  const [activeBatchId, setActiveBatchId] = useState(null);
+  const [queueRows, setQueueRows] = useState([]);
+  const [queueMeta, setQueueMeta] = useState({ concurrency: 1, active: 0, pending: 0 });
+  const [queueError, setQueueError] = useState('');
+  const [expandedRows, setExpandedRows] = useState({});
 
   const toast = useToast();
 
@@ -127,8 +168,10 @@ export default function ScanlogPage() {
         if (pinFilter.trim()) params.set('pin', pinFilter.trim());
 
         const res = await fetch(`/api/scanlog?${params.toString()}`);
-        if (!res.ok) throw new Error(`Error ${res.status}`);
-        const data = await res.json();
+        const data = await parseApiResponse(res);
+        if (!res.ok) {
+          throw new Error(data?.error || data?.raw || `Error ${res.status}`);
+        }
         setRecords(data.records ?? []);
         setTotal(data.total ?? 0);
         setPages(data.pages ?? 1);
@@ -198,26 +241,134 @@ export default function ScanlogPage() {
     }
   };
 
+  const toggleRowExpand = (id) => {
+    setExpandedRows((prev) => ({ ...prev, [id]: !prev[id] }));
+  };
+
+  const refreshQueue = useCallback(async (batchId) => {
+    try {
+      setQueueError('');
+      const url = batchId ? `/api/scanlog/sync?batch_id=${batchId}` : '/api/scanlog/sync';
+      const res = await fetch(url);
+      const data = await parseApiResponse(res);
+      if (!res.ok || !data?.ok) {
+        throw new Error(data?.error || data?.raw || `Queue status failed (${res.status})`);
+      }
+
+      if (data?.queue) {
+        setQueueMeta({
+          concurrency: Number(data.queue.concurrency || 1),
+          active: Number(data.queue.active || 0),
+          pending: Number(data.queue.pending || 0),
+        });
+      }
+
+      if (batchId) {
+        const row = data?.row;
+        if (!row) return null;
+        setQueueRows((prev) => {
+          const map = new Map(prev.map((item) => [item.id, item]));
+          map.set(row.id, row);
+          return [...map.values()].sort((a, b) => Number(b.id) - Number(a.id));
+        });
+        return row;
+      }
+
+      setQueueRows(Array.isArray(data?.rows) ? data.rows : []);
+      return null;
+    } catch (err) {
+      setQueueError(err.message || 'Failed to refresh queue status');
+      return null;
+    }
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const tick = () => {
+      if (!cancelled) refreshQueue();
+    };
+
+    tick();
+    const timer = setInterval(tick, 10000);
+
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [refreshQueue]);
+
+  useEffect(() => {
+    if (!activeBatchId) return;
+
+    let cancelled = false;
+
+    const poll = async () => {
+      const row = await refreshQueue(activeBatchId);
+      if (cancelled || !row) return;
+
+      const status = String(row.status || '').toLowerCase();
+      if (status === 'success') {
+        toast.success(
+          `Batch #${row.id} completed. Pulled ${row.pulled_count || 0}, inserted ${row.inserted_count || 0}.`
+        );
+        setActiveBatchId(null);
+        if (source !== 'safe') {
+          setSource('safe');
+        }
+        setPage(1);
+        setTimeout(() => load(1), 0);
+      } else if (status === 'failed') {
+        toast.error(`Batch #${row.id} failed: ${row.error_message || 'Unknown error'}`);
+        setActiveBatchId(null);
+      }
+    };
+
+    poll();
+    const timer = setInterval(poll, 2000);
+
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [activeBatchId, load, refreshQueue, source, toast]);
+
   const syncFromMachine = async () => {
     setSyncing(true);
+    setQueueError('');
+
     try {
       const res = await fetch('/api/scanlog/sync', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ from, to, source: 'auto', mode: 'new' }),
+        body: JSON.stringify({
+          from,
+          to,
+          source: 'auto',
+          mode: syncMode,
+          limit: Math.min(limit, 1000),
+          page: 1,
+          max_pages: syncMaxPages,
+          async: true,
+        }),
       });
-      const data = await res.json().catch(() => ({}));
+
+      const data = await parseApiResponse(res);
       if (!res.ok || !data?.ok) {
-        throw new Error(data?.error || `Sync failed (${res.status})`);
+        throw new Error(data?.error || data?.raw || `Sync failed (${res.status})`);
       }
+
+      const batchId = Number(data?.batch_id || 0);
+      if (!batchId) {
+        throw new Error('Batch id missing from server response');
+      }
+
+      setActiveBatchId(batchId);
+      await refreshQueue();
+
       toast.success(
-        `Machine sync done. Pulled ${data.pulled_count || 0}, inserted ${data.inserted_count || 0}, skipped ${data.skipped_count || 0}.`
+        `Sync job #${batchId} accepted (${data?.status || 'running'}). Queue: active ${data?.queue?.active || 0}, pending ${data?.queue?.pending || 0}.`
       );
-      if (source !== 'safe') {
-        setSource('safe');
-      }
-      setPage(1);
-      setTimeout(() => load(1), 0);
     } catch (err) {
       toast.error(err.message || 'Failed to sync from machine');
     } finally {
@@ -227,318 +378,443 @@ export default function ScanlogPage() {
 
   // ─── render ───────────────────────────────────────────────────────────────────
   return (
-    <div className="space-y-5 p-6">
-      {/* Header */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="flex items-center gap-2 text-xl font-bold text-white">
-            <DatabaseZap className="h-5 w-5 text-teal-400" />
-            Scan Log
-          </h1>
-          <p className="mt-0.5 text-xs text-slate-500">
-            Primary analysis should focus on time, date, PIN, and machine SN. IO mode is shown as
-            reference only.
-          </p>
-          <p className="mt-1 text-[11px] text-slate-500">
-            Data source:{' '}
-            <span className="font-semibold text-teal-300">
-              {source === 'safe' ? 'Safe Immutable Store' : 'Legacy Scanlog Table'}
-            </span>
-          </p>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={syncFromMachine}
-            disabled={syncing}
-            className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs font-semibold text-emerald-300 hover:bg-emerald-500/20 disabled:opacity-50"
-          >
-            {syncing ? 'Syncing…' : 'Fetch From Machine'}
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setPage(1);
-              load(1);
-            }}
-            disabled={loading}
-            className="flex items-center gap-1.5 rounded-lg border border-slate-700 px-3 py-2 text-xs text-slate-400 hover:text-white disabled:opacity-40"
-          >
-            <RefreshCw className={cn('h-3.5 w-3.5', loading && 'animate-spin')} />
-            Refresh
-          </button>
-          <button
-            type="button"
-            onClick={handleDownload}
-            disabled={downloading}
-            className="flex items-center gap-1.5 rounded-lg bg-teal-600 px-4 py-2 text-sm font-semibold text-white hover:bg-teal-500 disabled:opacity-50"
-          >
-            <Download className="h-3.5 w-3.5" />
-            {downloading ? 'Exporting…' : 'Export CSV'}
-          </button>
-        </div>
-      </div>
-
-      <div className="flex flex-wrap gap-2 rounded-xl border border-slate-800 bg-slate-900 p-3 text-xs">
-        <Link
-          href="/attendance"
-          className="rounded-lg border border-slate-700 px-3 py-1.5 text-slate-300 transition-colors hover:border-teal-500 hover:text-teal-300"
-        >
-          Attendance Summary
-        </Link>
-        <Link
-          href="/attendance/review"
-          className="rounded-lg border border-slate-700 px-3 py-1.5 text-slate-300 transition-colors hover:border-amber-500 hover:text-amber-300"
-        >
-          Attendance Review
-        </Link>
-        <Link
-          href="/schedule"
-          className="rounded-lg border border-slate-700 px-3 py-1.5 text-slate-300 transition-colors hover:border-violet-500 hover:text-violet-300"
-        >
-          Schedule Planner
-        </Link>
-      </div>
-
-      {/* Filters */}
-      <div className="rounded-xl border border-slate-800 bg-slate-900 p-4">
-        <div className="flex flex-wrap items-end gap-3">
-          {/* From */}
+    <div className="p-6 lg:grid lg:grid-cols-[minmax(0,1fr)_320px] lg:gap-4">
+      <div className="space-y-5">
+        {/* Header */}
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <label
-              htmlFor="scanlog-from"
-              className="mb-1 block text-[11px] font-medium text-slate-500"
-            >
-              From
-            </label>
-            <input
-              id="scanlog-from"
-              type="date"
-              value={from}
-              onChange={(e) => setFrom(e.target.value)}
-              className="rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-white focus:border-teal-500 focus:outline-none"
-            />
+            <h1 className="flex items-center gap-2 text-xl font-bold text-white">
+              <DatabaseZap className="h-5 w-5 text-teal-400" />
+              Scan Log
+            </h1>
+            <p className="mt-0.5 text-xs text-slate-500">
+              Primary analysis should focus on time, date, PIN, and machine SN. IO mode is shown as
+              reference only.
+            </p>
+            <p className="mt-1 text-[11px] text-slate-500">
+              Data source:{' '}
+              <span className="font-semibold text-teal-300">
+                {source === 'safe' ? 'Safe Immutable Store' : 'Legacy Scanlog Table'}
+              </span>
+            </p>
           </div>
 
-          {/* To */}
-          <div>
-            <label
-              htmlFor="scanlog-to"
-              className="mb-1 block text-[11px] font-medium text-slate-500"
-            >
-              To
-            </label>
-            <input
-              id="scanlog-to"
-              type="date"
-              value={to}
-              onChange={(e) => setTo(e.target.value)}
-              className="rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-white focus:border-teal-500 focus:outline-none"
-            />
-          </div>
-
-          {/* PIN filter */}
-          <SearchInput
-            value={pinFilter}
-            onChange={setPinFilter}
-            placeholder="Search PIN..."
-            className="w-48"
-          />
-
-          {/* Limit */}
-          <div>
-            <label
-              htmlFor="scanlog-limit"
-              className="mb-1 block text-[11px] font-medium text-slate-500"
-            >
-              Per page
-            </label>
-            <select
-              id="scanlog-limit"
-              value={limit}
-              onChange={(e) => setLimit(Number(e.target.value))}
-              className="rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-white focus:border-teal-500 focus:outline-none"
-            >
-              {LIMIT_OPTIONS.map((l) => (
-                <option key={l} value={l}>
-                  {l}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div>
-            <label
-              htmlFor="scanlog-source"
-              className="mb-1 block text-[11px] font-medium text-slate-500"
-            >
-              Source
-            </label>
-            <select
-              id="scanlog-source"
-              value={source}
-              onChange={(event) => {
-                setSource(event.target.value);
-                setPage(1);
-                setTimeout(() => load(1), 0);
-              }}
-              className="rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-white focus:border-teal-500 focus:outline-none"
-            >
-              <option value="legacy">Legacy (tb_scanlog)</option>
-              <option value="safe">Safe Store (tb_scanlog_safe_events)</option>
-            </select>
-          </div>
-
-          {/* Apply */}
-          <button
-            type="button"
-            onClick={apply}
-            className="flex items-center gap-1.5 rounded-lg bg-teal-600 px-4 py-2 text-sm font-semibold text-white hover:bg-teal-500"
-          >
-            <RefreshCw className={cn('h-3.5 w-3.5', loading && 'animate-spin')} />
-            Apply
-          </button>
-
-          {/* Quick presets */}
-          <div className="ml-auto flex items-center gap-2">
-            {PRESETS.map((p) => (
-              <button
-                key={p.label}
-                type="button"
-                onClick={() => applyPreset(p)}
-                className="rounded-lg border border-slate-700 px-3 py-2 text-xs text-slate-400 hover:border-teal-600 hover:text-teal-300"
+          <div className="flex flex-wrap items-center gap-2">
+            <label className="flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-900 px-2 py-2 text-[11px] text-slate-400">
+              Mode
+              <select
+                value={syncMode}
+                onChange={(event) => setSyncMode(event.target.value)}
+                className="rounded border border-slate-700 bg-slate-800 px-2 py-1 text-xs text-white"
+                disabled={syncing}
               >
-                {p.label}
-              </button>
-            ))}
+                <option value="new">New only (recommended)</option>
+                <option value="all">All range (heavy)</option>
+              </select>
+            </label>
+
+            <label className="flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-900 px-2 py-2 text-[11px] text-slate-400">
+              Max pages
+              <select
+                value={syncMaxPages}
+                onChange={(event) => setSyncMaxPages(Number(event.target.value))}
+                className="rounded border border-slate-700 bg-slate-800 px-2 py-1 text-xs text-white"
+                disabled={syncing}
+              >
+                {[1, 2, 3, 5, 10].map((value) => (
+                  <option key={value} value={value}>
+                    {value}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <button
+              type="button"
+              onClick={syncFromMachine}
+              disabled={syncing}
+              className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs font-semibold text-emerald-300 hover:bg-emerald-500/20 disabled:opacity-50"
+            >
+              {syncing ? 'Syncing…' : 'Fetch From Machine'}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setPage(1);
+                load(1);
+              }}
+              disabled={loading}
+              className="flex items-center gap-1.5 rounded-lg border border-slate-700 px-3 py-2 text-xs text-slate-400 hover:text-white disabled:opacity-40"
+            >
+              <RefreshCw className={cn('h-3.5 w-3.5', loading && 'animate-spin')} />
+              Refresh
+            </button>
+            <button
+              type="button"
+              onClick={handleDownload}
+              disabled={downloading}
+              className="flex items-center gap-1.5 rounded-lg bg-teal-600 px-4 py-2 text-sm font-semibold text-white hover:bg-teal-500 disabled:opacity-50"
+            >
+              <Download className="h-3.5 w-3.5" />
+              {downloading ? 'Exporting…' : 'Export CSV'}
+            </button>
           </div>
         </div>
 
-        {/* Stats row */}
-        <div className="mt-3 flex items-center gap-4 border-t border-slate-800 pt-3 text-xs text-slate-500">
-          <span>
-            Showing <span className="font-semibold text-slate-300">{records.length}</span> of{' '}
-            <span className="font-semibold text-slate-300">{total.toLocaleString()}</span> records
-          </span>
-          {pages > 1 && (
-            <span>
-              Page <span className="font-semibold text-slate-300">{page}</span> /{' '}
-              <span className="font-semibold text-slate-300">{pages}</span>
-            </span>
-          )}
+        {syncMode === 'all' && (
+          <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-100">
+            Full-range download may take several minutes and keeps the Windows SDK busy. Use this
+            mode only when absolutely necessary; prefer the default "New" mode for incremental
+            syncs.
+          </div>
+        )}
+
+        <div className="flex flex-wrap gap-2 rounded-xl border border-slate-800 bg-slate-900 p-3 text-xs">
+          <Link
+            href="/attendance"
+            className="rounded-lg border border-slate-700 px-3 py-1.5 text-slate-300 transition-colors hover:border-teal-500 hover:text-teal-300"
+          >
+            Attendance Summary
+          </Link>
+          <Link
+            href="/attendance/review"
+            className="rounded-lg border border-slate-700 px-3 py-1.5 text-slate-300 transition-colors hover:border-amber-500 hover:text-amber-300"
+          >
+            Attendance Review
+          </Link>
+          <Link
+            href="/schedule"
+            className="rounded-lg border border-slate-700 px-3 py-1.5 text-slate-300 transition-colors hover:border-violet-500 hover:text-violet-300"
+          >
+            Schedule Planner
+          </Link>
         </div>
+
+        {/* Filters */}
+        <div className="rounded-xl border border-slate-800 bg-slate-900 p-4">
+          <div className="flex flex-wrap items-end gap-3">
+            {/* From */}
+            <div>
+              <label
+                htmlFor="scanlog-from"
+                className="mb-1 block text-[11px] font-medium text-slate-500"
+              >
+                From
+              </label>
+              <input
+                id="scanlog-from"
+                type="date"
+                value={from}
+                onChange={(e) => setFrom(e.target.value)}
+                className="rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-white focus:border-teal-500 focus:outline-none"
+              />
+            </div>
+
+            {/* To */}
+            <div>
+              <label
+                htmlFor="scanlog-to"
+                className="mb-1 block text-[11px] font-medium text-slate-500"
+              >
+                To
+              </label>
+              <input
+                id="scanlog-to"
+                type="date"
+                value={to}
+                onChange={(e) => setTo(e.target.value)}
+                className="rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-white focus:border-teal-500 focus:outline-none"
+              />
+            </div>
+
+            {/* PIN filter */}
+            <SearchInput
+              value={pinFilter}
+              onChange={setPinFilter}
+              placeholder="Search PIN..."
+              className="w-48"
+            />
+
+            {/* Limit */}
+            <div>
+              <label
+                htmlFor="scanlog-limit"
+                className="mb-1 block text-[11px] font-medium text-slate-500"
+              >
+                Per page
+              </label>
+              <select
+                id="scanlog-limit"
+                value={limit}
+                onChange={(e) => setLimit(Number(e.target.value))}
+                className="rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-white focus:border-teal-500 focus:outline-none"
+              >
+                {LIMIT_OPTIONS.map((l) => (
+                  <option key={l} value={l}>
+                    {l}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label
+                htmlFor="scanlog-source"
+                className="mb-1 block text-[11px] font-medium text-slate-500"
+              >
+                Source
+              </label>
+              <select
+                id="scanlog-source"
+                value={source}
+                onChange={(event) => {
+                  setSource(event.target.value);
+                  setPage(1);
+                  setTimeout(() => load(1), 0);
+                }}
+                className="rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-white focus:border-teal-500 focus:outline-none"
+              >
+                <option value="legacy">Legacy (tb_scanlog)</option>
+                <option value="safe">Safe Store (tb_scanlog_safe_events)</option>
+              </select>
+            </div>
+
+            {/* Apply */}
+            <button
+              type="button"
+              onClick={apply}
+              className="flex items-center gap-1.5 rounded-lg bg-teal-600 px-4 py-2 text-sm font-semibold text-white hover:bg-teal-500"
+            >
+              <RefreshCw className={cn('h-3.5 w-3.5', loading && 'animate-spin')} />
+              Apply
+            </button>
+
+            {/* Quick presets */}
+            <div className="ml-auto flex items-center gap-2">
+              {PRESETS.map((p) => (
+                <button
+                  key={p.label}
+                  type="button"
+                  onClick={() => applyPreset(p)}
+                  className="rounded-lg border border-slate-700 px-3 py-2 text-xs text-slate-400 hover:border-teal-600 hover:text-teal-300"
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Stats row */}
+          <div className="mt-3 flex items-center gap-4 border-t border-slate-800 pt-3 text-xs text-slate-500">
+            <span>
+              Showing <span className="font-semibold text-slate-300">{records.length}</span> of{' '}
+              <span className="font-semibold text-slate-300">{total.toLocaleString()}</span> records
+            </span>
+            {pages > 1 && (
+              <span>
+                Page <span className="font-semibold text-slate-300">{page}</span> /{' '}
+                <span className="font-semibold text-slate-300">{pages}</span>
+              </span>
+            )}
+          </div>
+        </div>
+
+        {/* Table */}
+        <TableShell>
+          <table className="w-full text-sm">
+            <thead>
+              <TableHeadRow headers={HEADERS} />
+            </thead>
+            <tbody className="divide-y divide-slate-800">
+              {loading ? (
+                <TableLoadingRow colSpan={HEADERS.length} />
+              ) : records.length === 0 ? (
+                <TableEmptyRow colSpan={HEADERS.length} label="No scan records found" />
+              ) : (
+                records.map((r) => (
+                  <tr
+                    key={`${r.pin}-${r.scan_date}-${r.scan_time}-${r.verifymode}-${r.iomode}-${r.workcode}-${r.sn}`}
+                    className="hover:bg-slate-800/40"
+                  >
+                    {/* Date */}
+                    <td className="px-4 py-2.5 font-mono text-xs text-slate-300">{r.scan_date}</td>
+
+                    {/* Time */}
+                    <td className="px-4 py-2.5 font-mono text-xs font-semibold text-white">
+                      {r.scan_time}
+                    </td>
+
+                    {/* PIN */}
+                    <td className="px-4 py-2.5 font-mono text-xs font-semibold text-teal-300">
+                      {r.pin}
+                    </td>
+
+                    {/* Verify */}
+                    <td className="px-4 py-2.5">
+                      <VerifyBadge mode={r.verifymode} />
+                    </td>
+
+                    {/* IO Mode */}
+                    <td className="px-4 py-2.5">
+                      <IoLabel mode={r.iomode} />
+                    </td>
+
+                    {/* Work Code */}
+                    <td className="px-4 py-2.5 text-right font-mono text-xs text-slate-500">
+                      {r.workcode}
+                    </td>
+
+                    {/* SN */}
+                    <td className="px-4 py-2.5 font-mono text-[11px] text-slate-500">
+                      {r.sn || '—'}
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </TableShell>
+
+        {/* Pagination */}
+        {pages > 1 && (
+          <div className="flex items-center justify-center gap-2">
+            <button
+              type="button"
+              onClick={() => goPage(page - 1)}
+              disabled={page <= 1 || loading}
+              className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-700 text-slate-400 hover:text-white disabled:opacity-40"
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </button>
+
+            {/* Page numbers — show up to 7 around current */}
+            {Array.from({ length: pages }, (_, i) => i + 1)
+              .filter((p) => p === 1 || p === pages || Math.abs(p - page) <= 2)
+              .reduce((acc, p, idx, arr) => {
+                if (idx > 0 && arr[idx - 1] !== p - 1) acc.push(`ellipsis-${arr[idx - 1]}-${p}`);
+                acc.push(p);
+                return acc;
+              }, [])
+              .map((item) =>
+                typeof item === 'string' && item.startsWith('ellipsis-') ? (
+                  <span key={item} className="px-1 text-xs text-slate-600">
+                    …
+                  </span>
+                ) : (
+                  <button
+                    key={item}
+                    type="button"
+                    onClick={() => goPage(item)}
+                    disabled={loading}
+                    className={cn(
+                      'flex h-8 w-8 items-center justify-center rounded-lg text-xs font-medium',
+                      item === page
+                        ? 'bg-teal-600 text-white'
+                        : 'border border-slate-700 text-slate-400 hover:text-white'
+                    )}
+                  >
+                    {item}
+                  </button>
+                )
+              )}
+
+            <button
+              type="button"
+              onClick={() => goPage(page + 1)}
+              disabled={page >= pages || loading}
+              className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-700 text-slate-400 hover:text-white disabled:opacity-40"
+            >
+              <ChevronRight className="h-4 w-4" />
+            </button>
+          </div>
+        )}
       </div>
 
-      {/* Table */}
-      <TableShell>
-        <table className="w-full text-sm">
-          <thead>
-            <TableHeadRow headers={HEADERS} />
-          </thead>
-          <tbody className="divide-y divide-slate-800">
-            {loading ? (
-              <TableLoadingRow colSpan={HEADERS.length} />
-            ) : records.length === 0 ? (
-              <TableEmptyRow colSpan={HEADERS.length} label="No scan records found" />
-            ) : (
-              records.map((r) => (
-                <tr
-                  key={`${r.pin}-${r.scan_date}-${r.scan_time}-${r.verifymode}-${r.iomode}-${r.workcode}-${r.sn}`}
-                  className="hover:bg-slate-800/40"
-                >
-                  {/* Date */}
-                  <td className="px-4 py-2.5 font-mono text-xs text-slate-300">{r.scan_date}</td>
+      <aside className="mt-6 space-y-4 lg:mt-0">
+        <div className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4 shadow-xl">
+          <div className="flex items-center justify-between gap-2">
+            <div>
+              <p className="text-sm font-semibold text-white">Fetch Queue</p>
+              <p className="text-[11px] text-slate-500">
+                Active {queueMeta.active}/{queueMeta.concurrency} · Pending {queueMeta.pending}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => refreshQueue()}
+              className="rounded-lg border border-slate-700 bg-slate-900/60 p-2 text-slate-300 hover:text-white"
+            >
+              <RefreshCw className="h-4 w-4" />
+            </button>
+          </div>
 
-                  {/* Time */}
-                  <td className="px-4 py-2.5 font-mono text-xs font-semibold text-white">
-                    {r.scan_time}
-                  </td>
+          {queueError && <p className="mt-2 text-xs text-amber-400">{queueError}</p>}
 
-                  {/* PIN */}
-                  <td className="px-4 py-2.5 font-mono text-xs font-semibold text-teal-300">
-                    {r.pin}
-                  </td>
+          <div className="mt-4 space-y-3 max-h-[70vh] overflow-y-auto pr-1">
+            {queueRows.length === 0 && <p className="text-xs text-slate-500">No recent jobs.</p>}
 
-                  {/* Verify */}
-                  <td className="px-4 py-2.5">
-                    <VerifyBadge mode={r.verifymode} />
-                  </td>
+            {queueRows.map((row) => {
+              const status = String(row.status || row.debug?.status || '').toLowerCase();
+              const badgeClasses =
+                {
+                  success: 'text-emerald-300 bg-emerald-500/10 border-emerald-500/30',
+                  running: 'text-sky-300 bg-sky-500/10 border-sky-500/30',
+                  queued: 'text-amber-300 bg-amber-500/10 border-amber-500/30',
+                  failed: 'text-rose-300 bg-rose-500/10 border-rose-500/30',
+                }[status] || 'text-slate-300 bg-slate-700/40 border-slate-700/40';
 
-                  {/* IO Mode */}
-                  <td className="px-4 py-2.5">
-                    <IoLabel mode={r.iomode} />
-                  </td>
+              const isExpanded = Boolean(expandedRows[row.id]);
+              const requestInfo = row.debug?.request || {};
+              const rangeLabel =
+                requestInfo.from && requestInfo.to
+                  ? `${requestInfo.from} → ${requestInfo.to}`
+                  : 'Full range';
+              const countsLabel = `Pulled ${row.pulled_count ?? row.debug?.result?.pulledCount ?? 0} · Inserted ${row.inserted_count ?? row.debug?.result?.insertedCount ?? 0}`;
+              const rawPayload = row.debug?.result ?? row.debug?.error ?? row.debug ?? row;
 
-                  {/* Work Code */}
-                  <td className="px-4 py-2.5 text-right font-mono text-xs text-slate-500">
-                    {r.workcode}
-                  </td>
-
-                  {/* SN */}
-                  <td className="px-4 py-2.5 font-mono text-[11px] text-slate-500">
-                    {r.sn || '—'}
-                  </td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </TableShell>
-
-      {/* Pagination */}
-      {pages > 1 && (
-        <div className="flex items-center justify-center gap-2">
-          <button
-            type="button"
-            onClick={() => goPage(page - 1)}
-            disabled={page <= 1 || loading}
-            className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-700 text-slate-400 hover:text-white disabled:opacity-40"
-          >
-            <ChevronLeft className="h-4 w-4" />
-          </button>
-
-          {/* Page numbers — show up to 7 around current */}
-          {Array.from({ length: pages }, (_, i) => i + 1)
-            .filter((p) => p === 1 || p === pages || Math.abs(p - page) <= 2)
-            .reduce((acc, p, idx, arr) => {
-              if (idx > 0 && arr[idx - 1] !== p - 1) acc.push(`ellipsis-${arr[idx - 1]}-${p}`);
-              acc.push(p);
-              return acc;
-            }, [])
-            .map((item) =>
-              typeof item === 'string' && item.startsWith('ellipsis-') ? (
-                <span key={item} className="px-1 text-xs text-slate-600">
-                  …
-                </span>
-              ) : (
-                <button
-                  key={item}
-                  type="button"
-                  onClick={() => goPage(item)}
-                  disabled={loading}
-                  className={cn(
-                    'flex h-8 w-8 items-center justify-center rounded-lg text-xs font-medium',
-                    item === page
-                      ? 'bg-teal-600 text-white'
-                      : 'border border-slate-700 text-slate-400 hover:text-white'
+              return (
+                <div key={row.id} className="rounded-xl border border-slate-800 bg-slate-900/40">
+                  <button
+                    type="button"
+                    onClick={() => toggleRowExpand(row.id)}
+                    className="flex w-full items-start justify-between gap-2 px-3 py-2 text-left"
+                  >
+                    <div>
+                      <p className="text-sm font-semibold text-slate-200">Batch #{row.id}</p>
+                      <p className="text-[11px] text-slate-500">
+                        {requestInfo.mode?.toUpperCase() || 'NEW'} · {rangeLabel}
+                      </p>
+                      <p className="text-[11px] text-slate-500">{countsLabel}</p>
+                    </div>
+                    <div className="flex flex-col items-end gap-1">
+                      <span
+                        className={`rounded-full border px-2 py-1 text-[10px] font-medium ${badgeClasses}`}
+                      >
+                        {status || 'unknown'}
+                      </span>
+                      <ChevronDown
+                        className={`h-4 w-4 text-slate-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
+                      />
+                    </div>
+                  </button>
+                  {isExpanded && (
+                    <div className="border-t border-slate-800 p-3 text-[11px] text-slate-300">
+                      <p>Source: {row.source_sdk || row.debug?.request?.source || 'auto'}</p>
+                      <p>Status: {status || row.status}</p>
+                      {row.error_message && (
+                        <p className="text-rose-300">Error: {row.error_message}</p>
+                      )}
+                      <pre className="mt-2 max-h-60 overflow-auto rounded-lg bg-slate-950/80 p-3 text-[11px] text-slate-200">
+                        {formatJson(rawPayload)}
+                      </pre>
+                    </div>
                   )}
-                >
-                  {item}
-                </button>
-              )
-            )}
-
-          <button
-            type="button"
-            onClick={() => goPage(page + 1)}
-            disabled={page >= pages || loading}
-            className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-700 text-slate-400 hover:text-white disabled:opacity-40"
-          >
-            <ChevronRight className="h-4 w-4" />
-          </button>
+                </div>
+              );
+            })}
+          </div>
         </div>
-      )}
+      </aside>
     </div>
   );
 }
