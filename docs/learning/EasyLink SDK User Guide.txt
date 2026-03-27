@@ -1,0 +1,742 @@
+
+
+
+ 
+User’s Guide
+
+
+
+
+User’s Guide ini berisi instruksi untuk melakukan instalasi serta instruksi untuk menjalankan fungsi dan 
+procedure EasyLink SDK.
+
+
+Daftar Isi
+
+
+Overview	4
+Minimum Kebutuhan Sistem	5
+Langkah Penggunaan EasyLink SDK	6
+Instalasi	8
+Tambah dan Aktivasi Mesin	9
+Atur Koneksi Mesin	10
+Contoh Aplikasi (Sample Code)	11
+Fungsi dan Perintah EasyLink SDK	12
+Download User (With Pagination)	12
+Upload User	16
+Delete User	19
+a.	Delete all user	19
+b.	Delete user PIN	20
+Download Scanlog	21
+a.	Download semua scanlog (With Pagination)	21
+b.	Download scanlog terbaru	23
+Delete Scanlog	27
+Mendapatkan Informasi Mesin	28
+Setting atau Pengaturan	31
+Sync DateTime	31
+Delete Admin	32
+Delete Device Log	33
+Initialization	34
+Auto Download	36
+Atur Download Data Scan GPS Fingerspot.iO	38
+Download Scan GPS Fingerspot.iO	39
+FINGERSPOT WEBSITE & ONLINE SUPPORT	42
+
+
+
+Overview
+
+Terima kasih telah memilih menggunakan EasyLink SDK.
+
+EasyLink SDK adalah kumpulan fungsi dan perintah yang berkonsep instan untuk membantu pengembang 
+aplikasi dengan mengintegrasikan mesin stand alone pembaca sidik jari dari Fingerspot ke aplikasi 
+pengembang. Arti berkonsep instan adalah pengembang cukup menjalankan fungsi dan perintah dengan 
+memasukkan parameter sederhana maka EasyLink SDK mengerjakan keseluruhan proses terkait dengan alat 
+pembaca sidik jari, fungsi dan perintah yang disediakan EasyLink antara lain transaksi data karyawan , data 
+presensi dan informasi mesin.
+
+Fungsi-fungsi yang disediakan sangat memperhatikan keamanan, keakuratan, kecepatan dan efektifitas 
+manajemen memory komputer bagi pengembang dan pengguna aplikasi yang dikembangkan.
+
+
+Minimum Kebutuhan Sistem
+
+*	Microsoft Windows XP SP 3, 7 (32 bit), 8 (32 bit / 64 bit), 10 (32 bit / 64 bit)
+*	Minimal memory 1GB atau lebih besar.
+*	Koneksi Ethernet / LAN untuk transaksi data mesin dengan EasyLink SDK.
+*	Mesin absensi Standalone dari Fingerspot yang mempunyai koneksi kabel LAN / Ethernet.
+
+
+Langkah Penggunaan EasyLink SDK
+1.	Instal aplikasi EasyLink SDK
+Lakukan instalasi EasyLink SDK pada komputer Anda, 
+langkah instalasi EasyLink SDK dapat dilihat pada halaman 8.
+2.	Tambah dan lakukan aktivasi mesin
+Setelah melakukan instalasi EasyLink SDK, tambah dan 
+lakukan aktivasi mesin yang akan digunakan, langkahnya 
+dapat dilihat pada halaman 9.
+3.	Atur koneksi mesin
+Atur koneksi mesin yang akan digunakan pada EasyLink SDK, 
+cara untuk mengatur mesin agar dapat terhubung dengan 
+EasyLink SDK dapat dilihat pada halaman 10.
+4.	Jalankan FService.exe
+Sebelum menggunakan EasyLink SDK pastikan Anda sudah 
+menjalankan aplikasi server yaitu Fservice.exe, aplikasi ini 
+digunakan untuk menghubungkan antara mesin absensi 
+dengan sample Code.
+
+
+5.	Sample code EasyLink siap digunakan
+Sample code EasyLink SDK sudah siap Anda gunakan untuk pengembangan aplikasi Anda. Sample 
+code dapat Anda ambil pada folder instalasi EasyLink SDK. Procedure dan fungsi yang digunakan 
+serta result yang dihasilkan dapat Anda lihat mulai halaman 12.
+untuk menggunakan sample code langkahnya yaitu :
+1.	Extract file EasyLink SDK Sample Code.rar di komputer Anda, folder tersebut berisi sample 
+code EasyLink SDK dengan menggunakan bahasa pemrograman Delphi 7.0 serta database MS 
+Acces. Untuk sample code dengan bahasa pemrograman yang lain dapat didownload pada 
+web www.fingerspot.com.
+2.	Sudah disediakan exe sample code untuk mencoba langsung sample code tersebut, berikut 
+ini tampilan sample code Easy Link SDK ClientSDK_D7.exe
+Note :
+a.	Isikan Alamat IP Address komputer 
+yang dijalnkan aplikasi FService.exe
+b.	Isi Port server sesuai port pada 
+aplikasi FService.exe
+c.	Isikan SN (Serial Number) mesin 
+yang akan di koneksikan. Pastikan 
+SN tersebut sudah anda tambahkan 
+di file Device.ini didalam folder 
+instalasi Easylink SDK
+d.	Hasil / result dalam bentuk JSON
+
+
+Instalasi
+Sebelum melakukan instalasi EasyLink SDK, pastikan .Net Framework sudah terinstal di PC Anda, apabila belum 
+terinstal dapat menginstal.Net Framework pada saat instalasi EasyLink SDK, untuk proses instalasi EasyLink 
+SDK seperti dibawah ini :
+1.	Masukkan CD Instalasi EasyLink SDK versi 2.0 pada PC Anda.
+2.	Instal EasyLink SDK dengan cara klik SetupEasyLink SDK, maka akan 
+tampil halaman seperti gambar di bawah ini. Klik tombol Next dan ikuti 
+proses instalasi.
+3.	Tunggu sampai Proses Instalasi EasyLink SDK selesai
+4.	Selanjutnya akan tampil halaman instalasi .Net Farmework, lakukan 
+instalasi sampai selesai. Setelah melakukan instalasi .Net Framework 
+restartlah PC Anda.
+Note : mesin tipe Neo series + Kana SF-1000CNB wajib install .Net 
+Framework agar dapat terkoneksi dengan Easylink SDK
+
+
+Tambah dan Aktivasi Mesin
+Langkah sebelum menggunakan aplikasi EasyLink SDK yaitu tambah dan lakukan aktivasi mesin absensi 
+yang akan di gunakan pada EasyLink SDK, langkahnya yaitu :
+1.	Masuk pada folder instalasi Easylink SDK, dan buka file Device.ini
+2.	Isikan data mesin yang digunakan dengan mengisi nama mesin, SN, kode aktivasi, password 
+(password di mesin), number (no mesin/device no), IP Address (Ip Address di mesin), Ethernet_port 
+(no port di mesin)
+Note : Pastikan SN, Nama mesin, number, IP Address tidak ada yang sama dengan isian mesin lain 
+di dalam file Device.ini
+3.	Simpan file tersebut di folder instalasi aplikasi EasyLink SDK.
+4.	Aplikasi EasyLink SDK sudah siap digunakan.
+
+
+
+Atur Koneksi Mesin
+Atur koneksi pada mesin agar mesin terhubung dengan EasyLink SDK, hal – hal yang perlu diatur pada 
+mesin agar terkoneksi dengan EasyLink SDK yaitu No Mesin, IP Address , Port mesin, Password mesin. 
+Note : Pengaturan koneksi mesin harus sama dengan pengaturan di file Device.ini.
+Berikut ini contoh gambar pengaturan koneksi ke EasyLink pada mesin :
+
+Note : untuk tipe mesin Neo Series dan KANA SF-1000CNB selain atur No Mesin, IP Address , Port mesin, 
+Password mesin juga perlu atur Glog RT PUSH pilih UDP agar mesin bisa terkoneksi dengan Easylink SDK. 
+(Pada menu Setting > Komu didalam mesin)
+
+
+Contoh Aplikasi (Sample Code)
+
+Pada folder instalasi aplikasi EasyLink SDK telah 
+disediakan sample aplikasi untuk menjelaskan cara 
+pemakaian SDK, antara lain download dan upload 
+user, download data presensi, Auto download data 
+user dan data presensi, dan menampilkan 
+informasi, pengaturan mesin dan Auto Download. 
+Sebelum menjalakan sample code, pastikan sudah 
+menjalankan aplikasi FService.exe.
+
+Pada CD EasyLink SDK sudah disediakan sample 
+code dengan mengunakan bahasa pemrograman 
+Delphi 7.0 yang terletak didalam folder instalasi 
+EasyLink yaitu EasyLink SDK Sample Code.rar.
+Untuk sample code dengan bahasa pemrograman 
+yang lain dapat Anda download dari web 
+Fingerspot yaitu www.fingerspot.com
+
+
+Fungsi dan Perintah EasyLink SDK
+Berikut ini beberapa fungsi dan perintah EasyLink SDK :
+
+Download User (With Pagination)
+Prosedur ini digunakan untuk mendapatkan data user atau karyawan yang tersimpan di mesin absensi. Data 
+user yang didapat dari mesin antar lain yaitu user info (PIN dan alias/nama user di mesin), Sidik jari, wajah, 
+password dan kartu.
+Download data user dilakukan secara paging / bertahap sesuai dengan nilai paging yang di inputkan, hal ini 
+bertujuan untuk menghindari gagal download dikarenakan data user di mesin banyak. Secara default nilai 
+paging yaitu 100 / download per-100 user secara bertahap sampai semua data user dimesin berhasil 
+terdownload.
+Untuk mendapatkan data user dari mesin cukup melakukan request HTTP ke IP server yang menjalankan 
+FService.exe dengan rincian sebagai berikut :
+URL : IP:Port/user/all/paging
+Method : POST
+Content-Type : application/x-www-form-urlencoded
+
+Parameter :
+?	sn
+
+
+Setelah itu, server akan mengirim return sebagai berikut :
+Return yang didapatkan yaitu dalam bentuk string JSON.
+?	Request sukses : Result = true (Data user dan template)
+Contoh :
+{"Result":true,"Data":[{"PIN":"1","Name":"satu","RFID":"2341073","Password":"1","Privilege":0,"Template":[]},{"PIN":"2","Name ":"dua","R 
+FID":"4085563","Password":"2","Privilege":0,"Template":[{"pin":"2","idx":0,"alg_ver":10,"template":"TFNTUzIxAAAFEBQECAUHCc7QAAAd 
+EWkBAAAAhD0xWxAuAHIPeQD0APgfqAA7AIMPIgBuEKUPwwBxAFcPgBBzAF4PUwC2AFwf9QCBAC4PmgCDEFAP7ACKAPMPmhCRAEMOtAB 
+XADke2ACVADwP7ACoEFUPsgCuAHwOMhC1AEsPXAB9AEYfeAC7ADoOFwC5EE8PgQC/AOEO7hDDAEQPfAAVAL8c+QDSAEMPtgDdECsNPADf 
+AP4OhBDeABYNegAhAK8d2gDmAFgO2wDsEDgPeADsANgN0RDwANcMBAEzAFMfPgD3ALsOQwD5EJ4O3wD8AKIOtBD+AH4OvQA6ANwd5g 
+AHAdUO5AAXEaYPMwASAWcPUhAkAZMP3ADjAegfbQAoAQoPjAAsEYsPjQAqAUwP1BAtAXIPsAD3AfcfIwA7AYwPnwA+EYUPEXdXG9LzDJ+Of
+L+jh4jq81I3CHsWcFYVh1nv4RtbRh6SD2YFVBoq/e/rsPs4j7/l2Poe93MR7Quw7geUQQlqjSfmzOmIhxatMQrrEc8RQAg3EV8ZSH/ffXN5yfg6CbcT 
+RBvD+UYiWBpEgcjrPA/GlfoWNe6sfbD/YQHF+0vuLYP4pJGZ4QFj7Xf+OXOBgGkURIK/FAPz0G797NhcJZ69loGAgIOk8l+VPwBagYaW6XY4GBj1g 
+IPJcNADk5Gn8d4WgYLfGFOVhIWR952LhJS8gNASBKf2qkPjLU+QB6Z1UXCUA//42AW+7hoepP23+AMYYQj1iewSBW9jGFqL/XkQi3+Q7PgZCpr
+ov4AHibLs+IeKgSOfj5EbaYcEtuYjB8P/uPKd/t1/KXtcoq3+ASBIAcefJM8FAG8RdGTDAMoBEcP7QAwAXxUM0Ef//z7+CMW9EBlBNgMAahyywQY 
+QWy9wwBAAuTAFX8H+wP3A/Tpw+xcBPjH0wFU6DQWcIQBBRjBcxgCAJgHACQCCN0XDcdJrBgCtOwz+/wgQoTyAb8HBvsJ7BwEmWN7//Kj+S 
+u//T/8wwUbRAOZ3o4SWdYHBBX7EAgFXb+IzPDj/++/9wP/A/sHMAMR/lpuRwQ4ATHD1Mf77/v3//zjB+xcBgXFnm2XDAEpjYcJcCgCEs16JlI4EA 
+RZ2PZ8KBUR2WnRicwXF+Ic5/kQJAPOF6EzEIRYA6oawgAeMhpPA/8RaRhfFW41HhXTCwMbCBHjH0ZJvDQCZiKfExtLEw8bHxsEGwxAQYYpQa4 
+DBYsCN0ZLABgDqjvLAVhkB8I40wMH/+8YUAZ6QU6kfxdiVp5PDkcPAwk7C+tPA/8B5xsBGwMcTAZ+UQMIExaORISUEAJOYTGwIBceZPUswCQA
+YmDIrMf0JARWk+FVh7QUAJa9XwAcJBTqwUP97wsc6DAUntkxnwsTDvsMREFm6ScKPwrnDk9H+xMSEDwC6usXvJfz7HSn+zgBbqzz/wsXAoFQF 
+BcK+TMA6BABAwCy5GwCAwjfFa8XBkMDDxKfGwwTCxu/AxMQFAO8DQDYUAfbVQywFxfvQUMEdBACH4N/FxhUBgOMkqQXFGu5WxKoFAH 
+zs28KbFAEg7T2vCMQA/EP9/sH/RQbEB/wt+fvC/wcAyf8x0MTFcggQ489pxCYpAxA3FRM6BBQUF21KBBAd3QxCFxEJGTDIwAdeCAD0JWf9wzX
++Sg4ATCsJQnlnwxBoPBGQwRMQ+ehpxVDANF14/0fDEPApZj79BBAm+QBXFxHmTXDB/I8GFQxQBnD/"}]}]}
+
+?	Request gagal : Result = false
+Contoh :
+{"Result":false}
+
+
+Berikut ini contoh result format JSON dengan menggunakan JSON Viewer :
+
+Note : Selain Result bentuk JSON, EasyLink SDK juga menyediakan contoh penyimpanan kedalam database 
+(Ms Access) yang terdapat di dalam folder sample code.
+
+
+Untuk melakukan download user pada sample code EasyLink SDK langkahnya yaitu :
+
+1.	Pastikan mesin sudah dapat terkoneksi 
+dengan Easylink SDK, langkah 
+pangaturan agar mesin terkoneksi 
+dengan EasyLink SDK ddapat dilihat pada 
+halaman 10.
+2.	Pada sample code EasyLink SDK masuk 
+menu Data User, isikan limit paging atau 
+kosongi (default 100) lalu Klik tombol 
+Get All User (With Pagination), maka 
+sample code akan menjalankan proses 
+download semua data user di mesin 
+secara bertahap sesuai nilai limit paging 
+yang diisikan, misalkan nilai paging diisi 
+100, maka Easylink akan mendownlaod 
+per 100 data user secara bertahap
+sampai semua data user di mesin berhasil terdownload.
+3.	Apabila download selesai, akan tampil data user beserta template sidik jari / wajah yang tersimpan 
+dalam contoh database (Ms Access) serta file JSON (JSON _User.txt) yang tersimpan didalam folder 
+sample code.
+
+
+Upload User
+Berikut ini prosedur untuk upload user (kirim data karyawan dari EasyLink SDK ke mesin), data user yang dapat 
+diupload ke mesin yaitu user info (PIN dan Alias / nama user di mesin), sidik jari, wajah, password dan RFID. 
+Untuk upload data user ke mesin cukup mengirimkan request http ke IP server yang menjalankan FService.exe 
+dengan rincian sebagai berikut :
+URL : IP:Port/user/set
+Method : POST
+Content-Type : application/x-www-form-urlencoded
+
+Parameter :
+?	sn
+?	pin
+?	nama
+?	pwd
+?	rfid
+?	priv
+?	tmp
+
+
+Setelah itu, server akan mengirim return sebagai berikut : 
+Return yang didapatkan yaitu dalam bentuk string JSON.
+
+?	Request Sukses : Result = true
+Contoh :
+{"Result":true}
+?	Request gagal : Result = false
+Contoh :
+{"Result":false}
+
+
+Untuk melakukan upload user ke mesin pada sample code EasyLink SDK langkahnya yaitu :
+1.	Pastikan mesin sudah dapat terkoneksi dengan Easylink SDK, langkah pangaturan agar mesin 
+terkoneksi dengan EasyLink SDK ddapat dilihat pada halaman 10.
+2.	Pada sample code EasyLink SDK masuk menu Data 
+User, Klik tombol Set All User, maka akan 
+menjalankan proses upload semua user yang ada di 
+database ke mesin.
+3.	Jika ingin meng-upload user yang di pilih, maka 
+isikan PIN user dan klik tombol Set User PIN
+4.	Pilih Set All User (With Pagination) untuk upload 
+data user secara bertahap sesuai nilai limit paging 
+yang diisikan, misalkan nilai paging diisi 100, maka 
+Easylink akan mengupload data user per 100 secara 
+bertahap sampai semua data user berhasil ter- 
+Upload didalam mesin. Hal ini bertujuan untuk 
+menghindari gagal upload data user banyak.
+
+
+Delete User
+Prosedur berikut digunakan untuk menghapus data user yang ada di mesin, terdapat 2 prosedur untuk hapus 
+data user di mesin yaitu :
+a.	Delete all user
+berfungsi untuk menghapus semua data user yang ada di mesin, untuk menghapus semua user 
+mesin cukup melakukan request http ke IP server yang menjalankan FService.exe dengan rincian 
+sebagai berikut :
+URL : IP:Port/ user/delall
+Method : POST
+Content-Type : application/x-www-form-urlencoded
+
+Parameter :
+?	sn
+
+Setelah itu, server akan mengirim return sebagai berikut : 
+Return yang didapatkan yaitu dalam bentuk string JSON.
+?	Request Sukses : Result = true
+Contoh :
+{"Result":true}
+?	Request gagal : Result = false
+Contoh :
+{"Result":false}
+
+
+b.	Delete user PIN
+Berfungsi untuk menghapus user di mesin sesuai dengan PIN/ID karyawan yang dimasukkan. untuk 
+menghapus salah satu user mesin cukup melakukan request http ke IP server yang menjalankan 
+FService.exe dengan rincian sebagai berikut :
+URL : IP:Port/ user/del
+Method : POST
+Content-Type : application/x-www-form-urlencoded
+
+Parameter :
+?	sn
+?	pin
+
+Setelah itu, server akan mengirim return sebagai berikut : 
+Return yang didapatkan yaitu dalam bentuk string JSON.
+?	Request Sukses : Result = true
+Contoh :
+{"Result":true}
+?	Request gagal : Result = false
+Contoh :
+{"Result":false}
+
+
+Download Scanlog
+Prosedur berikut ini digunakan untuk melakukan download data scanlog / data presensi dari mesin absensi. 
+terdapat 2 prosedur untuk download scanlog yaitu :
+a.	Download semua scanlog (With Pagination)
+Download semua scan log (with pagination) adalah mendownload semua data scan yang ada di 
+mesin secara bertahap sesuai nilai limit paging yang diisikan, misalkan nilai paging diisi 100, maka 
+Easylink akan mendownlaod per 100 data scan secara bertahap sampai semua data scan di mesin 
+berhasil terdownload, hal ini bertujuan untuk menghindari gagal download data scan besar. Untuk 
+download semua scanlog cukup melakukan request http ke IP server yang menjalankan 
+FService.exe dengan rincian sebagai berikut :
+
+URL : IP:Port/scanlog/all/paging
+Method : POST
+Content-Type : application/x-www-form-urlencoded
+
+Parameter :
+?	sn
+Setelah itu, server akan mengirim return sebagai berikut : 
+Return yang didapatkan yaitu dalam bentuk string JSON.
+
+
+?	Request Sukses : Result = true
+Contoh :
+{"Result":true,"Data":[{"SN":"6530150200047","ScanDate":"2016-02-11
+13:13:21","PIN":"2","VerifyMode":0,"IOMode":0,"WorkCode":0},{"SN":"6530150200047","ScanDa 
+te":"2016-02-11 
+13:13:31","PIN":"2","VerifyMode":2,"IOMode":0,"WorkCode":0},{"SN":"6530150200047","ScanDa 
+te":"2016-02-15 
+09:57:32","PIN":"1","VerifyMode":1,"IOMode":0,"WorkCode":0},{"SN":"6530150200047","ScanDa 
+te":"2016-02-15 
+09:57:36","PIN":"2","VerifyMode":2,"IOMode":0,"WorkCode":0},{"SN":"6530150200047","ScanDa 
+te":"2016-02-15 
+09:57:39","PIN":"1","VerifyMode":2,"IOMode":0,"WorkCode":0},{"SN":"6530150200047","ScanDa 
+te":"2016-02-15 
+09:57:45","PIN":"1","VerifyMode":0,"IOMode":0,"WorkCode":0},{"SN":"6530150200047","ScanDa
+te":"2016-02-15 09:57:48","PIN":"2","VerifyMode":0,"IOMode":0,"WorkCode":0}]}
+?	Request gagal : Result = false
+Contoh :
+{"Result":false}
+
+
+b.	Download scanlog terbaru
+Sedangkan download scanlog terbaru saja yaitu hanya mendownload data scan log terbaru yang 
+belum terdownload di Easylink SDK.
+Untuk download scanlog terbaru cukup melakukan request http ke IP server yang menjalankan 
+FService.exe dengan rincian sebagai berikut :
+URL : IP:Port/scanlog/new
+Method : POST
+Content-Type : application/x-www-form-urlencoded
+Parameter :
+?	sn
+
+Setelah itu, server akan mengirim return sebagai berikut :
+Return yang didapatkan yaitu dalam bentuk string JSON.
+
+?	Request Sukses : Result = true
+Contoh :
+{"Result":true,"Data":[{"SN":"6530150200047","ScanDate":"2016-02-11
+13:13:21","PIN":"2","VerifyMode":0,"IOMode":0,"WorkCode":0},{"SN":"6530150200047","ScanDa 
+te":"2016-02-11 
+13:13:31","PIN":"2","VerifyMode":2,"IOMode":0,"WorkCode":0},{"SN":"6530150200047","ScanDa 
+te":"2016-02-15 
+09:57:32","PIN":"1","VerifyMode":1,"IOMode":0,"WorkCode":0},{"SN":"6530150200047","ScanDa
+
+
+te":"2016-02-15 
+09:57:36","PIN":"2","VerifyMode":2,"IOMode":0,"WorkCode":0},{"SN":"6530150200047","ScanDa 
+te":"2016-02-15 
+09:57:39","PIN":"1","VerifyMode":2,"IOMode":0,"WorkCode":0},{"SN":"6530150200047","ScanDa 
+te":"2016-02-15 
+09:57:45","PIN":"1","VerifyMode":0,"IOMode":0,"WorkCode":0},{"SN":"6530150200047","ScanDa
+te":"2016-02-15 09:57:48","PIN":"2","VerifyMode":0,"IOMode":0,"WorkCode":0}]}
+
+?	Request gagal : Result = false
+Contoh :
+{"Result":false}
+
+
+Berikut ini contoh result format JSON dengan menggunakan JSON Viewer :
+
+
+
+
+Note : Selain Result bentuk JSON, EasyLink SDK juga menyediakan contoh penyimpanan kedalam database 
+(Ms Access)yang terdapat di dalam folder sample aplikasi.
+
+
+Untuk melakukan download data scan (download scan semua data (with pagination) dan download terbaru) 
+dari mesin pada sample code EasyLink SDK langkahnya yaitu :
+
+1.	Pastikan mesin sudah dapat terkoneksi dengan 
+Easylink SDK, langkah pangaturan agar mesin 
+terkoneksi dengan EasyLink SDK dapat dilihat 
+pada halaman 10.
+2.	Pada sample code EasyLink SDK masuk menu 
+Data Scanlog, Isikan limit paging lalu klik tombol 
+Get All ScanLog (with pagination) untuk 
+download semua data scan di mesin secara 
+bertahap sesuai nilai limit paging yang diisikan, 
+misalkan nilai paging diisi 100, maka Easylink 
+akan mendownlaod per 100 data scan secara 
+bertahap sampai semua data scan di mesin 
+berhasil terdownload. hal ini bertujuan untuk 
+menghindari gagal download data scan besar. 
+klik tombol Get New Scanlog untuk download
+data scan terbaru saja (data scan yang belum pernah terdownload di Easylink SDK).
+3.	Apabila download scan berhasil akan tampil data scanlog dan tersimpan dalam database (Ms 
+Access) serta dalam format JSON. File JSON (JSON _Scanlog.txt) dapat dilihat pada folder sample 
+code.
+
+
+Delete Scanlog
+Prosedure ini digunakan untuk menghapus semua data scan karyawan yang tersimpan di mesin, Untuk 
+menghapus semua data scanlog dimesin cukup melakukan request http ke IP server yang menjalankan 
+FService.exe dengan rincian sebagai berikut :
+URL : IP:Port/scanlog/del
+Method : POST
+Content-Type : application/x-www-form-urlencoded
+
+Parameter :
+?	sn
+
+Setelah itu, server akan mengirim return sebagai berikut : 
+Return yang didapatkan yaitu dalam bentuk string JSON.
+?	Request Sukses : Result = true
+Contoh :
+{"Result":true}
+?	Request gagal : Result = false
+Contoh :
+{"Result":false}
+
+
+Mendapatkan Informasi Mesin
+Selain download data user dan data presensi, Anda juga dapat menampilkan informasi mesin dengan 
+menggunakan procedure bawah ini, informasi mesin yang didapatkan antara lain jumlah admin, jumlah 
+password, tanggal dan jam mesin, jmlah data operasional, jumlah semua data scan, jumlah FP, Face, card dan 
+user.
+Untuk mendapatkan informasi mesin cukup melakukan request http ke IP server yang menjalankan 
+FService.exe dengan rincian sebagai berikut :
+
+URL : IP:Port/dev/info
+Method : POST
+Content-Type : application/x-www-form-urlencoded
+
+Parameter :
+?	sn
+Setelah itu, server akan mengirim return sebagai berikut :
+Return yang didapatkan yaitu dalam bentuk string JSON.
+
+?	Request Sukses : Result = true
+Contoh :
+{"Result":true,"DEVINFO":{"Display":"TFT","Algoritma":"10","Admin":"0","User":"2","FP":"3","Fac 
+e":"0","PWD":"2","Operasional":"91","Presensi":"28"}}
+
+
+?	Request gagal : Result = false
+Contoh :
+{"Result":false}
+
+Berikut ini contoh result format JSON dengan menggunakan JSON Viewer :
+
+
+
+Untuk menampilkan informasi mesin absensi pada sample code EasyLink SDK langkahnya yaitu :
+1.	Pastikan pengaturan koneksi sudah sesuai, langkah pangaturan EasyLink SDK dengan mesin absensi 
+dapat dilihat pada halaman 10.
+2.	Pada sample code EasyLink SDK masuk menu Device Info, klik tombol Device Info.
+
+
+
+Setting atau Pengaturan
+Pada menu setting terdapat beberapa fungsi dan procedure antara lain sebegai berikut :
+Sync DateTime
+fungsi ini digunakan untuk meng-synkronkan waktu di mesin sesuai dengan waktu di PC, untuk melakukan 
+synkronisasi waktu mesin cukup melakukan request http ke IP server yang menjalankan FService.exe dengan 
+rincian sebagai berikut :
+
+URL : IP:Port/dev/settime
+Method : POST
+Content-Type : application/x-www-form-urlencoded
+
+Parameter :
+?	sn
+Setelah itu, server akan mengirim return sebagai berikut : 
+Return yang didapatkan yaitu dalam bentuk string JSON.
+
+?	Request Sukses : Result = true
+Contoh :
+{"Result":true}
+?	Request gagal : Result = false
+Contoh :
+{"Result":false}
+
+
+Delete Admin
+fungsi ini digunakan untuk menghapus hak akses admin di mesin, untuk hapus hak akses dimesin lakukan 
+request http ke IP server yang menjalankan FService dengan rincian sebagai berikut :
+URL : IP:Port/dev/deladmin
+Method : POST
+Content-Type : application/x-www-form-urlencoded
+
+Parameter :
+?	sn
+Setelah itu, server akan mengirim return sebagai berikut : 
+Return yang didapatkan yaitu dalam bentuk string JSON.
+
+?	Request Sukses : Result = true
+Contoh :
+{"Result":true}
+?	Request gagal : Result = false
+Contoh :
+{"Result":false}
+
+
+Delete Device Log
+Fungsi ini digunakan untuk menghapus semua data operasional mesin, untuk menghapus semua data 
+operasional dimesin lakukan request http ke IP server yang menjalankan FService dengan rincian sebagai 
+berikut :
+URL : IP:Port/log/del
+Method : POST
+Content-Type : application/x-www-form-urlencoded
+
+Parameter :
+?	sn
+Setelah itu, server akan mengirim return sebagai berikut : 
+Return yang didapatkan yaitu dalam bentuk string JSON.
+?	Request Sukses : Result = true
+Contoh :
+{"Result":true}
+?	Request gagal : Result = false
+Contoh :
+{"Result":false}
+
+
+Initialization
+fungsi ini digunakan untuk menghapus semua data yang ada di mesin, antara lain yaitu data karyawan, data 
+presensi dan data operasional mesin. untuk melakukan inisialisasi dimesin lakukan request http ke IP server 
+yang menjalankan FService dengan rincian sebagai berikut :
+URL : IP:Port/dev/init
+Method : POST
+Content-Type : application/x-www-form-urlencoded
+
+Parameter :
+?	sn
+Setelah itu, server akan mengirim return sebagai berikut : 
+Return yang didapatkan yaitu dalam bentuk string JSON.
+?	Request Sukses : Result = true
+Contoh :
+{"Result":true}
+?	Request gagal : Result = false
+Contoh :
+{"Result":false}
+
+
+Untuk menampilkan informasi mesin absensi pada sample code EasyLink SDK langkahnya yaitu :
+1.	Pastikan sample code sudah terhubung dengan mesin absensi, langkah pangaturan EasyLink SDK 
+dengan mesin absensi dapat dilihat pada halaman 10.
+2.	Pada sample code EasyLink SDK masuk menu Setting, terdapat beberapa fungsi antara lain Sync 
+Date Time, Delete Admin,Delete Device Log dan Initialization.
+ 
+
+
+Auto Download
+Easylink SDK menyediakan fitur auto download data scanlog, dengan fitur ini data user dan scanlog yang ada 
+di mesin akan terdownload secara otomatis berdasarkan jam-jam download yang sudah dijadwalkan. Untuk 
+menggunakan caranya seperti berikut
+1.	Buka file Device.ini yang ada di dalam folder sample 
+code / folder Client SDK D7
+2.	isikan SN mesin yang akan berlakukan fungsi auto 
+download. Jika mesin lebih dari satu, pisahkan 
+menggunakan tanda ; (titik koma).
+3.	Kemudian tentukan jam-jam download, dengan cara 
+isikan jam – jam fungsi auto download dijalankan, 
+pisahkan jam pertama dengan jam selanjutnya dengan 
+menggunakan tanda ; (titik koma), kemudian simpan 
+file Device.ini.
+4.	Pada samplecode tab Auto, klik Start Download 
+Scheduler untuk menjalankan fungsi auto download.
+5.	Fitur Downloader ini akan secara otomatis melakukan 
+download data presensi pada mesin sesuai dengan jam- 
+jam yang dijadwalkan.
+
+
+6.	Selain fungsi auto download, juga disediakan fungsi download semua data user dan semua data 
+scan di semua mesin.
+a.	Get All User in All Device, berfungsi 
+mendownload semua data user di 
+semua mesin yang terdaftar pada file 
+Device.ini yang berada di sample code 
+Easylink SDK
+b.	Get All Scanlog in All Device, berfungsi 
+mendownload semua data scan di 
+semua mesin yang terdaftar pada file 
+Device.ini yang berada di sample code 
+Easylink SDK
+
+
+Atur Download Data Scan GPS Fingerspot.iO
+Atur koneksi Easylink SDK agar bisa download data Scan GPS dari Fingerspot.iO seprti berikut ini :
+*	Anda sudah mempunyai akun Fingerspot.iO
+*	Buka file Device.ini di folder instalasi EasylinkSDK
+*	Tambahkan pengaturan koneksi ke Fingerspot.iO yaitu :
+[Scan GPS] 
+conn_type= 
+api_key=
+Isikan conn_type dengan FiO
+Dan isikan api_key sesuai dengan api_key di halaman Pengaturan Umum web Fingerspot.iO
+*	Setelah di isi kemudian simpan.
+
+
+Download Scan GPS Fingerspot.iO
+Fungsi ini digunakan untuk mendownload data scan gps dari Fingerspot.iO sesuai dengan tanggal yang di 
+pilih, untuk download scan GPS cukup melakukan request dan yang menjalankan Fservice.exe dengan rincian 
+sebagai berikut :
+URL : IP:Port/scanlog/GPS
+Method : POST
+Content-Type : application/x-www-form-urlencoded
+Parameter :
+?	by_date=yyyy-mm-dd
+?	sn
+Setelah itu server akan mengirim return sebagai berikut : 
+return yang di dapatkan yaitu dalam bentuk string JSON
+?	Request Sukses : Result = true
+Contoh :
+{"Result":true,"Data":[{"PIN":"5","WorkCode":0,"SN":"Scan 
+GPS","VerifyMode":5,"ScanDate":"2020-09-14 
+11:23:07","IOMode":0},{"PIN":"4","WorkCode":0,"SN":"Scan
+GPS","VerifyMode":5,"ScanDate":"2020-09-14 
+11:17:11","IOMode":0},{"PIN":"3","WorkCode":0,"SN":"Scan
+GPS","VerifyMode":5,"ScanDate":"2020-09-14 
+11:14:47","IOMode":0},{"PIN":"2","WorkCode":0,"SN":"Scan
+GPS","VerifyMode":5,"ScanDate":"2020-09-14 
+11:13:31","IOMode":0},{"PIN":"1","WorkCode":0,"SN":"Scan
+
+
+GPS","VerifyMode":5,"ScanDate":"2020-09-14 11:09:11","IOMode":0}]}
+?	Request gagal : Result = false 
+Contoh :
+{“Result”:false}
+Berikut ini contoh result format JSON dengan menggunakan JSON Viewer :
+
+
+
+Untuk melakukan download data scan gps dari Fingerspot.iO pada sample code Easylink SDK langkahnya 
+yaitu :
+1.	Pada sample code Easylink SDK masuk menu Data Scanlog, pilih tanggal scan GPS yang akan di 
+download. Klik tombol Download Scanlog GPS By Date.
+2.	Apabila download scan berhasil, akan tampil data scanlog serta dalam Format JSON.
+
+Note :
+-	Device SN wajib di isi 0 untuk 
+download Scan GPS dari 
+Fingerspot.iO
+-	Hanya bisa mendownload 1x 
+setiap tanggal Scan GPS yang di 
+download.
+-	Selain Result bentuk JSON, 
+EasyLink SDK juga menyediakan 
+contoh penyimpanan kedalam 
+database (Ms Access) yang 
+terdapat di dalam folder sample 
+aplikasi.
+-	Data scan GPS yang sudah 
+terdownload tidak dapat di 
+download ulang
+
+
+
+FINGERSPOT WEBSITE & ONLINE SUPPORT
+
+Untuk informasi & bantuan teknis, silahkan kunjungi : 
+website Fingerspot di http://www.fingerspot.com
+
+
+
+
+
+
+
+
+
+
+
+
+5.2
+
+
+
+
+
+
+
+
+
+
+
+

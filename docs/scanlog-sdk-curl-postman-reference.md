@@ -17,7 +17,7 @@ It also records what was found via **Exa/web research** and **local grep/code tr
 - `lib/easylink-sdk-client.js` Windows adapter now uses configurable endpoint lists and fallback:
   - Scanlogs: `/scanlog/new,/scanlog/all/paging,/getScanLogs`
   - Users: `/user/all/paging,/getUsers`
-  - Device info/time: `/dev/info,...`
+  - Device info/time/init: `/dev/info,/dev/settime,/dev/init,...`
 - Request strategy fallback in windows adapter is query -> form -> json when needed.
 
 ### External Exa/GitHub findings (supporting only)
@@ -73,7 +73,7 @@ curl -sS -m 30 -X POST "http://192.168.1.111:3001/api/scanlog/sync" \
   -H "Content-Type: application/json" \
   -b "easylink_session=<YOUR_SESSION_COOKIE>" \
   -d '{
-    "source": "auto",
+    "source": "windows-sdk",
     "mode": "new",
     "from": "2026-03-26 00:00:00",
     "to": "2026-03-27 23:59:59",
@@ -94,7 +94,7 @@ PowerShell equivalents (handy when curl is blocked):
 
 ```powershell
 $body = @{
-  source = 'auto'
+  source = 'windows-sdk'
   mode = 'new'
   from = '2026-03-26 00:00:00'
   to = '2026-03-27 23:59:59'
@@ -112,11 +112,39 @@ Invoke-RestMethod -Method Get -Uri 'http://192.168.1.111:3001/api/scanlog/sync?b
 
 Client UI mirrors this behavior via a right-side queue panel with expandable rows showing raw JSON (request + result/error). Use "New" mode + date range whenever possible; the "All" mode is exposed but warns users because it is heavy on the SDK.
 
+### Machine async worker API (new)
+
+Machine operations now run through a background job queue on `/api/machine`:
+
+- Queue action:
+
+```bash
+curl -sS -m 30 -X POST "http://192.168.1.111:3001/api/machine" \
+  -H "Content-Type: application/json" \
+  -b "easylink_session=<YOUR_SESSION_COOKIE>" \
+  -d '{"action":"pull_users","async":true}'
+```
+
+- Poll job:
+
+```bash
+curl -sS -b "easylink_session=<YOUR_SESSION_COOKIE>" "http://192.168.1.111:3001/api/machine?job_id=12"
+```
+
+- Initialize machine (danger, requires exact typed phrase):
+
+```bash
+curl -sS -m 30 -X POST "http://192.168.1.111:3001/api/machine" \
+  -H "Content-Type: application/json" \
+  -b "easylink_session=<YOUR_SESSION_COOKIE>" \
+  -d '{"action":"initialize_machine","async":true,"confirmation_text":"INITIALIZE MACHINE Fio66208021230737"}'
+```
+
 ---
 
 ## 5) Embedded Postman collection JSON (direct SDK)
 
-This mirrors file: `Postman/EasyLink User + Scanlog (Query String).postman_collection.json`
+Postman collection is centralized at `docs/postman/easylink-machine-sdk.collection.json` so response verification can be tracked together with this reference and `docs/response_testing.md`.
 
 ```json
 {

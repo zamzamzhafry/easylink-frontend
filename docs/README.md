@@ -21,7 +21,15 @@ This folder is the handoff context for future contributors and AI agents.
 - [`scanlog-sdk-curl-postman-reference.md`](./scanlog-sdk-curl-postman-reference.md)
   - Exa + grep exploration summary for EasyLink SDK JS references
   - Raw curl commands for user/scanlog endpoints with date-range and paging
-  - Embedded Postman collection JSON for direct SDK scanlog/user requests
+  - Postman collection + backend queue request patterns for SDK-first ingestion
+- [`response_testing.md`](./response_testing.md)
+  - Operational response log for SDK -> backend curl verification
+  - Append real terminal outputs from machine + app API tests
+- [`postman/easylink-machine-sdk.collection.json`](./postman/easylink-machine-sdk.collection.json)
+  - Importable Postman collection for SDK and backend sync route checks
+- [`api/machine-sdk-env-cleanup.md`](./api/machine-sdk-env-cleanup.md)
+  - SDK-first env map (active vs legacy-looking vars)
+  - Safe cleanup notes before removing direct-device fallback vars
 
 ## Existing Migration/Refactor Docs
 

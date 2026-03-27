@@ -1,3 +1,18 @@
+## SDK -> Backend curl testing chain (current)
+
+Reference source of truth for endpoint behavior: `docs/learning/easylink SDK user guide.txt`.
+
+1. Validate SDK endpoint directly (`/dev/info`, `/dev/settime`, `/dev/init`, `/scanlog/new`, `/scanlog/all/paging`, `/user/all/paging`).
+2. Trigger backend worker API:
+   - Machine actions queue: `POST /api/machine` with `{ "action": "info|time|sync_time|pull_users|initialize_machine", "async": true }`
+   - Scanlog ingestion queue: `POST /api/scanlog/sync` with source `windows-sdk`
+3. Poll job/batch status:
+   - Machine job: `GET /api/machine?job_id=<JOB_ID>`
+   - Scanlog batch: `GET /api/scanlog/sync?batch_id=<BATCH_ID>`
+4. Append observed raw responses in this file.
+
+---
+
 curl -sS -m 30 -X POST "http://192.168.1.111:8090/scanlog/new?sn=Fio66208021230737&from=2026-03-20%2000:00:00&to=2026-03-27%2023:59:59&limit=100" -H "Content-Type: application/x-www-form-urlencoded"
 {"Result":false,"message_code":0,"message":"No data"}
 
@@ -10,7 +25,7 @@ curl: (3) URL rejected: Malformed input to a URL function
 
 Invoke-RestMethod -Method Post -Uri "http://192.168.1.111:8090/scanlog/new?sn=Fio66208021230737&from=2026-03-20 00:00:00&to=2026-03-27 23:59:59&limit=100" -ContentType "application/x-www-form-urlencoded"
 $body = @{
-source = "auto"
+source = "windows-sdk"
 mode = "new"
 from = "2026-03-20 00:00:00"
 to = "2026-03-27 23:59:59"
@@ -36,9 +51,9 @@ curl -sS -m 30 -X POST "http://192.168.1.111:8090/scanlog/new?sn=Fio662080212307
 curl -sS -m 30 -X POST "http://192.168.1.111:3001/api/scanlog/sync" \
  -H "Content-Type: application/json" \
  -b "easylink_session=<YOUR_SESSION_COOKIE>" \
- -d '{"source":"auto","mode":"all","from":"2026-03-01 00:00:00","to":"2026-03-27 23:59:59","limit":100,"page":1,"max_pages":5,"async":true}'
+ -d '{"source":"windows-sdk","mode":"all","from":"2026-03-01 00:00:00","to":"2026-03-27 23:59:59","limit":100,"page":1,"max_pages":5,"async":true}'
 
-curl -sS -m 30 -X POST "http://192.168.1.111:3001/api/scanlog/sync" -H "Content-Type: application/json" -b "easylink_session=<YOUR_SESSION_COOKIE>" -d '{"source":"auto","mode":"all","from":"2026-03-01 00:00:00","to":"2026-03-27 23:59:59","limit":100,"page":1,"max_pages":5,"async":true}'
+curl -sS -m 30 -X POST "http://192.168.1.111:3001/api/scanlog/sync" -H "Content-Type: application/json" -b "easylink_session=<YOUR_SESSION_COOKIE>" -d '{"source":"windows-sdk","mode":"all","from":"2026-03-01 00:00:00","to":"2026-03-27 23:59:59","limit":100,"page":1,"max_pages":5,"async":true}'
 
 rto response from curl
 
