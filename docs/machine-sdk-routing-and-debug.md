@@ -114,3 +114,41 @@ Invoke-RestMethod -Method Post -Uri "http://192.168.1.111:8090/dev/info?sn=Fio66
 2. `npm run typecheck` passed.
 3. `npm run build` passed.
 4. Direct SDK curl query returned `Result: true` with `DEVINFO` body.
+
+## SDK parity update (aligned to `docs/learning/easylink.ps1`)
+
+This repository now follows the PowerShell reference behavior more closely for long-running paging and device time operations.
+
+### Timeout and retry tolerance
+
+File: `lib/easylink-sdk-client.js`
+
+- Request timeout is now configurable instead of fixed for all calls:
+  - `EASYLINK_WSDK_TIMEOUT_MS` (default `30000`)
+  - `EASYLINK_WSDK_PAGING_TIMEOUT_MS` (default `120000`)
+  - `EASYLINK_WSDK_INFO_TIMEOUT_MS` (default `30000`)
+  - `EASYLINK_WSDK_TIME_TIMEOUT_MS` (default `30000`)
+  - `EASYLINK_WSDK_SETTIME_TIMEOUT_MS` (default `45000`)
+- Sync time now retries like script-style tolerance:
+  - `EASYLINK_WSDK_SETTIME_RETRY_ATTEMPTS` (default `3`)
+  - `EASYLINK_WSDK_RETRY_DELAY_MS` (default `3000`)
+
+### Paging behavior tolerance (scanlog/users)
+
+- `getScanlogs(mode='all')` and `getUsers()` now use high safe defaults and continue paging until terminal conditions are reached.
+- Pagination continuation logic no longer assumes `next_page = current + 1` when server does not send paging metadata.
+- Empty page (`Data: []`) now ends loop immediately.
+- `all` mode defaults to larger page-window tolerance:
+  - `EASYLINK_SCANLOG_MAX_PAGES` default `1000`
+  - `EASYLINK_USER_MAX_PAGES` default `1000`
+
+### Device time sync / get time hardening
+
+- Device time retrieval now includes safer normalization fallback from both parsed payload and raw payload.
+- Sync time request now sends `sn` plus time aliases (`time`, `datetime`, `jam`) for wider SDK compatibility.
+
+## Docs cleanup performed
+
+- Renamed response fixture to expected path:
+  - `docs/learning/response_from_easylink_script.txt`
+- Removed legacy PHP docs under `docs/learning/*.php` per cleanup request.

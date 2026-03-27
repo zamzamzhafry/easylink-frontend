@@ -55,3 +55,15 @@ Any change in these areas must update docs in the same task:
 - DB schema or query model
 - SDK endpoint contracts
 - Attendance/performance computation rules
+
+## 7) Windows git guard rails (line endings)
+
+- This repository is used on Windows machines; avoid line-ending churn in commits.
+- Respect `.gitattributes` defaults:
+  - source/docs files stay `LF`
+  - Windows script entrypoints (`*.bat`, `*.cmd`, `*.ps1`) stay `CRLF`
+- If git warns `LF will be replaced by CRLF`, normalize before commit:
+  1. `git add --renormalize .`
+  2. review with `git status --short`
+  3. commit only intended files
+- Never force global git config changes in automation (`core.autocrlf`, etc.). Keep normalization repo-local via `.gitattributes`.

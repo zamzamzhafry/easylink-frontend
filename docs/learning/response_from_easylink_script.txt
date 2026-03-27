@@ -1,0 +1,97 @@
+
+Pilih menu: 2
+  From (yyyy-MM-dd HH:mm:ss, kosongkan=skip): 2025-03-01 00:00:00
+  To   (yyyy-MM-dd HH:mm:ss, kosongkan=skip): 2026-03-27 23:59:59
+  Limit (default 100):
+
+╔══════════════════════════════╗
+║     SCANLOG TERBARU          ║
+╚══════════════════════════════╝
+  Total record  : 3
+Result DEVINFO
+------ -------
+  True @{Jam=27/03/2026 23:11:12; Admin=1; User=133; FP=132; Face=134; Vein=134; CARD=0; PWD=0; All Operasional=0; All…
+
+
+ScanDate            PIN VerifyMode IOMode WorkCode
+--------            --- ---------- ------ --------
+2026-03-27 22:00:39 125          1      2        0
+2026-03-27 22:01:38 124          1      2        0
+2026-03-27 23:05:12 95          20      2        0
+
+
+Pilih menu: 7
+
+╔══════════════════╗
+║  SYNC DATE TIME  ║
+╚══════════════════╝
+  Attempt 1/3...
+  ✅ Waktu mesin berhasil disinkronkan ke: 2026-03-27 23:25:56
+
+
+
+Pilih menu: 5
+
+╔══════════════════════════╗
+║  DOWNLOAD USER (PAGING)  ║
+╚══════════════════════════╝
+  Limit per page (Enter=10, kecil agar tidak timeout): 10
+  Fetching page 1 (limit=10)...
+  Page 1 : +10 user (total: 10)
+  Fetching page 2 (limit=10)...
+  Page 2 : +10 user (total: 20)
+  Fetching page 3 (limit=10)...
+  Page 3 : +10 user (total: 30)
+  Fetching page 4 (limit=10)...
+  Page 4 : +10 user (total: 40)
+  Fetching page 5 (limit=10)...
+  Page 5 : +10 user (total: 50)
+  Fetching page 6 (limit=10)...
+  Page 6 : +10 user (total: 60)
+  Fetching page 7 (limit=10)...
+  Page 7 : +10 user (total: 70)
+  Fetching page 8 (limit=10)...
+  Page 8 : +10 user (total: 80)
+  Fetching page 9 (limit=10)...
+  Page 9 : +10 user (total: 90)
+  Fetching page 10 (limit=10)...
+  Page 10 : +10 user (total: 100)
+  Fetching page 11 (limit=10)...
+  Page 11 : +10 user (total: 110)
+  Fetching page 12 (limit=10)...
+  Page 12 : +10 user (total: 120)
+  Fetching page 13 (limit=10)...
+  Page 13 : +4 user (total: 124)
+
+  ✅ Total user: 124
+Result DEVINFO
+------ -------
+  True @{Jam=27/03/2026 23:23:35; Admin=1; User=133; FP=132; Face=134; Vein=134; CARD=0; PWD=0; All Operasional=0; All…
+
+
+PIN Name        RFID Password Privilege
+--- ----        ---- -------- ---------
+11  prasetyo         0                0
+108 asih             0                0
+109 ali irfan        0                0
+110 eric             0                0
+111 della            0                0
+
+
+
+Pilih menu: 1
+
+╔═══════════════╗
+║  DEVICE INFO  ║
+╚═══════════════╝
+
+  Display      :
+  Algoritma    :
+  Admin        : 1
+  User         : 133
+  Fingerprint  : 132
+  Face         : 134
+  Password     : 0
+  Operasional  :
+  Presensi     :
+  💾 Disimpan: C:\Users\TECH NEWB\scanlog-viewer\devinfo.json

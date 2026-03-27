@@ -364,17 +364,22 @@ export async function POST(req) {
   const body = await req.json().catch(() => ({}));
   const from = body?.from || null;
   const to = body?.to || null;
-  const source = body?.source || 'auto';
+  const source = 'windows-sdk';
   const mode = body?.mode || 'new';
+  const modeValue = String(mode || 'new').toLowerCase();
   const limit = toBoundedInt(body?.limit ?? process.env.EASYLINK_SCANLOG_LIMIT, 100, {
     min: 1,
     max: 1000,
   });
   const page = toBoundedInt(body?.page, 1, { min: 1, max: 100000 });
+  const defaultMaxPages =
+    modeValue === 'all'
+      ? toBoundedInt(process.env.EASYLINK_SCANLOG_MAX_PAGES, 1000, { min: 1, max: 100000 })
+      : toBoundedInt(process.env.EASYLINK_SCANLOG_MAX_PAGES_NEW, 3, { min: 1, max: 100000 });
   const maxPages = toBoundedInt(
     body?.max_pages ?? body?.maxPages ?? process.env.EASYLINK_SCANLOG_MAX_PAGES,
-    3,
-    { min: 1, max: 200 }
+    defaultMaxPages,
+    { min: 1, max: 100000 }
   );
 
   const asyncMode = body?.async !== false;
