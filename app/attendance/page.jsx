@@ -6,6 +6,7 @@ import { Download, FileSpreadsheet, Printer } from 'lucide-react';
 import AttendanceFilters from '@/components/attendance/attendance-filters';
 import AttendanceTable from '@/components/attendance/attendance-table';
 import NoteModal from '@/components/attendance/note-modal';
+import InlineStatusPanel from '@/components/ui/inline-status-panel';
 import { TableEmptyRow, TableLoadingRow, TableShell } from '@/components/ui/table-shell';
 import { useToast } from '@/components/ui/toast-provider';
 import {
@@ -41,6 +42,10 @@ export default function AttendancePage() {
   const [groups, setGroups] = useState([]);
   const [loading, setLoading] = useState(false);
   const [rawLoading, setRawLoading] = useState(false);
+  const [rawError, setRawError] = useState('');
+  const [rawTotal, setRawTotal] = useState(0);
+  const [rawPages, setRawPages] = useState(1);
+  const [rawLimit, setRawLimit] = useState(50);
   const [editing, setEditing] = useState(null);
   const [employeeFilter, setEmployeeFilter] = useState('');
   const [incompleteOnly, setIncompleteOnly] = useState(false);
@@ -63,6 +68,17 @@ export default function AttendancePage() {
   const isLeader = Boolean(currentUser?.is_leader);
   const canEditNotes = isAdmin || isLeader;
   const TABS = isAdmin ? ADMIN_TABS : MEMBER_TABS;
+  const rawEmployeeQuery = useMemo(() => {
+    if (!employeeFilter) return { pin: '', employeeId: '' };
+    if (employeeFilter.startsWith('emp-')) {
+      return { pin: '', employeeId: employeeFilter.slice(4) };
+    }
+    if (employeeFilter.startsWith('pin-')) {
+      return { pin: employeeFilter.slice(4), employeeId: '' };
+    }
+    return { pin: '', employeeId: '' };
+  }, [employeeFilter]);
+
   const load = useCallback(async () => {
     setLoading(true);
     try {
@@ -80,20 +96,52 @@ export default function AttendancePage() {
   const loadRaw = useCallback(async () => {
     if (!isAdmin) {
       setRawRows([]);
+      setRawTotal(0);
+      setRawPages(1);
+      setRawError('');
       return;
     }
+
     setRawLoading(true);
+    setRawError('');
+
     try {
-      const query = new URLSearchParams({ from, to, limit: '2000' });
+      const query = new URLSearchParams({
+        from,
+        to,
+        limit: String(rawLimit),
+        page: String(rawPage),
+      });
+
       if (groupId) query.set('group_id', groupId);
+      if (rawEmployeeQuery.pin) query.set('pin', rawEmployeeQuery.pin);
+      if (rawEmployeeQuery.employeeId) query.set('employee_id', rawEmployeeQuery.employeeId);
+
       const data = await requestJson(`/api/attendance/raw?${query.toString()}`);
-      setRawRows(Array.isArray(data) ? data : []);
+
+      const nextRows = Array.isArray(data?.rows) ? data.rows : [];
+      const nextTotal = Number(data?.total ?? nextRows.length);
+      const nextPages = Math.max(1, Number(data?.pages ?? 1));
+      const nextPage = Math.max(1, Number(data?.page ?? rawPage));
+
+      setRawRows(nextRows);
+      setRawTotal(nextTotal);
+      setRawPages(nextPages);
+
+      if (nextPage !== rawPage) {
+        setRawPage(nextPage);
+      }
     } catch (error) {
-      warning(error.message || 'Failed to fetch raw scanlog.', 'Raw scanlog request failed');
+      const message = error.message || 'Failed to fetch raw scanlog.';
+      setRawRows([]);
+      setRawTotal(0);
+      setRawPages(1);
+      setRawError(message);
+      warning(message, 'Raw scanlog request failed');
     } finally {
       setRawLoading(false);
     }
-  }, [from, to, groupId, warning, isAdmin]);
+  }, [from, to, groupId, warning, isAdmin, rawPage, rawLimit, rawEmployeeQuery]);
 
   const loadGroups = useCallback(async () => {
     if (!isAdmin && currentUser?.groups) {
@@ -144,7 +192,7 @@ export default function AttendancePage() {
 
   const exportCsv = () => {
     const isRawTab = activeTab === 'raw';
-    const csv = isRawTab ? rawScanlogCsv(filteredRawRows) : attendanceCsv(filteredSummaryRows);
+    const csv = isRawTab ? rawScanlogCsv(rawRows) : attendanceCsv(filteredSummaryRows);
     const blob = new Blob([csv], { type: 'text/csv' });
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
@@ -214,16 +262,6 @@ export default function AttendancePage() {
     });
   }, [rows, employeeFilter, incompleteOnly]);
 
-  const filteredRawRows = useMemo(() => {
-    return rawRows.filter((row) => {
-      if (!employeeFilter) return true;
-      if (employeeFilter.startsWith('emp-')) {
-        return String(row.karyawan_id || '') === employeeFilter.slice(4);
-      }
-      return String(row.pin || '') === employeeFilter.slice(4);
-    });
-  }, [rawRows, employeeFilter]);
-
   const filteredLateData = useMemo(() => {
     if (!employeeFilter) return lateData;
     if (employeeFilter.startsWith('emp-')) {
@@ -240,14 +278,12 @@ export default function AttendancePage() {
   };
 
   const summaryMeta = pageMeta(filteredSummaryRows.length);
-  const rawMeta = pageMeta(filteredRawRows.length);
   const dashboardMeta = pageMeta(filteredLateData.length);
 
   const pagedSummaryRows = filteredSummaryRows.slice(
     (summaryPage - 1) * rowsPerPage,
     summaryPage * rowsPerPage
   );
-  const pagedRawRows = filteredRawRows.slice((rawPage - 1) * rowsPerPage, rawPage * rowsPerPage);
   const pagedLateData = filteredLateData.slice(
     (dashboardPage - 1) * rowsPerPage,
     dashboardPage * rowsPerPage
@@ -256,7 +292,7 @@ export default function AttendancePage() {
   const exportExcel = async () => {
     const XLSX = await import('xlsx');
     const isRawTab = activeTab === 'raw';
-    const records = isRawTab ? filteredRawRows : filteredSummaryRows;
+    const records = isRawTab ? rawRows : filteredSummaryRows;
     const worksheet = XLSX.utils.json_to_sheet(records);
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, isRawTab ? 'Raw Scanlog' : 'Attendance');
@@ -268,7 +304,7 @@ export default function AttendancePage() {
 
   const printCurrentTab = () => {
     const isRawTab = activeTab === 'raw';
-    const records = isRawTab ? filteredRawRows : filteredSummaryRows;
+    const records = isRawTab ? rawRows : filteredSummaryRows;
     const headers = records.length ? Object.keys(records[0]) : [];
     const rowsHtml = records
       .slice(0, 1000)
@@ -349,6 +385,54 @@ export default function AttendancePage() {
     </div>
   );
 
+  const renderRawPager = () => (
+    <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-800 px-4 py-3 text-xs text-slate-400">
+      <div>
+        Showing {rawRows.length === 0 ? 0 : (rawPage - 1) * rawLimit + 1}-
+        {Math.min((rawPage - 1) * rawLimit + rawRows.length, rawTotal)} of {rawTotal}
+      </div>
+      <div className="flex items-center gap-2">
+        <label htmlFor="attendance-raw-rows" className="text-slate-500">
+          Rows
+        </label>
+        <select
+          id="attendance-raw-rows"
+          value={rawLimit}
+          onChange={(event) => {
+            setRawLimit(Number(event.target.value));
+            setRawPage(1);
+          }}
+          className="rounded border border-slate-700 bg-slate-950 px-2 py-1 text-slate-200"
+        >
+          {[20, 50, 100, 200, 500].map((size) => (
+            <option key={size} value={size}>
+              {size}
+            </option>
+          ))}
+        </select>
+        <button
+          type="button"
+          onClick={() => setRawPage((prev) => Math.max(1, prev - 1))}
+          disabled={rawPage <= 1}
+          className="rounded border border-slate-700 px-2 py-1 text-slate-200 disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          Previous
+        </button>
+        <span className="font-mono text-slate-300">
+          {rawPage}/{rawPages}
+        </span>
+        <button
+          type="button"
+          onClick={() => setRawPage((prev) => Math.min(rawPages, prev + 1))}
+          disabled={rawPage >= rawPages}
+          className="rounded border border-slate-700 px-2 py-1 text-slate-200 disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          Next
+        </button>
+      </div>
+    </div>
+  );
+
   return (
     <div className="max-w-7xl space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-4">
@@ -393,7 +477,7 @@ export default function AttendancePage() {
       <AttendanceFilters
         from={from}
         to={to}
-        count={activeTab === 'raw' ? filteredRawRows.length : filteredSummaryRows.length}
+        count={activeTab === 'raw' ? rawTotal : filteredSummaryRows.length}
         anomalyCount={countAnomalies(filteredSummaryRows)}
         groupId={groupId}
         groups={groups}
@@ -459,6 +543,13 @@ export default function AttendancePage() {
 
       {activeTab === 'raw' && (
         <div className="overflow-hidden rounded-xl border border-slate-800 bg-slate-900">
+          <InlineStatusPanel
+            message={rawError}
+            variant="error"
+            actionLabel="Retry"
+            onAction={() => loadRaw()}
+            className="m-4"
+          />
           <TableShell>
             <table className="w-full text-sm">
               <thead>
@@ -485,10 +576,10 @@ export default function AttendancePage() {
               <tbody className="divide-y divide-slate-800/40">
                 {rawLoading ? (
                   <TableLoadingRow colSpan={7} />
-                ) : filteredRawRows.length === 0 ? (
+                ) : rawRows.length === 0 ? (
                   <TableEmptyRow colSpan={7} label="No raw scanlog rows in range" />
                 ) : (
-                  pagedRawRows.map((row) => (
+                  rawRows.map((row) => (
                     <tr
                       key={`${row.pin}-${row.scan_date}-${row.scan_time}-${row.verifymode}-${row.iomode}-${row.workcode}`}
                     >
@@ -532,7 +623,7 @@ export default function AttendancePage() {
               </tbody>
             </table>
           </TableShell>
-          {renderPager(rawPage, setRawPage, rawMeta)}
+          {renderRawPager()}
         </div>
       )}
 

@@ -10,8 +10,14 @@ import {
   getDeviceTimeFromSdk,
   initializeMachineFromSdk,
   pullUsersFromSdk,
+  setUserOnSdk,
   syncDeviceTimeFromSdk,
 } from '@/lib/easylink-sdk-client';
+import {
+  buildPaginatedResponse,
+  computePaginationMeta,
+  parsePaginationParams,
+} from '@/lib/pagination';
 
 function toBoundedInt(value, fallback, { min = 1, max = 100000 } = {}) {
   const parsed = Number.parseInt(String(value ?? ''), 10);
@@ -69,6 +75,10 @@ function normalizeAction(value) {
     set_time: 'sync_time',
     pull_users: 'pull_users',
     users: 'pull_users',
+    set_user: 'set_user',
+    add_user: 'set_user',
+    upload_user: 'set_user',
+    user_set: 'set_user',
     initialize_machine: 'initialize_machine',
     init: 'initialize_machine',
   };
@@ -216,6 +226,39 @@ async function runMachineAction(action, payload = {}) {
       inserted_count: imported.inserted,
       updated_count: imported.updated,
       users_preview: result.rows.slice(0, 10),
+    };
+  }
+
+  if (action === 'set_user') {
+    const pin = String(payload?.pin || '').trim();
+    const name = String(payload?.name || '').trim();
+    if (!pin || !name) {
+      const error = new Error('set_user requires pin and name');
+      error.status = 400;
+      throw error;
+    }
+
+    const password = String(
+      payload?.password || process.env.EASYLINK_DEFAULT_USER_PASSWORD || '1234'
+    ).trim();
+    const rfid = String(payload?.rfid || '').trim();
+    const privilege = toBoundedInt(payload?.privilege, 0, { min: 0, max: 9 });
+    const result = await setUserOnSdk({
+      source,
+      pin,
+      name,
+      password,
+      rfid,
+      privilege,
+    });
+
+    return {
+      source: result.source,
+      saved: true,
+      pin,
+      name,
+      privilege,
+      raw: result.raw ?? null,
     };
   }
 
@@ -373,17 +416,29 @@ export async function GET(request) {
     });
   }
 
-  const rows = [...machineJobs.values()]
-    .sort((a, b) => Number(b.id) - Number(a.id))
-    .slice(0, 30)
-    .map(serializeJob);
-
-  return NextResponse.json({
-    ok: true,
-    rows,
-    queue: queueMeta(),
-    init_confirmation_phrase: requiredInitPhrase(),
+  const { limit, pageInput } = parsePaginationParams(url.searchParams, {
+    defaultLimit: 30,
+    maxLimit: 200,
   });
+
+  const sortedRows = [...machineJobs.values()].sort((a, b) => Number(b.id) - Number(a.id));
+  const total = sortedRows.length;
+  const meta = computePaginationMeta({ total, pageInput, limit });
+  const pageRows = sortedRows.slice(meta.offset, meta.offset + meta.limit).map(serializeJob);
+
+  return NextResponse.json(
+    buildPaginatedResponse({
+      items: pageRows,
+      total,
+      pageInput,
+      limit: meta.limit,
+      itemKey: 'rows',
+      extra: {
+        queue: queueMeta(),
+        init_confirmation_phrase: requiredInitPhrase(),
+      },
+    })
+  );
 }
 
 export async function POST(req) {
@@ -421,7 +476,14 @@ export async function POST(req) {
       {
         ok: false,
         error: 'Unknown action',
-        supported_actions: ['info', 'time', 'sync_time', 'pull_users', 'initialize_machine'],
+        supported_actions: [
+          'info',
+          'time',
+          'sync_time',
+          'pull_users',
+          'set_user',
+          'initialize_machine',
+        ],
       },
       { status: 400 }
     );
@@ -432,6 +494,11 @@ export async function POST(req) {
     page: body?.page,
     max_pages: body?.max_pages,
     maxPages: body?.maxPages,
+    pin: body?.pin,
+    name: body?.name,
+    password: body?.password,
+    rfid: body?.rfid,
+    privilege: body?.privilege,
     confirmation_text: body?.confirmation_text,
   };
 

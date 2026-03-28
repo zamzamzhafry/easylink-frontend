@@ -59,41 +59,47 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-slate-950 px-4 py-10">
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_25%_20%,rgba(45,212,191,0.16),transparent_40%),radial-gradient(circle_at_75%_80%,rgba(14,165,233,0.14),transparent_40%)]" />
-      <div className="relative w-full max-w-md rounded-2xl border border-slate-800 bg-slate-900/90 p-6 shadow-2xl backdrop-blur">
+    <div className="auth-shell relative flex min-h-screen items-center justify-center overflow-hidden px-4 py-10">
+      <div className="auth-shell-backdrop absolute inset-0" />
+      <div className="auth-card relative w-full max-w-md rounded-2xl border p-6 shadow-2xl backdrop-blur">
         <div className="mb-6 text-center">
-          <div className="mx-auto mb-3 inline-flex h-12 w-12 items-center justify-center rounded-xl bg-teal-500/20 text-teal-300">
+          <div className="auth-brand-icon mx-auto mb-3 inline-flex h-12 w-12 items-center justify-center rounded-xl">
             <Fingerprint className="h-6 w-6" />
           </div>
-          <h1 className="text-2xl font-bold text-white">EasyLink Login</h1>
-          <p className="mt-1 text-sm text-slate-400">Use your employee NIP and password.</p>
+          <h1 className="text-2xl font-bold text-foreground">EasyLink Login</h1>
+          <p className="mt-1 text-sm text-muted-foreground">Use your employee NIP and password.</p>
         </div>
 
         <form onSubmit={login} className="space-y-4">
           <div>
-            <label className="mb-1 block text-xs text-slate-400">NIP</label>
+            <label htmlFor="login-nip" className="auth-label mb-1 block text-xs">
+              NIP
+            </label>
             <div className="relative">
-              <UserCircle2 className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
+              <UserCircle2 className="auth-input-icon pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2" />
               <input
                 value={nip}
                 onChange={(event) => setNip(event.target.value)}
                 placeholder="Enter NIP"
-                className="w-full rounded-lg border border-slate-700 bg-slate-800 py-2.5 pl-10 pr-3 text-sm text-white transition-colors focus:border-teal-500 focus:outline-none"
+                id="login-nip"
+                className="auth-input w-full rounded-lg border py-2.5 pl-10 pr-3 text-sm transition-colors focus:outline-none"
               />
             </div>
           </div>
 
           <div>
-            <label className="mb-1 block text-xs text-slate-400">Password</label>
+            <label htmlFor="login-password" className="auth-label mb-1 block text-xs">
+              Password
+            </label>
             <div className="relative">
-              <Lock className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
+              <Lock className="auth-input-icon pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2" />
               <input
                 type="password"
                 value={password}
                 onChange={(event) => setPassword(event.target.value)}
                 placeholder="Device password"
-                className="w-full rounded-lg border border-slate-700 bg-slate-800 py-2.5 pl-10 pr-3 text-sm text-white transition-colors focus:border-teal-500 focus:outline-none"
+                id="login-password"
+                className="auth-input w-full rounded-lg border py-2.5 pl-10 pr-3 text-sm transition-colors focus:outline-none"
               />
             </div>
           </div>
@@ -101,7 +107,7 @@ export default function LoginPage() {
           <button
             type="submit"
             disabled={loading}
-            className="w-full rounded-lg bg-teal-500 px-4 py-2.5 text-sm font-semibold text-slate-900 transition-colors hover:bg-teal-400 disabled:opacity-60"
+            className="auth-submit w-full rounded-lg px-4 py-2.5 text-sm font-semibold transition-colors disabled:opacity-60"
           >
             {loading ? 'Signing in...' : 'Sign In'}
           </button>

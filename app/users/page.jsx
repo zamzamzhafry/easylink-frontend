@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import {
   BarChart3,
@@ -23,12 +23,20 @@ import {
   TableLoadingRow,
   TableEmptyRow,
 } from '@/components/ui/table-shell';
+import InlineStatusPanel from '@/components/ui/inline-status-panel';
+import { usePaginatedResource } from '@/hooks/use-paginated-resource';
 import { cn } from '@/lib/utils';
 
 // ─── privilege label ───────────────────────────────────────────────────────────
 const PRIVILEGE_MAP = {
-  0: { label: 'User', cls: 'text-slate-400 bg-slate-800/60 border-slate-700' },
-  14: { label: 'Admin', cls: 'text-teal-300 bg-teal-500/10 border-teal-500/30' },
+  0: {
+    label: 'User',
+    cls: 'border-slate-300 bg-slate-100 text-slate-700 dark:border-slate-700 dark:bg-slate-800/60 dark:text-slate-300',
+  },
+  14: {
+    label: 'Admin',
+    cls: 'border-teal-200 bg-teal-50 text-teal-700 dark:border-teal-500/30 dark:bg-teal-500/10 dark:text-teal-300',
+  },
 };
 
 function privilegeLabel(priv) {
@@ -57,7 +65,7 @@ const EMPTY_FORM = { pin: '', nama: '', pwd: '', rfid: '', privilege: '0' };
 function Field({ label, required, children }) {
   return (
     <div>
-      <div className="mb-1 block text-xs font-medium text-slate-400">
+      <div className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">
         {label} {required && <span className="text-rose-400">*</span>}
       </div>
       {children}
@@ -69,7 +77,7 @@ function Input({ className, ...props }) {
   return (
     <input
       className={cn(
-        'w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-white placeholder-slate-500 focus:border-teal-500 focus:outline-none',
+        'w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder-slate-400 focus:border-teal-500 focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-white dark:placeholder-slate-500',
         className
       )}
       {...props}
@@ -186,7 +194,7 @@ function UserModal({ mode, user, onClose, onSave }) {
             <select
               value={form.privilege}
               onChange={(e) => set('privilege', e.target.value)}
-              className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-white focus:border-teal-500 focus:outline-none"
+              className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-teal-500 focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-white"
             >
               <option value="0">User (0)</option>
               <option value="14">Admin (14)</option>
@@ -208,7 +216,7 @@ function UserModal({ mode, user, onClose, onSave }) {
               <button
                 type="button"
                 onClick={() => setShowPwd((v) => !v)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white"
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white"
               >
                 {showPwd ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
               </button>
@@ -233,7 +241,7 @@ function UserModal({ mode, user, onClose, onSave }) {
           <button
             type="button"
             onClick={onClose}
-            className="rounded-lg border border-slate-700 px-4 py-2 text-sm text-slate-400 hover:text-white"
+            className="rounded-lg border border-slate-300 px-4 py-2 text-sm text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-white"
           >
             Cancel
           </button>
@@ -252,61 +260,58 @@ function UserModal({ mode, user, onClose, onSave }) {
 
 // ─── Main page ─────────────────────────────────────────────────────────────────
 export default function UsersPage() {
-  const [users, setUsers] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
-  const [page, setPage] = useState(1);
-  const [rowsPerPage, setRowsPerPage] = useState(20);
 
   // modal: null | { mode: 'create'|'edit'|'password', user?: User }
   const [modal, setModal] = useState(null);
 
   const toast = useToast();
 
-  // ── load ──────────────────────────────────────────────────────────────────────
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      const data = await requestJson('/api/users');
-      setUsers(data.users ?? []);
-    } catch (err) {
-      toast.error(err.message || 'Failed to load users');
-    } finally {
-      setLoading(false);
-    }
-  }, [toast]);
+  const {
+    items: users,
+    total,
+    pages,
+    page,
+    limit: rowsPerPage,
+    loading,
+    error: loadError,
+    setPage,
+    setLimit,
+    load,
+    retry,
+  } = usePaginatedResource({
+    fetchPage: async ({ page, limit, signal }) => {
+      const params = new URLSearchParams({
+        page: String(page),
+        limit: String(limit),
+      });
+      if (search) {
+        params.set('search', search);
+      }
+      return requestJson(`/api/users?${params.toString()}`, { signal });
+    },
+    initialPage: 1,
+    initialLimit: 20,
+    dependencies: [search],
+    onError: (message) => toast.error(message),
+  });
 
   useEffect(() => {
-    load();
-  }, [load]);
+    const timeout = setTimeout(() => {
+      setSearch(searchInput.trim());
+      setPage(1);
+    }, 300);
 
-  // ── filtered rows ─────────────────────────────────────────────────────────────
-  const filtered = useMemo(() => {
-    if (!search.trim()) return users;
-    const q = search.toLowerCase();
-    return users.filter(
-      (u) =>
-        u.pin.toLowerCase().includes(q) ||
-        (u.nama ?? '').toLowerCase().includes(q) ||
-        (u.rfid ?? '').toLowerCase().includes(q)
-    );
-  }, [users, search]);
-
-  const pages = useMemo(
-    () => Math.max(1, Math.ceil(filtered.length / rowsPerPage)),
-    [filtered.length, rowsPerPage]
-  );
-  const pagedUsers = useMemo(() => {
-    const start = (page - 1) * rowsPerPage;
-    return filtered.slice(start, start + rowsPerPage);
-  }, [filtered, page, rowsPerPage]);
+    return () => clearTimeout(timeout);
+  }, [searchInput, setPage]);
 
   // ── save (create) ─────────────────────────────────────────────────────────────
   const handleCreate = async (payload) => {
     try {
       await requestJson('/api/users', { method: 'POST', body: JSON.stringify(payload) });
       toast.success(`User ${payload.pin} created`);
-      await load();
+      await load({ page });
       return true;
     } catch (err) {
       toast.error(err.message || 'Failed to create user');
@@ -319,7 +324,7 @@ export default function UsersPage() {
     try {
       await requestJson('/api/users', { method: 'PUT', body: JSON.stringify(payload) });
       toast.success('User updated');
-      await load();
+      await load({ page });
       return true;
     } catch (err) {
       toast.error(err.message || 'Failed to update user');
@@ -336,7 +341,7 @@ export default function UsersPage() {
         body: JSON.stringify({ pin: user.pin }),
       });
       toast.success(`User ${user.pin} deleted`);
-      setUsers((prev) => prev.filter((u) => u.pin !== user.pin));
+      await load({ page });
     } catch (err) {
       toast.error(err.message || 'Failed to delete user');
     }
@@ -345,28 +350,31 @@ export default function UsersPage() {
   const closeModal = () => setModal(null);
 
   const onSave = modal?.mode === 'create' ? handleCreate : handleSaveEdit;
+  const hasRows = users.length > 0;
+  const showingFrom = hasRows ? (page - 1) * rowsPerPage + 1 : 0;
+  const showingTo = hasRows ? Math.min((page - 1) * rowsPerPage + users.length, total) : 0;
+  const searchSummary = search ? `Filter: "${search}"` : 'Filter: all users';
 
   return (
     <div className="space-y-6 p-6">
       {/* Header */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="flex items-center gap-2 text-xl font-bold text-white">
+          <h1 className="flex items-center gap-2 text-xl font-bold text-slate-900 dark:text-white">
             <Users className="h-5 w-5 text-teal-400" />
             Users
           </h1>
-          <p className="mt-0.5 text-xs text-slate-500">
-            Device users from tb_user — {users.length} total
+          <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-500">
+            Device users from tb_user — {total} total
           </p>
         </div>
 
         <div className="flex items-center gap-3">
           {/* Search */}
           <SearchInput
-            value={search}
+            value={searchInput}
             onChange={(value) => {
-              setSearch(value);
-              setPage(1);
+              setSearchInput(value);
             }}
             placeholder="Search PIN, name, or RFID..."
             className="w-64"
@@ -384,29 +392,73 @@ export default function UsersPage() {
         </div>
       </div>
 
+      <div className="grid gap-3 sm:grid-cols-3">
+        <div className="rounded-xl border border-slate-200 bg-white px-4 py-3 dark:border-slate-800 dark:bg-slate-900">
+          <p className="text-[11px] uppercase tracking-wide text-slate-500 dark:text-slate-500">
+            Total users
+          </p>
+          <p className="mt-1 text-2xl font-semibold text-slate-900 dark:text-white">
+            {total.toLocaleString()}
+          </p>
+          <p className="text-[11px] text-slate-500 dark:text-slate-500">
+            From server-side pagination
+          </p>
+        </div>
+        <div className="rounded-xl border border-slate-200 bg-white px-4 py-3 dark:border-slate-800 dark:bg-slate-900">
+          <p className="text-[11px] uppercase tracking-wide text-slate-500 dark:text-slate-500">
+            Current page
+          </p>
+          <p className="mt-1 text-2xl font-semibold text-slate-900 dark:text-white">
+            {users.length.toLocaleString()}
+          </p>
+          <p className="text-[11px] text-slate-500 dark:text-slate-500">
+            Page {page} / {pages}
+          </p>
+        </div>
+        <div className="rounded-xl border border-slate-200 bg-white px-4 py-3 dark:border-slate-800 dark:bg-slate-900">
+          <p className="text-[11px] uppercase tracking-wide text-slate-500 dark:text-slate-500">
+            Filter status
+          </p>
+          <p className="mt-1 truncate text-sm font-medium text-teal-700 dark:text-teal-300">
+            {searchSummary}
+          </p>
+          <p className="text-[11px] text-slate-500 dark:text-slate-500">
+            {loading ? 'Refreshing data…' : 'Ready'}
+          </p>
+        </div>
+      </div>
+
+      <InlineStatusPanel message={loadError} variant="error" actionLabel="Retry" onAction={retry} />
+
       {/* Table */}
       <TableShell>
         <table className="w-full text-sm">
           <thead>
             <TableHeadRow headers={HEADERS} />
           </thead>
-          <tbody className="divide-y divide-slate-800">
+          <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
             {loading ? (
               <TableLoadingRow colSpan={HEADERS.length} />
-            ) : filtered.length === 0 ? (
-              <TableEmptyRow colSpan={HEADERS.length} label="No users found" />
+            ) : users.length === 0 ? (
+              <TableEmptyRow
+                colSpan={HEADERS.length}
+                label={search ? 'No users found for current filter' : 'No users found'}
+              />
             ) : (
-              pagedUsers.map((user) => {
+              users.map((user) => {
                 const { label: roleLabel, cls: roleCls } = privilegeLabel(user.privilege);
                 return (
-                  <tr key={user.pin} className="group hover:bg-slate-800/40">
+                  <tr
+                    key={user.pin}
+                    className="group hover:bg-slate-100 dark:hover:bg-slate-800/40"
+                  >
                     {/* PIN */}
-                    <td className="px-4 py-3 font-mono text-xs font-semibold text-teal-300">
+                    <td className="px-4 py-3 font-mono text-xs font-semibold text-teal-700 dark:text-teal-300">
                       {user.pin}
                     </td>
 
                     {/* Name */}
-                    <td className="px-4 py-3 font-medium text-white">
+                    <td className="px-4 py-3 font-medium text-slate-900 dark:text-white">
                       {user.nama || <span className="italic text-slate-500">—</span>}
                     </td>
 
@@ -424,7 +476,7 @@ export default function UsersPage() {
                     </td>
 
                     {/* RFID */}
-                    <td className="px-4 py-3 font-mono text-xs text-slate-400">
+                    <td className="px-4 py-3 font-mono text-xs text-slate-500 dark:text-slate-400">
                       {user.rfid || <span className="italic text-slate-600">—</span>}
                     </td>
 
@@ -440,8 +492,8 @@ export default function UsersPage() {
                               className={cn(
                                 'rounded-full border px-2 py-0.5 text-[10px] font-medium',
                                 g.is_approved
-                                  ? 'border-teal-500/30 bg-teal-500/10 text-teal-300'
-                                  : 'border-amber-500/30 bg-amber-500/10 text-amber-300'
+                                  ? 'border-teal-200 bg-teal-50 text-teal-700 dark:border-teal-500/30 dark:bg-teal-500/10 dark:text-teal-300'
+                                  : 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300'
                               )}
                               title={g.is_approved ? 'Approved' : 'Pending approval'}
                             >
@@ -454,20 +506,20 @@ export default function UsersPage() {
                     </td>
 
                     {/* Scan total */}
-                    <td className="px-4 py-3 text-right font-mono text-xs text-slate-300">
+                    <td className="px-4 py-3 text-right font-mono text-xs text-slate-600 dark:text-slate-300">
                       {user.scan_total.toLocaleString()}
                     </td>
 
                     {/* Scan days */}
-                    <td className="px-4 py-3 text-right font-mono text-xs text-slate-300">
+                    <td className="px-4 py-3 text-right font-mono text-xs text-slate-600 dark:text-slate-300">
                       {user.scan_days.toLocaleString()}
                     </td>
 
                     {/* Last scan */}
-                    <td className="px-4 py-3 text-xs text-slate-400">
+                    <td className="px-4 py-3 text-xs text-slate-500 dark:text-slate-400">
                       {user.last_scan ? (
                         <>
-                          <div className="text-slate-300">
+                          <div className="text-slate-700 dark:text-slate-300">
                             {String(user.last_scan).slice(0, 10)}
                           </div>
                           <div className="text-[10px] text-slate-500">
@@ -486,7 +538,7 @@ export default function UsersPage() {
                           type="button"
                           onClick={() => setModal({ mode: 'edit', user })}
                           title="Edit"
-                          className="rounded p-1.5 text-slate-400 hover:bg-slate-700 hover:text-white"
+                          className="rounded p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-700 dark:hover:text-white"
                         >
                           <Pencil className="h-3.5 w-3.5" />
                         </button>
@@ -494,7 +546,7 @@ export default function UsersPage() {
                           type="button"
                           onClick={() => setModal({ mode: 'password', user })}
                           title="Change password"
-                          className="rounded p-1.5 text-slate-400 hover:bg-slate-700 hover:text-amber-300"
+                          className="rounded p-1.5 text-slate-500 hover:bg-amber-50 hover:text-amber-700 dark:text-slate-400 dark:hover:bg-slate-700 dark:hover:text-amber-300"
                         >
                           <KeyRound className="h-3.5 w-3.5" />
                         </button>
@@ -502,7 +554,7 @@ export default function UsersPage() {
                           <Link
                             href={`/employees/${user.karyawan_id}`}
                             title="Open profile report"
-                            className="rounded p-1.5 text-slate-400 hover:bg-teal-500/10 hover:text-teal-300"
+                            className="rounded p-1.5 text-slate-500 hover:bg-teal-50 hover:text-teal-700 dark:text-slate-400 dark:hover:bg-teal-500/10 dark:hover:text-teal-300"
                           >
                             <BarChart3 className="h-3.5 w-3.5" />
                           </Link>
@@ -512,7 +564,7 @@ export default function UsersPage() {
                           type="button"
                           onClick={() => handleDelete(user)}
                           title="Delete"
-                          className="rounded p-1.5 text-slate-400 hover:bg-rose-500/10 hover:text-rose-400"
+                          className="rounded p-1.5 text-slate-500 hover:bg-rose-50 hover:text-rose-700 dark:text-slate-400 dark:hover:bg-rose-500/10 dark:hover:text-rose-400"
                         >
                           <Trash2 className="h-3.5 w-3.5" />
                         </button>
@@ -526,10 +578,9 @@ export default function UsersPage() {
         </table>
       </TableShell>
 
-      <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-800 bg-slate-900 px-4 py-3 text-xs text-slate-400">
+      <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 text-xs text-slate-500 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400">
         <div>
-          Showing {(page - 1) * rowsPerPage + 1}-{Math.min(page * rowsPerPage, filtered.length)} of{' '}
-          {filtered.length}
+          Showing {showingFrom}-{showingTo} of {total}
         </div>
         <div className="flex items-center gap-2">
           <label htmlFor="users-rows">Rows</label>
@@ -537,10 +588,10 @@ export default function UsersPage() {
             id="users-rows"
             value={rowsPerPage}
             onChange={(event) => {
-              setRowsPerPage(Number(event.target.value));
+              setLimit(Number(event.target.value));
               setPage(1);
             }}
-            className="rounded border border-slate-700 bg-slate-950 px-2 py-1 text-slate-200"
+            className="rounded border border-slate-300 bg-white px-2 py-1 text-slate-700 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200"
           >
             {[10, 20, 30, 50, 100].map((size) => (
               <option key={size} value={size}>
@@ -552,18 +603,18 @@ export default function UsersPage() {
             type="button"
             onClick={() => setPage((p) => Math.max(1, p - 1))}
             disabled={page <= 1}
-            className="rounded border border-slate-700 px-2 py-1 text-slate-200 disabled:cursor-not-allowed disabled:opacity-40"
+            className="rounded border border-slate-300 px-2 py-1 text-slate-700 disabled:cursor-not-allowed disabled:opacity-40 dark:border-slate-700 dark:text-slate-200"
           >
             Previous
           </button>
-          <span className="font-mono text-slate-300">
+          <span className="font-mono text-slate-600 dark:text-slate-300">
             {page}/{pages}
           </span>
           <button
             type="button"
             onClick={() => setPage((p) => Math.min(pages, p + 1))}
             disabled={page >= pages}
-            className="rounded border border-slate-700 px-2 py-1 text-slate-200 disabled:cursor-not-allowed disabled:opacity-40"
+            className="rounded border border-slate-300 px-2 py-1 text-slate-700 disabled:cursor-not-allowed disabled:opacity-40 dark:border-slate-700 dark:text-slate-200"
           >
             Next
           </button>

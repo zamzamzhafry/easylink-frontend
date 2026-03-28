@@ -6,6 +6,11 @@ import {
   unauthorizedResponse,
 } from '@/lib/auth-session';
 import { pullScanlogsFromSdk } from '@/lib/easylink-sdk-client';
+import {
+  buildPaginatedResponse,
+  computePaginationMeta,
+  parsePaginationParams,
+} from '@/lib/pagination';
 
 function toBoundedInt(value, fallback, { min = 1, max = 100000 } = {}) {
   const parsed = Number.parseInt(String(value ?? ''), 10);
@@ -183,6 +188,70 @@ async function insertSafeEvents(rows, batchId) {
   return Number(result.affectedRows || 0);
 }
 
+async function mergeSafeEventsIntoLegacy({ batchId, from, to }) {
+  if (!batchId && !from && !to) return 0;
+
+  const hasLegacy = await tableExists('tb_scanlog');
+  if (!hasLegacy) return 0;
+
+  const whereParts = [];
+  const whereParams = [];
+
+  const hasRange = Boolean(from || to);
+  if (hasRange) {
+    if (from) {
+      whereParts.push('DATE(se.scan_at) >= ?');
+      whereParams.push(from);
+    }
+
+    if (to) {
+      whereParts.push('DATE(se.scan_at) <= ?');
+      whereParams.push(to);
+    }
+  } else if (batchId) {
+    whereParts.push('se.batch_id = ?');
+    whereParams.push(batchId);
+  }
+
+  if (whereParts.length === 0) return 0;
+
+  const [result] = await pool.query(
+    `
+      INSERT INTO tb_scanlog (
+        sn,
+        scan_date,
+        pin,
+        verifymode,
+        iomode,
+        workcode
+      )
+      SELECT
+        se.sn,
+        se.scan_at,
+        se.pin,
+        COALESCE(se.verifymode, 0),
+        COALESCE(se.iomode, 0),
+        CAST(COALESCE(NULLIF(se.workcode, ''), '0') AS SIGNED)
+      FROM tb_scanlog_safe_events se
+      WHERE ${whereParts.join(' AND ')}
+        AND NOT EXISTS (
+          SELECT 1
+          FROM tb_scanlog sl
+          WHERE sl.sn = se.sn
+            AND sl.pin = se.pin
+            AND sl.scan_date = se.scan_at
+            AND COALESCE(sl.verifymode, 0) = COALESCE(se.verifymode, 0)
+            AND COALESCE(sl.iomode, 0) = COALESCE(se.iomode, 0)
+            AND COALESCE(CAST(sl.workcode AS SIGNED), 0) =
+                CAST(COALESCE(NULLIF(se.workcode, ''), '0') AS SIGNED)
+        )
+    `,
+    whereParams
+  );
+
+  return Number(result.affectedRows || 0);
+}
+
 export async function GET(req) {
   const auth = await getAuthContextFromCookies();
   if (!auth) return unauthorizedResponse();
@@ -224,25 +293,42 @@ export async function GET(req) {
     });
   }
 
-  const [rows] = await pool.query(
+  const [rows] = await pool.query(`SELECT COUNT(*) AS total FROM tb_scanlog_safe_batches`);
+
+  const total = Number(rows?.[0]?.total ?? 0);
+  const { limit, pageInput } = parsePaginationParams(url.searchParams, {
+    defaultLimit: 30,
+    maxLimit: 200,
+  });
+  const meta = computePaginationMeta({ total, pageInput, limit });
+
+  const [pagedRows] = await pool.query(
     `
       SELECT id, source_sdk, sn, requested_from, requested_to, status,
              pulled_count, inserted_count, error_message, created_at, finished_at
       FROM tb_scanlog_safe_batches
       ORDER BY id DESC
-      LIMIT 30
-    `
+      LIMIT ? OFFSET ?
+    `,
+    [meta.limit, meta.offset]
   );
 
-  return NextResponse.json({
-    ok: true,
-    rows: rows.map(serializeBatchRow),
-    queue: {
-      concurrency: WORKER_CONCURRENCY,
-      active: activeWorkers,
-      pending: pendingJobs.length,
-    },
-  });
+  return NextResponse.json(
+    buildPaginatedResponse({
+      items: pagedRows.map(serializeBatchRow),
+      total,
+      pageInput,
+      limit: meta.limit,
+      itemKey: 'rows',
+      extra: {
+        queue: {
+          concurrency: WORKER_CONCURRENCY,
+          active: activeWorkers,
+          pending: pendingJobs.length,
+        },
+      },
+    })
+  );
 }
 
 async function runSyncBatch({ batchId, from, to, source, mode, limit, page, maxPages }) {
@@ -257,6 +343,7 @@ async function runSyncBatch({ batchId, from, to, source, mode, limit, page, maxP
   });
 
   const insertedCount = await insertSafeEvents(sdkPull.rows, batchId);
+  const mergedLegacyCount = await mergeSafeEventsIntoLegacy({ batchId, from, to });
   await closeBatch(batchId, {
     status: 'success',
     pulledCount: sdkPull.rows.length,
@@ -268,6 +355,7 @@ async function runSyncBatch({ batchId, from, to, source, mode, limit, page, maxP
     pulledCount: sdkPull.rows.length,
     insertedCount,
     skippedCount: Math.max(0, sdkPull.rows.length - insertedCount),
+    mergedLegacyCount,
   };
 }
 
@@ -451,6 +539,7 @@ export async function POST(req) {
       pulled_count: result.pulledCount,
       inserted_count: result.insertedCount,
       skipped_count: result.skippedCount,
+      merged_legacy_count: result.mergedLegacyCount,
       row: batch,
     });
   } catch (error) {

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
+import RightOpsSidebar from '@/components/right-ops-sidebar';
 import Sidebar from '@/components/sidebar';
 import { cn } from '@/lib/utils';
 import { requestJson } from '@/lib/request-json';
@@ -17,6 +18,7 @@ export default function AppShell({ children }) {
   const [authLoading, setAuthLoading] = useState(() => !isLoginPage);
   const [authUser, setAuthUser] = useState(null);
   const [theme, setTheme] = useState('dark');
+  const showRightSidebar = Boolean(authUser?.is_admin) && !isLoginPage;
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -128,11 +130,13 @@ export default function AppShell({ children }) {
       <main
         className={cn(
           'app-shell-main min-h-screen p-6 transition-all duration-200',
-          collapsed ? 'ml-20' : 'ml-60'
+          collapsed ? 'ml-20' : 'ml-60',
+          showRightSidebar && 'xl:mr-80'
         )}
       >
         {children}
       </main>
+      {showRightSidebar && <RightOpsSidebar currentUser={authUser} />}
     </>
   );
 }

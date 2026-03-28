@@ -5,6 +5,11 @@ import {
   unauthorizedResponse,
   forbiddenResponse,
 } from '@/lib/auth-session';
+import {
+  buildPaginatedResponse,
+  computePaginationMeta,
+  parsePaginationParams,
+} from '@/lib/pagination';
 
 // ─────────────────────────────────────────────
 // GET /api/users  — list all tb_user with scanlog counts + group access
@@ -16,76 +21,138 @@ export async function GET(request) {
 
   const { searchParams } = new URL(request.url);
   const search = (searchParams.get('search') || '').trim();
+  const { limit, pageInput } = parsePaginationParams(searchParams, {
+    defaultLimit: 20,
+    maxLimit: 100,
+  });
 
   const whereClauses = [];
   const params = [];
 
   if (search) {
-    whereClauses.push('(u.pin LIKE ? OR u.nama LIKE ?)');
-    params.push(`%${search}%`, `%${search}%`);
+    whereClauses.push('(u.pin LIKE ? OR u.nama LIKE ? OR u.rfid LIKE ?)');
+    params.push(`%${search}%`, `%${search}%`, `%${search}%`);
   }
 
   const whereSQL = whereClauses.length ? `WHERE ${whereClauses.join(' AND ')}` : '';
 
-  const [rows] = await pool.query(
-    `SELECT
-       u.pin,
-       u.nama,
-       u.rfid,
-       u.privilege,
-       k.id AS karyawan_id,
-       COUNT(DISTINCT sl.scan_date) AS scan_days,
-       COUNT(sl.pin)               AS scan_total,
-       MAX(sl.scan_date)           AS last_scan
-     FROM tb_user u
-     LEFT JOIN tb_karyawan k ON k.pin = u.pin
-     LEFT JOIN tb_scanlog sl ON sl.pin = u.pin
-     ${whereSQL}
-     GROUP BY u.pin, u.nama, u.rfid, u.privilege, k.id
-     ORDER BY u.nama, u.pin`,
-    params
-  );
+  try {
+    const [countRows] = await pool.query(
+      `SELECT COUNT(*) AS total
+       FROM tb_user u
+       ${whereSQL}`,
+      params
+    );
 
-  // Fetch group access per user in one query
-  const [accessRows] = await pool.query(
-    `SELECT uga.pin, uga.group_id, uga.can_schedule, uga.can_dashboard,
-            uga.is_approved, uga.approved_by, uga.approved_at, uga.created_at,
-            g.nama_group
-     FROM tb_user_group_access uga
-     LEFT JOIN tb_group g ON g.id = uga.group_id
-     ORDER BY uga.pin, g.nama_group`
-  );
+    const total = Number(countRows?.[0]?.total ?? 0);
+    const meta = computePaginationMeta({ total, pageInput, limit });
 
-  // Index access rows by pin
-  const accessByPin = {};
-  for (const row of accessRows) {
-    const pin = String(row.pin);
-    if (!accessByPin[pin]) accessByPin[pin] = [];
-    accessByPin[pin].push({
-      group_id: Number(row.group_id),
-      nama_group: row.nama_group || null,
-      can_schedule: Boolean(row.can_schedule),
-      can_dashboard: Boolean(row.can_dashboard),
-      is_approved: Boolean(row.is_approved),
-      approved_by: row.approved_by || null,
-      approved_at: row.approved_at || null,
-      created_at: row.created_at || null,
+    const [rows] = await pool.query(
+      `SELECT
+         u.pin,
+         u.nama,
+         u.rfid,
+         u.privilege,
+         k.id AS karyawan_id
+       FROM tb_user u
+      LEFT JOIN tb_karyawan k ON k.pin = u.pin
+       ${whereSQL}
+       ORDER BY u.nama, u.pin
+       LIMIT ? OFFSET ?`,
+      [...params, meta.limit, meta.offset]
+    );
+
+    const pins = rows.map((row) => String(row.pin)).filter(Boolean);
+
+    const scanByPin = {};
+    const accessByPin = {};
+
+    if (pins.length > 0) {
+      const [scanRows] = await pool.query(
+        `SELECT
+           sl.pin,
+           COUNT(DISTINCT sl.scan_date) AS scan_days,
+           COUNT(*)                     AS scan_total,
+           MAX(sl.scan_date)            AS last_scan
+         FROM tb_scanlog sl
+         WHERE sl.pin IN (?)
+         GROUP BY sl.pin`,
+        [pins]
+      );
+
+      for (const row of scanRows) {
+        scanByPin[String(row.pin)] = {
+          scan_days: Number(row.scan_days ?? 0),
+          scan_total: Number(row.scan_total ?? 0),
+          last_scan: row.last_scan || null,
+        };
+      }
+
+      const [accessRows] = await pool.query(
+        `SELECT uga.pin, uga.group_id, uga.can_schedule, uga.can_dashboard,
+                uga.is_approved, uga.approved_by, uga.approved_at, uga.created_at,
+                g.nama_group
+         FROM tb_user_group_access uga
+         LEFT JOIN tb_group g ON g.id = uga.group_id
+         WHERE uga.pin IN (?)
+         ORDER BY uga.pin, g.nama_group`,
+        [pins]
+      );
+
+      for (const row of accessRows) {
+        const pin = String(row.pin);
+        if (!accessByPin[pin]) accessByPin[pin] = [];
+        accessByPin[pin].push({
+          group_id: Number(row.group_id),
+          nama_group: row.nama_group || null,
+          can_schedule: Boolean(row.can_schedule),
+          can_dashboard: Boolean(row.can_dashboard),
+          is_approved: Boolean(row.is_approved),
+          approved_by: row.approved_by || null,
+          approved_at: row.approved_at || null,
+          created_at: row.created_at || null,
+        });
+      }
+    }
+
+    const users = rows.map((u) => {
+      const pin = String(u.pin);
+      const scanMeta = scanByPin[pin] || {};
+
+      return {
+        pin,
+        nama: u.nama || null,
+        rfid: u.rfid || null,
+        privilege: Number(u.privilege ?? 0),
+        karyawan_id: u.karyawan_id != null ? Number(u.karyawan_id) : null,
+        scan_days: Number(scanMeta.scan_days ?? 0),
+        scan_total: Number(scanMeta.scan_total ?? 0),
+        last_scan: scanMeta.last_scan || null,
+        groups: accessByPin[pin] ?? [],
+      };
     });
+
+    return NextResponse.json(
+      buildPaginatedResponse({
+        items: users,
+        total,
+        pageInput,
+        limit: meta.limit,
+        itemKey: 'users',
+        extra: {
+          search,
+        },
+      })
+    );
+  } catch (error) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error: error instanceof Error ? error.message : String(error),
+      },
+      { status: 500 }
+    );
   }
-
-  const users = rows.map((u) => ({
-    pin: String(u.pin),
-    nama: u.nama || null,
-    rfid: u.rfid || null,
-    privilege: Number(u.privilege ?? 0),
-    karyawan_id: u.karyawan_id != null ? Number(u.karyawan_id) : null,
-    scan_days: Number(u.scan_days ?? 0),
-    scan_total: Number(u.scan_total ?? 0),
-    last_scan: u.last_scan || null,
-    groups: accessByPin[String(u.pin)] ?? [],
-  }));
-
-  return NextResponse.json({ ok: true, users });
 }
 
 // ─────────────────────────────────────────────

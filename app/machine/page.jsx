@@ -8,11 +8,13 @@ import {
   Info,
   RefreshCw,
   ShieldAlert,
+  UserPlus,
   Users,
   XCircle,
 } from 'lucide-react';
 import ModalShell from '@/components/ui/modal-shell';
-import ScanlogQueueSidebar from '@/components/queue/scanlog-queue-sidebar';
+import InlineStatusPanel from '@/components/ui/inline-status-panel';
+import { requestJson } from '@/lib/request-json';
 
 async function parseApiResponse(res) {
   const text = await res.text();
@@ -55,6 +57,7 @@ function actionLabel(action) {
     time: 'Get Device Time',
     sync_time: 'Sync Device Time',
     pull_users: 'Pull Users',
+    set_user: 'Add User',
     initialize_machine: 'Initialize Machine',
     cancel_job: 'Cancel Job',
   };
@@ -64,14 +67,26 @@ function actionLabel(action) {
 export default function MachinePage() {
   const [error, setError] = useState('');
   const [actionBusy, setActionBusy] = useState('');
+  const [currentUser, setCurrentUser] = useState(null);
 
   const [deviceInfo, setDeviceInfo] = useState(null);
   const [deviceTime, setDeviceTime] = useState(null);
   const [userSyncResult, setUserSyncResult] = useState(null);
   const [scanSyncResult, setScanSyncResult] = useState(null);
   const [initResult, setInitResult] = useState(null);
+  const [addUserPayload, setAddUserPayload] = useState({
+    pin: '',
+    name: '',
+    password: '1234',
+    rfid: '',
+    privilege: 0,
+  });
 
   const [machineRows, setMachineRows] = useState([]);
+  const [machinePage, setMachinePage] = useState(1);
+  const [machinePages, setMachinePages] = useState(1);
+  const [machineTotal, setMachineTotal] = useState(0);
+  const [machineLimit, setMachineLimit] = useState(30);
   const [machineQueueMeta, setMachineQueueMeta] = useState({
     concurrency: 1,
     active: 0,
@@ -85,17 +100,10 @@ export default function MachinePage() {
   const [scanlogMode, setScanlogMode] = useState('new');
   const [scanlogMaxPages, setScanlogMaxPages] = useState(200);
   const [activeBatchId, setActiveBatchId] = useState(null);
-  const [scanlogRows, setScanlogRows] = useState([]);
-  const [scanlogQueueMeta, setScanlogQueueMeta] = useState({
-    concurrency: 1,
-    active: 0,
-    pending: 0,
-  });
-  const [scanlogQueueError, setScanlogQueueError] = useState('');
-  const [expandedScanlogRows, setExpandedScanlogRows] = useState({});
 
   const [confirmModal, setConfirmModal] = useState(null);
   const [confirmInput, setConfirmInput] = useState('');
+  const isAdmin = Boolean(currentUser?.is_admin);
 
   const updateMachineRow = useCallback((row) => {
     if (!row) return;
@@ -122,7 +130,7 @@ export default function MachinePage() {
       return;
     }
 
-    if (action === 'pull_users') {
+    if (action === 'pull_users' || action === 'set_user') {
       setUserSyncResult(result);
       return;
     }
@@ -136,7 +144,9 @@ export default function MachinePage() {
     async (jobId) => {
       try {
         setMachineQueueError('');
-        const url = jobId ? `/api/machine?job_id=${jobId}` : '/api/machine';
+        const url = jobId
+          ? `/api/machine?job_id=${jobId}`
+          : `/api/machine?page=${machinePage}&limit=${machineLimit}`;
         const res = await fetch(url);
         const data = await parseApiResponse(res);
         if (!res.ok || !data?.ok) {
@@ -165,48 +175,33 @@ export default function MachinePage() {
 
         const rows = Array.isArray(data?.rows) ? data.rows : [];
         setMachineRows(rows);
+        setMachineTotal(Number(data?.total ?? rows.length));
+        setMachinePages(Math.max(1, Number(data?.pages ?? 1)));
+
+        const nextPage = Math.max(1, Number(data?.page ?? machinePage));
+        if (nextPage !== machinePage) {
+          setMachinePage(nextPage);
+        }
         return null;
       } catch (err) {
         setMachineQueueError(err?.message || 'Failed to refresh machine queue');
         return null;
       }
     },
-    [applyMachineResult, updateMachineRow]
+    [applyMachineResult, machineLimit, machinePage, updateMachineRow]
   );
 
   const refreshScanlogQueue = useCallback(async (batchId) => {
+    if (!batchId) return null;
+
     try {
-      setScanlogQueueError('');
-      const url = batchId ? `/api/scanlog/sync?batch_id=${batchId}` : '/api/scanlog/sync';
-      const res = await fetch(url);
+      const res = await fetch(`/api/scanlog/sync?batch_id=${batchId}`);
       const data = await parseApiResponse(res);
       if (!res.ok || !data?.ok) {
         throw new Error(data?.error || data?.raw || `Scanlog queue failed (${res.status})`);
       }
-
-      if (data?.queue) {
-        setScanlogQueueMeta({
-          concurrency: Number(data.queue.concurrency || 1),
-          active: Number(data.queue.active || 0),
-          pending: Number(data.queue.pending || 0),
-        });
-      }
-
-      if (batchId) {
-        const row = data?.row;
-        if (!row) return null;
-        setScanlogRows((prev) => {
-          const map = new Map(prev.map((item) => [item.id, item]));
-          map.set(row.id, row);
-          return [...map.values()].sort((a, b) => Number(b.id) - Number(a.id));
-        });
-        return row;
-      }
-
-      setScanlogRows(Array.isArray(data?.rows) ? data.rows : []);
-      return null;
-    } catch (err) {
-      setScanlogQueueError(err?.message || 'Failed to refresh scanlog queue');
+      return data?.row || null;
+    } catch {
       return null;
     }
   }, []);
@@ -287,8 +282,9 @@ export default function MachinePage() {
         const batchId = Number(data?.batch_id || 0);
         if (batchId) {
           setActiveBatchId(batchId);
+          const firstState = await refreshScanlogQueue(batchId);
+          if (firstState) setScanSyncResult(firstState);
         }
-        await refreshScanlogQueue();
       } finally {
         setActionBusy('');
       }
@@ -297,16 +293,31 @@ export default function MachinePage() {
   );
 
   useEffect(() => {
+    let mounted = true;
+    requestJson('/api/auth/me')
+      .then((user) => {
+        if (!mounted) return;
+        setCurrentUser(user || null);
+      })
+      .catch(() => {
+        if (!mounted) return;
+        setCurrentUser(null);
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
     void refreshMachineQueue();
-    void refreshScanlogQueue();
 
     const timer = setInterval(() => {
       void refreshMachineQueue();
-      void refreshScanlogQueue();
     }, 10000);
 
     return () => clearInterval(timer);
-  }, [refreshMachineQueue, refreshScanlogQueue]);
+  }, [refreshMachineQueue]);
 
   useEffect(() => {
     if (!activeMachineJobId) return;
@@ -333,27 +344,33 @@ export default function MachinePage() {
 
   useEffect(() => {
     if (!activeBatchId) return;
+    const stream = new EventSource('/api/scanlog/stream?limit=12&interval_ms=4000');
 
-    let cancelled = false;
-    const poll = async () => {
-      const row = await refreshScanlogQueue(activeBatchId);
-      if (cancelled || !row) return;
-      setScanSyncResult(row);
-      if (isTerminalStatus(row.status)) {
-        setActiveBatchId(null);
+    const onQueue = (event) => {
+      try {
+        const payload = JSON.parse(String(event.data || '{}'));
+        const rows = Array.isArray(payload?.rows) ? payload.rows : [];
+        if (!activeBatchId) return;
+
+        const matched = rows.find((row) => Number(row?.id || 0) === Number(activeBatchId));
+        if (!matched) return;
+
+        setScanSyncResult(matched);
+        if (isTerminalStatus(matched.status)) {
+          setActiveBatchId(null);
+        }
+      } catch {
+        // ignore malformed payload
       }
     };
 
-    void poll();
-    const timer = setInterval(() => {
-      void poll();
-    }, 2000);
+    stream.addEventListener('queue', onQueue);
 
     return () => {
-      cancelled = true;
-      clearInterval(timer);
+      stream.removeEventListener('queue', onQueue);
+      stream.close();
     };
-  }, [activeBatchId, refreshScanlogQueue]);
+  }, [activeBatchId]);
 
   const openConfirmModal = useCallback((config) => {
     setConfirmInput('');
@@ -415,6 +432,28 @@ export default function MachinePage() {
     [openConfirmModal]
   );
 
+  const queueAddUser = useCallback(() => {
+    const pin = addUserPayload.pin.trim();
+    const name = addUserPayload.name.trim();
+    if (!pin || !name) {
+      setError('PIN and Name are required to queue Add User action.');
+      return;
+    }
+
+    confirmMachineAction('set_user', {
+      title: 'Queue Add User to Machine',
+      message: 'This will create or update one machine user via SDK /user/set.',
+      confirmLabel: 'Queue Add User',
+      payload: {
+        pin,
+        name,
+        password: addUserPayload.password || '1234',
+        rfid: addUserPayload.rfid.trim(),
+        privilege: Number(addUserPayload.privilege || 0),
+      },
+    });
+  }, [addUserPayload, confirmMachineAction]);
+
   const handleConfirmProceed = useCallback(async () => {
     if (!confirmModal) return;
 
@@ -447,13 +486,9 @@ export default function MachinePage() {
     setExpandedMachineRows((prev) => ({ ...prev, [id]: !prev[id] }));
   }, []);
 
-  const toggleScanlogRowExpand = useCallback((id) => {
-    setExpandedScanlogRows((prev) => ({ ...prev, [id]: !prev[id] }));
-  }, []);
-
   return (
     <>
-      <div className="space-y-6 lg:grid lg:grid-cols-[minmax(0,1fr)_320px] lg:gap-4 lg:space-y-0">
+      <div className="space-y-6">
         <div className="space-y-6">
           <div className="rounded-xl border border-slate-800 bg-slate-900 p-5">
             <h1 className="text-xl font-bold text-white">Machine Connect</h1>
@@ -468,22 +503,32 @@ export default function MachinePage() {
             </p>
           </div>
 
+          {!isAdmin && (
+            <InlineStatusPanel
+              message="Queue fetch status and raw JSON payload are limited to higher-privilege admin users."
+              variant="warning"
+            />
+          )}
+
           <div className="rounded-xl border border-slate-800 bg-slate-900 p-4">
             <div className="mb-3 flex items-center justify-between">
               <div>
                 <p className="text-sm font-semibold text-white">Machine Worker Queue</p>
                 <p className="text-xs text-slate-500">
-                  Active {machineQueueMeta.active}/{machineQueueMeta.concurrency} · Pending{' '}
-                  {machineQueueMeta.pending}
+                  {isAdmin
+                    ? `Active ${machineQueueMeta.active}/${machineQueueMeta.concurrency} · Pending ${machineQueueMeta.pending}`
+                    : 'Queue fetch details hidden for non-admin role'}
                 </p>
               </div>
-              <button
-                type="button"
-                onClick={() => refreshMachineQueue()}
-                className="rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-xs text-slate-200"
-              >
-                Refresh Machine Queue
-              </button>
+              {isAdmin && (
+                <button
+                  type="button"
+                  onClick={() => refreshMachineQueue()}
+                  className="rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-xs text-slate-200"
+                >
+                  Refresh Machine Queue
+                </button>
+              )}
             </div>
             {machineQueueError && <p className="text-xs text-amber-400">{machineQueueError}</p>}
 
@@ -527,6 +572,71 @@ export default function MachinePage() {
                 <Users className="h-4 w-4" />{' '}
                 {actionBusy === 'pull_users' ? 'Queueing...' : 'Pull Users (Paging)'}
               </button>
+            </div>
+
+            <div className="mt-4 rounded-xl border border-slate-700/60 bg-slate-950/40 p-3">
+              <p className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-teal-300">
+                <UserPlus className="h-4 w-4" /> Add User Menu (SDK /user/set)
+              </p>
+              <div className="grid gap-2 md:grid-cols-2">
+                <input
+                  type="text"
+                  placeholder="PIN / NIP"
+                  value={addUserPayload.pin}
+                  onChange={(event) =>
+                    setAddUserPayload((prev) => ({ ...prev, pin: event.target.value }))
+                  }
+                  className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white"
+                />
+                <input
+                  type="text"
+                  placeholder="Name"
+                  value={addUserPayload.name}
+                  onChange={(event) =>
+                    setAddUserPayload((prev) => ({ ...prev, name: event.target.value }))
+                  }
+                  className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white"
+                />
+                <input
+                  type="text"
+                  placeholder="Password (default 1234)"
+                  value={addUserPayload.password}
+                  onChange={(event) =>
+                    setAddUserPayload((prev) => ({ ...prev, password: event.target.value }))
+                  }
+                  className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white"
+                />
+                <input
+                  type="text"
+                  placeholder="RFID (optional)"
+                  value={addUserPayload.rfid}
+                  onChange={(event) =>
+                    setAddUserPayload((prev) => ({ ...prev, rfid: event.target.value }))
+                  }
+                  className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white"
+                />
+                <select
+                  value={addUserPayload.privilege}
+                  onChange={(event) =>
+                    setAddUserPayload((prev) => ({
+                      ...prev,
+                      privilege: Number(event.target.value) || 0,
+                    }))
+                  }
+                  className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white"
+                >
+                  <option value={0}>Privilege 0 - User</option>
+                  <option value={1}>Privilege 1 - Admin</option>
+                </select>
+                <button
+                  type="button"
+                  onClick={queueAddUser}
+                  disabled={Boolean(actionBusy)}
+                  className="rounded-lg border border-teal-500/40 bg-teal-500/10 px-3 py-2 text-sm font-semibold text-teal-200 hover:bg-teal-500/20 disabled:opacity-50"
+                >
+                  {actionBusy === 'set_user' ? 'Queueing add user...' : 'Queue Add User'}
+                </button>
+              </div>
             </div>
           </div>
 
@@ -607,18 +717,20 @@ export default function MachinePage() {
             </p>
           </div>
 
-          {error && (
-            <div className="rounded-xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">
-              {error}
-            </div>
-          )}
+          <InlineStatusPanel message={error} variant="error" />
 
           <div className="grid gap-4 md:grid-cols-2">
             <div className="rounded-xl border border-slate-800 bg-slate-900 p-4">
               <h2 className="mb-2 text-sm font-semibold text-white">Device Info Result</h2>
-              <pre className="max-h-64 overflow-auto rounded-lg bg-slate-950 p-3 text-xs text-slate-300">
-                {deviceInfo ? formatJson(deviceInfo) : 'No device info result yet.'}
-              </pre>
+              {isAdmin ? (
+                <pre className="max-h-64 overflow-auto rounded-lg bg-slate-950 p-3 text-xs text-slate-300">
+                  {deviceInfo ? formatJson(deviceInfo) : 'No device info result yet.'}
+                </pre>
+              ) : (
+                <p className="rounded-lg border border-slate-700 bg-slate-950 p-3 text-xs text-slate-400">
+                  Hidden for non-admin role.
+                </p>
+              )}
               <p className="mt-2 text-xs text-slate-500">
                 Device time: {String(deviceTime || '-')}
               </p>
@@ -627,27 +739,87 @@ export default function MachinePage() {
             <div className="space-y-4">
               <div className="rounded-xl border border-slate-800 bg-slate-900 p-4">
                 <h2 className="mb-2 text-sm font-semibold text-white">Users Pull Result</h2>
-                <pre className="max-h-40 overflow-auto rounded-lg bg-slate-950 p-3 text-xs text-slate-300">
-                  {userSyncResult ? formatJson(userSyncResult) : 'No user pull result yet.'}
-                </pre>
+                {isAdmin ? (
+                  <pre className="max-h-40 overflow-auto rounded-lg bg-slate-950 p-3 text-xs text-slate-300">
+                    {userSyncResult ? formatJson(userSyncResult) : 'No user pull result yet.'}
+                  </pre>
+                ) : (
+                  <p className="rounded-lg border border-slate-700 bg-slate-950 p-3 text-xs text-slate-400">
+                    Hidden for non-admin role.
+                  </p>
+                )}
               </div>
               <div className="rounded-xl border border-slate-800 bg-slate-900 p-4">
                 <h2 className="mb-2 text-sm font-semibold text-white">Initialize Result</h2>
-                <pre className="max-h-40 overflow-auto rounded-lg bg-slate-950 p-3 text-xs text-slate-300">
-                  {initResult ? formatJson(initResult) : 'No initialize action executed yet.'}
-                </pre>
+                {isAdmin ? (
+                  <pre className="max-h-40 overflow-auto rounded-lg bg-slate-950 p-3 text-xs text-slate-300">
+                    {initResult ? formatJson(initResult) : 'No initialize action executed yet.'}
+                  </pre>
+                ) : (
+                  <p className="rounded-lg border border-slate-700 bg-slate-950 p-3 text-xs text-slate-400">
+                    Hidden for non-admin role.
+                  </p>
+                )}
               </div>
               <div className="rounded-xl border border-slate-800 bg-slate-900 p-4">
                 <h2 className="mb-2 text-sm font-semibold text-white">Scanlog Queue Result</h2>
-                <pre className="max-h-40 overflow-auto rounded-lg bg-slate-950 p-3 text-xs text-slate-300">
-                  {scanSyncResult ? formatJson(scanSyncResult) : 'No scanlog sync queued yet.'}
-                </pre>
+                {isAdmin ? (
+                  <pre className="max-h-40 overflow-auto rounded-lg bg-slate-950 p-3 text-xs text-slate-300">
+                    {scanSyncResult ? formatJson(scanSyncResult) : 'No scanlog sync queued yet.'}
+                  </pre>
+                ) : (
+                  <p className="rounded-lg border border-slate-700 bg-slate-950 p-3 text-xs text-slate-400">
+                    Hidden for non-admin role.
+                  </p>
+                )}
               </div>
             </div>
           </div>
 
           <div className="rounded-xl border border-slate-800 bg-slate-900 p-4">
-            <h2 className="mb-3 text-sm font-semibold text-white">Recent Machine Jobs</h2>
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+              <h2 className="text-sm font-semibold text-white">Recent Machine Jobs</h2>
+              <div className="flex items-center gap-2 text-xs text-slate-400">
+                <label htmlFor="machine-jobs-limit" className="text-slate-500">
+                  Rows
+                </label>
+                <select
+                  id="machine-jobs-limit"
+                  value={machineLimit}
+                  onChange={(event) => {
+                    setMachineLimit(Number(event.target.value) || 30);
+                    setMachinePage(1);
+                  }}
+                  className="rounded border border-slate-700 bg-slate-950 px-2 py-1 text-slate-200"
+                >
+                  {[10, 20, 30, 50, 100].map((size) => (
+                    <option key={size} value={size}>
+                      {size}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  onClick={() => setMachinePage((prev) => Math.max(1, prev - 1))}
+                  disabled={machinePage <= 1}
+                  className="rounded border border-slate-700 px-2 py-1 text-slate-200 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  Prev
+                </button>
+                <span className="font-mono text-slate-300">
+                  {machinePage}/{machinePages}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setMachinePage((prev) => Math.min(machinePages, prev + 1))}
+                  disabled={machinePage >= machinePages}
+                  className="rounded border border-slate-700 px-2 py-1 text-slate-200 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  Next
+                </button>
+                <span className="text-slate-500">Total {machineTotal}</span>
+              </div>
+            </div>
             <div className="space-y-2">
               {machineRows.length === 0 && (
                 <p className="text-xs text-slate-500">No machine jobs yet.</p>
@@ -690,7 +862,7 @@ export default function MachinePage() {
                         >
                           {status || 'unknown'}
                         </span>
-                        {cancellable && (
+                        {isAdmin && cancellable && (
                           <button
                             type="button"
                             onClick={() =>
@@ -703,7 +875,7 @@ export default function MachinePage() {
                         )}
                       </div>
                     </div>
-                    {isExpanded && (
+                    {isAdmin && isExpanded && (
                       <pre className="mt-2 max-h-52 overflow-auto rounded-md bg-slate-950 p-2 text-xs text-slate-300">
                         {formatJson(row)}
                       </pre>
@@ -714,18 +886,6 @@ export default function MachinePage() {
             </div>
           </div>
         </div>
-
-        <ScanlogQueueSidebar
-          className="mt-6 lg:mt-0"
-          title="Scanlog Queue"
-          queueMeta={scanlogQueueMeta}
-          queueRows={scanlogRows}
-          queueError={scanlogQueueError}
-          expandedRows={expandedScanlogRows}
-          onToggleRow={toggleScanlogRowExpand}
-          onRefresh={() => refreshScanlogQueue()}
-          activeBatchId={activeBatchId}
-        />
       </div>
 
       {confirmModal && (

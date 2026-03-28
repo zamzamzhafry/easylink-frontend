@@ -5,6 +5,11 @@ import {
   unauthorizedResponse,
   forbiddenResponse,
 } from '@/lib/auth-session';
+import {
+  buildPaginatedResponse,
+  computePaginationMeta,
+  parsePaginationParams,
+} from '@/lib/pagination';
 
 const VERIFY_LABEL = {
   1: 'Fingerprint',
@@ -24,15 +29,10 @@ const IO_LABEL = {
   5: 'OT Out',
 };
 
-function normalizeLimit(raw, max = 5000) {
-  const n = parseInt(raw, 10);
-  if (!n || n < 1) return 500;
-  return Math.min(n, max);
-}
-
-function normalizePage(raw) {
-  const n = parseInt(raw, 10);
-  return !n || n < 1 ? 1 : n;
+function nextIsoDate(dateString) {
+  const date = new Date(`${String(dateString)}T00:00:00.000Z`);
+  date.setUTCDate(date.getUTCDate() + 1);
+  return date.toISOString().slice(0, 10);
 }
 
 async function tableExists(tableName) {
@@ -64,9 +64,10 @@ export async function GET(request) {
   const from = searchParams.get('from') || null;
   const to = searchParams.get('to') || null;
   const pinFilter = (searchParams.get('pin') || '').trim();
-  const limit = normalizeLimit(searchParams.get('limit'), 5000);
-  const page = normalizePage(searchParams.get('page'));
-  const offset = (page - 1) * limit;
+  const { limit, pageInput } = parsePaginationParams(searchParams, {
+    defaultLimit: 500,
+    maxLimit: 5000,
+  });
   const download = searchParams.get('download') === '1';
   const source =
     (searchParams.get('source') || 'legacy').toLowerCase() === 'safe' ? 'safe' : 'legacy';
@@ -80,12 +81,12 @@ export async function GET(request) {
   const params = [];
 
   if (from) {
-    whereClauses.push(`DATE(${timeColumn}) >= ?`);
-    params.push(from);
+    whereClauses.push(`${timeColumn} >= ?`);
+    params.push(`${from} 00:00:00`);
   }
   if (to) {
-    whereClauses.push(`DATE(${timeColumn}) <= ?`);
-    params.push(to);
+    whereClauses.push(`${timeColumn} < ?`);
+    params.push(`${nextIsoDate(to)} 00:00:00`);
   }
   if (pinFilter) {
     whereClauses.push('sl.pin LIKE ?');
@@ -100,9 +101,10 @@ export async function GET(request) {
     params
   );
   const total = Number(Array.isArray(countRows) ? (countRows[0]?.total ?? 0) : 0);
+  const meta = computePaginationMeta({ total, pageInput, limit });
 
   // Data query
-  const dataParams = [...params, limit, offset];
+  const dataParams = [...params, meta.limit, meta.offset];
   const [rows] = await pool.query(
     `SELECT
        sl.sn,
@@ -151,13 +153,16 @@ export async function GET(request) {
     });
   }
 
-  return NextResponse.json({
-    ok: true,
-    source: useSafe ? 'safe' : 'legacy',
-    total,
-    page,
-    limit,
-    pages: Math.ceil(total / limit),
-    records,
-  });
+  return NextResponse.json(
+    buildPaginatedResponse({
+      items: records,
+      total,
+      pageInput,
+      limit: meta.limit,
+      itemKey: 'records',
+      extra: {
+        source: useSafe ? 'safe' : 'legacy',
+      },
+    })
+  );
 }

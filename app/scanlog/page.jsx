@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { ChevronLeft, ChevronRight, DatabaseZap, Download, RefreshCw } from 'lucide-react';
-import ScanlogQueueSidebar from '@/components/queue/scanlog-queue-sidebar';
+import InlineStatusPanel from '@/components/ui/inline-status-panel';
 import SearchInput from '@/components/ui/search-input';
 import { useToast } from '@/components/ui/toast-provider';
 import {
@@ -12,6 +12,8 @@ import {
   TableLoadingRow,
   TableEmptyRow,
 } from '@/components/ui/table-shell';
+import { usePaginatedResource } from '@/hooks/use-paginated-resource';
+import { requestJson } from '@/lib/request-json';
 import { cn } from '@/lib/utils';
 
 // ─── helpers ───────────────────────────────────────────────────────────────────
@@ -109,66 +111,72 @@ export default function ScanlogPage() {
   const [from, setFrom] = useState(daysAgo(6));
   const [to, setTo] = useState(todayIso());
   const [pinFilter, setPinFilter] = useState('');
-  const [limit, setLimit] = useState(250);
-  const [page, setPage] = useState(1);
   const [source, setSource] = useState('legacy');
+  const [appliedFilters, setAppliedFilters] = useState(() => ({
+    from: daysAgo(6),
+    to: todayIso(),
+    pin: '',
+    source: 'legacy',
+  }));
+  const [reloadToken, setReloadToken] = useState(0);
 
-  const [records, setRecords] = useState([]);
-  const [total, setTotal] = useState(0);
-  const [pages, setPages] = useState(1);
-  const [loading, setLoading] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [syncMode, setSyncMode] = useState('new');
   const [syncMaxPages, setSyncMaxPages] = useState(3);
   const [activeBatchId, setActiveBatchId] = useState(null);
-  const [queueRows, setQueueRows] = useState([]);
-  const [queueMeta, setQueueMeta] = useState({ concurrency: 1, active: 0, pending: 0 });
   const [queueError, setQueueError] = useState('');
-  const [expandedRows, setExpandedRows] = useState({});
 
   const toast = useToast();
 
-  // ── fetch ─────────────────────────────────────────────────────────────────────
-  const load = useCallback(
-    async (overridePage) => {
-      setLoading(true);
-      const p = overridePage ?? page;
-      try {
-        const params = new URLSearchParams({
-          from,
-          to,
-          limit: String(limit),
-          page: String(p),
-          source,
-        });
-        if (pinFilter.trim()) params.set('pin', pinFilter.trim());
-
-        const res = await fetch(`/api/scanlog?${params.toString()}`);
-        const data = await parseApiResponse(res);
-        if (!res.ok) {
-          throw new Error(data?.error || data?.raw || `Error ${res.status}`);
-        }
-        setRecords(data.records ?? []);
-        setTotal(data.total ?? 0);
-        setPages(data.pages ?? 1);
-      } catch (err) {
-        toast.error(err.message || 'Failed to load scanlog');
-      } finally {
-        setLoading(false);
+  const {
+    items: records,
+    total,
+    pages,
+    page,
+    limit,
+    loading,
+    error: loadError,
+    setPage,
+    setLimit,
+    load,
+    retry,
+  } = usePaginatedResource({
+    fetchPage: async ({ page, limit, signal }) => {
+      const params = new URLSearchParams({
+        from: appliedFilters.from,
+        to: appliedFilters.to,
+        limit: String(limit),
+        page: String(page),
+        source: appliedFilters.source,
+      });
+      if (appliedFilters.pin) {
+        params.set('pin', appliedFilters.pin);
       }
+      return requestJson(`/api/scanlog?${params.toString()}`, { signal });
     },
-    [from, to, pinFilter, limit, page, source, toast]
-  );
-
-  useEffect(() => {
-    load();
-  }, [load]);
+    initialPage: 1,
+    initialLimit: 250,
+    dependencies: [
+      appliedFilters.from,
+      appliedFilters.to,
+      appliedFilters.pin,
+      appliedFilters.source,
+      reloadToken,
+    ],
+    onError: (message) => toast.error(message),
+  });
 
   // ── apply / search ────────────────────────────────────────────────────────────
   const apply = () => {
+    setAppliedFilters({
+      from,
+      to,
+      pin: pinFilter.trim(),
+      source,
+    });
+    setReloadToken((value) => value + 1);
     setPage(1);
-    load(1);
   };
 
   const applyPreset = (preset) => {
@@ -176,16 +184,21 @@ export default function ScanlogPage() {
     const t = preset.to();
     setFrom(f);
     setTo(t);
+    setAppliedFilters((prev) => ({
+      ...prev,
+      from: f,
+      to: t,
+      pin: pinFilter.trim(),
+      source,
+    }));
+    setReloadToken((value) => value + 1);
     setPage(1);
-    // Pass updated values directly since state update is async
-    setTimeout(() => load(1), 0);
   };
 
   // ── pagination ────────────────────────────────────────────────────────────────
   const goPage = (p) => {
     const next = Math.max(1, Math.min(p, pages));
     setPage(next);
-    load(next);
   };
 
   // ── CSV download ──────────────────────────────────────────────────────────────
@@ -218,97 +231,117 @@ export default function ScanlogPage() {
     }
   };
 
-  const toggleRowExpand = (id) => {
-    setExpandedRows((prev) => ({ ...prev, [id]: !prev[id] }));
-  };
-
   const refreshQueue = useCallback(async (batchId) => {
+    if (!batchId) return null;
     try {
       setQueueError('');
-      const url = batchId ? `/api/scanlog/sync?batch_id=${batchId}` : '/api/scanlog/sync';
-      const res = await fetch(url);
+      const res = await fetch(`/api/scanlog/sync?batch_id=${batchId}`);
       const data = await parseApiResponse(res);
       if (!res.ok || !data?.ok) {
         throw new Error(data?.error || data?.raw || `Queue status failed (${res.status})`);
       }
-
-      if (data?.queue) {
-        setQueueMeta({
-          concurrency: Number(data.queue.concurrency || 1),
-          active: Number(data.queue.active || 0),
-          pending: Number(data.queue.pending || 0),
-        });
-      }
-
-      if (batchId) {
-        const row = data?.row;
-        if (!row) return null;
-        setQueueRows((prev) => {
-          const map = new Map(prev.map((item) => [item.id, item]));
-          map.set(row.id, row);
-          return [...map.values()].sort((a, b) => Number(b.id) - Number(a.id));
-        });
-        return row;
-      }
-
-      setQueueRows(Array.isArray(data?.rows) ? data.rows : []);
-      return null;
+      return data?.row || null;
     } catch (err) {
       setQueueError(err.message || 'Failed to refresh queue status');
       return null;
     }
   }, []);
 
-  useEffect(() => {
-    let cancelled = false;
-
-    const tick = () => {
-      if (!cancelled) refreshQueue();
-    };
-
-    tick();
-    const timer = setInterval(tick, 10000);
-
-    return () => {
-      cancelled = true;
-      clearInterval(timer);
-    };
-  }, [refreshQueue]);
-
-  useEffect(() => {
-    if (!activeBatchId) return;
-
-    let cancelled = false;
-
-    const poll = async () => {
-      const row = await refreshQueue(activeBatchId);
-      if (cancelled || !row) return;
-
+  const handleBatchState = useCallback(
+    (row) => {
+      if (!row) return;
       const status = String(row.status || '').toLowerCase();
       if (status === 'success') {
         toast.success(
           `Batch #${row.id} completed. Pulled ${row.pulled_count || 0}, inserted ${row.inserted_count || 0}.`
         );
         setActiveBatchId(null);
-        if (source !== 'safe') {
-          setSource('safe');
-        }
+        setSource('safe');
+        setAppliedFilters((prev) => ({
+          ...prev,
+          source: 'safe',
+        }));
+        setReloadToken((value) => value + 1);
         setPage(1);
-        setTimeout(() => load(1), 0);
       } else if (status === 'failed') {
         toast.error(`Batch #${row.id} failed: ${row.error_message || 'Unknown error'}`);
         setActiveBatchId(null);
       }
+    },
+    [setPage, toast]
+  );
+
+  useEffect(() => {
+    if (!activeBatchId) {
+      setQueueError('');
+      return;
+    }
+
+    let closed = false;
+    const stream = new EventSource('/api/scanlog/stream?limit=12&interval_ms=4000');
+
+    const onQueue = (event) => {
+      try {
+        const payload = JSON.parse(String(event.data || '{}'));
+        setQueueError('');
+        const rows = Array.isArray(payload?.rows) ? payload.rows : [];
+        const matched = rows.find((row) => Number(row?.id || 0) === Number(activeBatchId));
+        if (matched) {
+          handleBatchState(matched);
+        }
+      } catch {
+        // ignore malformed payload
+      }
     };
 
-    poll();
-    const timer = setInterval(poll, 2000);
+    const onOpen = () => {
+      setQueueError('');
+    };
+
+    const onError = () => {
+      if (closed) return;
+      if (typeof document !== 'undefined' && document.visibilityState !== 'visible') {
+        return;
+      }
+      if (typeof EventSource !== 'undefined' && stream.readyState === EventSource.OPEN) {
+        return;
+      }
+      if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+        setQueueError('Offline. Waiting for network before reconnecting queue stream...');
+        return;
+      }
+      setQueueError('Realtime queue stream reconnecting...');
+    };
+
+    stream.addEventListener('open', onOpen);
+    stream.addEventListener('queue', onQueue);
+    stream.addEventListener('error', onError);
 
     return () => {
-      cancelled = true;
-      clearInterval(timer);
+      closed = true;
+      stream.removeEventListener('open', onOpen);
+      stream.removeEventListener('queue', onQueue);
+      stream.removeEventListener('error', onError);
+      stream.close();
     };
-  }, [activeBatchId, load, refreshQueue, source, toast]);
+  }, [activeBatchId, handleBatchState]);
+
+  useEffect(() => {
+    if (!activeBatchId) return;
+
+    let cancelled = false;
+    const syncState = async () => {
+      const row = await refreshQueue(activeBatchId);
+      if (!cancelled) {
+        handleBatchState(row);
+      }
+    };
+
+    void syncState();
+    return () => {
+      cancelled = true;
+    };
+  }, [activeBatchId, handleBatchState, refreshQueue]);
 
   const syncFromMachine = async () => {
     setSyncing(true);
@@ -341,7 +374,8 @@ export default function ScanlogPage() {
       }
 
       setActiveBatchId(batchId);
-      await refreshQueue();
+      const firstState = await refreshQueue(batchId);
+      handleBatchState(firstState);
 
       toast.success(
         `Sync job #${batchId} accepted (${data?.status || 'running'}). Queue: active ${data?.queue?.active || 0}, pending ${data?.queue?.pending || 0}.`
@@ -355,7 +389,7 @@ export default function ScanlogPage() {
 
   // ─── render ───────────────────────────────────────────────────────────────────
   return (
-    <div className="p-6 lg:grid lg:grid-cols-[minmax(0,1fr)_320px] lg:gap-4">
+    <div className="space-y-5 p-6">
       <div className="space-y-5">
         {/* Header */}
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -417,8 +451,8 @@ export default function ScanlogPage() {
             <button
               type="button"
               onClick={() => {
-                setPage(1);
-                load(1);
+                setReloadToken((value) => value + 1);
+                retry();
               }}
               disabled={loading}
               className="flex items-center gap-1.5 rounded-lg border border-slate-700 px-3 py-2 text-xs text-slate-400 hover:text-white disabled:opacity-40"
@@ -523,7 +557,10 @@ export default function ScanlogPage() {
               <select
                 id="scanlog-limit"
                 value={limit}
-                onChange={(e) => setLimit(Number(e.target.value))}
+                onChange={(e) => {
+                  setLimit(Number(e.target.value));
+                  setPage(1);
+                }}
                 className="rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-white focus:border-teal-500 focus:outline-none"
               >
                 {LIMIT_OPTIONS.map((l) => (
@@ -545,9 +582,14 @@ export default function ScanlogPage() {
                 id="scanlog-source"
                 value={source}
                 onChange={(event) => {
-                  setSource(event.target.value);
+                  const nextSource = event.target.value;
+                  setSource(nextSource);
+                  setAppliedFilters((prev) => ({
+                    ...prev,
+                    source: nextSource,
+                  }));
+                  setReloadToken((value) => value + 1);
                   setPage(1);
-                  setTimeout(() => load(1), 0);
                 }}
                 className="rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-white focus:border-teal-500 focus:outline-none"
               >
@@ -595,6 +637,15 @@ export default function ScanlogPage() {
             )}
           </div>
         </div>
+
+        <InlineStatusPanel
+          message={loadError}
+          variant="error"
+          actionLabel="Retry"
+          onAction={retry}
+        />
+
+        <InlineStatusPanel message={queueError} variant="warning" />
 
         {/* Table */}
         <TableShell>
@@ -706,17 +757,6 @@ export default function ScanlogPage() {
           </div>
         )}
       </div>
-
-      <ScanlogQueueSidebar
-        className="mt-6 lg:mt-0"
-        queueMeta={queueMeta}
-        queueRows={queueRows}
-        queueError={queueError}
-        expandedRows={expandedRows}
-        onToggleRow={toggleRowExpand}
-        onRefresh={() => refreshQueue()}
-        activeBatchId={activeBatchId}
-      />
     </div>
   );
 }

@@ -1,5 +1,8 @@
+/* biome-ignore lint/suspicious/noUnknownAtRules: Tailwind directives are valid in PostCSS pipeline */
 @tailwind base;
+/* biome-ignore lint/suspicious/noUnknownAtRules: Tailwind directives are valid in PostCSS pipeline */
 @tailwind components;
+/* biome-ignore lint/suspicious/noUnknownAtRules: Tailwind directives are valid in PostCSS pipeline */
 @tailwind utilities;
 
 @layer base {
@@ -29,10 +32,11 @@
 
 @layer base {
   * {
-    @apply border-border;
+    border-color: hsl(var(--border));
   }
   body {
-    @apply bg-background text-foreground;
+    background-color: hsl(var(--background));
+    color: hsl(var(--foreground));
   }
 }
 
@@ -291,6 +295,180 @@ html[data-theme='light'] .toast-close {
 html[data-theme='light'] .toast-close:hover {
   background: rgb(226 232 240 / 0.7);
   color: rgb(15 23 42);
+}
+
+@layer components {
+  .auth-shell {
+    background-color: rgb(2 6 23);
+  }
+
+  html[data-theme='dark'] .auth-shell-backdrop {
+    background:
+      radial-gradient(circle at 25% 20%, rgb(45 212 191 / 0.18), transparent 42%),
+      radial-gradient(circle at 75% 80%, rgb(14 165 233 / 0.15), transparent 44%);
+  }
+
+  html[data-theme='light'] .auth-shell {
+    background-color: rgb(236 253 245);
+  }
+
+  html[data-theme='light'] .auth-shell-backdrop {
+    background:
+      radial-gradient(circle at 22% 20%, rgb(16 185 129 / 0.22), transparent 42%),
+      radial-gradient(circle at 78% 80%, rgb(251 146 60 / 0.2), transparent 44%);
+  }
+
+  .auth-card {
+    border-color: rgb(51 65 85 / 0.8);
+    background: rgb(15 23 42 / 0.9);
+    color: rgb(248 250 252);
+  }
+
+  html[data-theme='light'] .auth-card {
+    border-color: rgb(186 230 253 / 0.95);
+    background: rgb(255 255 255 / 0.94);
+    color: rgb(15 23 42);
+  }
+
+  .auth-brand-icon {
+    background: rgb(20 184 166 / 0.2);
+    color: rgb(94 234 212);
+  }
+
+  html[data-theme='light'] .auth-brand-icon {
+    background: rgb(16 185 129 / 0.14);
+    color: rgb(13 148 136);
+  }
+
+  .auth-label {
+    color: rgb(148 163 184);
+  }
+
+  html[data-theme='light'] .auth-label {
+    color: rgb(71 85 105);
+  }
+
+  .auth-input {
+    border-color: rgb(51 65 85 / 0.9);
+    background: rgb(30 41 59 / 0.75);
+    color: rgb(248 250 252);
+  }
+
+  .auth-input::placeholder {
+    color: rgb(148 163 184);
+  }
+
+  .auth-input:focus {
+    border-color: rgb(45 212 191 / 0.9);
+    box-shadow: 0 0 0 2px rgb(45 212 191 / 0.18);
+  }
+
+  html[data-theme='light'] .auth-input {
+    border-color: rgb(186 230 253 / 0.95);
+    background: rgb(240 253 250 / 0.95);
+    color: rgb(15 23 42);
+  }
+
+  html[data-theme='light'] .auth-input::placeholder {
+    color: rgb(100 116 139);
+  }
+
+  .auth-input-icon {
+    color: rgb(100 116 139);
+  }
+
+  html[data-theme='light'] .auth-input-icon {
+    color: rgb(71 85 105);
+  }
+
+  .auth-submit {
+    background: rgb(20 184 166);
+    color: rgb(15 23 42);
+  }
+
+  .auth-submit:hover {
+    background: rgb(45 212 191);
+  }
+
+  html[data-theme='light'] .auth-submit {
+    background: rgb(13 148 136);
+    color: rgb(255 255 255);
+  }
+
+  html[data-theme='light'] .auth-submit:hover {
+    background: rgb(15 118 110);
+  }
+
+  .modal-shell-overlay {
+    backdrop-filter: blur(4px);
+  }
+
+  html[data-theme='dark'] .modal-shell-overlay {
+    background: rgb(2 6 23 / 0.74);
+  }
+
+  html[data-theme='light'] .modal-shell-overlay {
+    background: rgb(15 23 42 / 0.18);
+  }
+
+  .modal-shell-panel {
+    border-color: rgb(51 65 85 / 0.9);
+    background: rgb(15 23 42 / 0.95);
+    color: rgb(248 250 252);
+  }
+
+  html[data-theme='light'] .modal-shell-panel {
+    border-color: rgb(186 230 253 / 0.95);
+    background: rgb(255 255 255 / 0.98);
+    color: rgb(15 23 42);
+  }
+
+  .modal-shell-close {
+    color: rgb(148 163 184);
+  }
+
+  .modal-shell-close:hover {
+    color: rgb(248 250 252);
+  }
+
+  html[data-theme='light'] .modal-shell-close {
+    color: rgb(100 116 139);
+  }
+
+  html[data-theme='light'] .modal-shell-close:hover {
+    color: rgb(15 23 42);
+  }
+
+  .modal-shell-title {
+    color: rgb(248 250 252);
+  }
+
+  .modal-shell-subtitle {
+    color: rgb(148 163 184);
+  }
+
+  html[data-theme='light'] .modal-shell-title {
+    color: rgb(15 23 42);
+  }
+
+  html[data-theme='light'] .modal-shell-subtitle {
+    color: rgb(100 116 139);
+  }
+
+  .app-right-sidebar {
+    backdrop-filter: blur(8px);
+  }
+
+  html[data-theme='dark'] .app-right-sidebar {
+    background: rgb(2 6 23 / 0.88);
+    border-left-color: rgb(51 65 85 / 0.9);
+  }
+
+  html[data-theme='light'] .app-right-sidebar {
+    background: rgb(255 255 255 / 0.92);
+    border-left-color: rgb(186 230 253 / 0.9);
+    box-shadow: -10px 0 32px rgb(15 23 42 / 0.06);
+  }
 }
 
 @keyframes toast-enter {
