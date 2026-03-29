@@ -1,7 +1,9 @@
 'use client';
 
 import { CalendarDays } from 'lucide-react';
+import { useAppLocale } from '@/components/app-shell';
 import { PRESET_RANGE } from '@/lib/attendance-helpers';
+import { getUIText } from '@/lib/localization/ui-texts';
 
 export default function AttendanceFilters({
   from,
@@ -20,42 +22,50 @@ export default function AttendanceFilters({
   onIncompleteOnlyChange,
   onSetRange,
 }) {
+  const { locale } = useAppLocale();
+  const resolvedLocale = locale === 'id' ? 'id' : 'en';
+  const t = (path) => getUIText(path, resolvedLocale);
+  const presetLabel = (key, fallbackLabel) => {
+    const localized = getUIText(`attendancePage.filters.presets.${key}`, resolvedLocale);
+    return localized === `attendancePage.filters.presets.${key}` ? fallbackLabel : localized;
+  };
+
   return (
-    <div className="flex flex-wrap items-center gap-3 rounded-xl border border-slate-800 bg-slate-900 p-4">
-      <CalendarDays className="h-4 w-4 shrink-0 text-teal-400" />
+    <div className="ui-card-shell ui-control-row items-center p-4">
+      <CalendarDays className="h-4 w-4 shrink-0 text-primary" />
       <div className="flex items-center gap-2">
-        <label htmlFor="attendance-from" className="text-xs text-slate-500">
-          From
+        <label htmlFor="attendance-from" className="ui-control-label">
+          {t('attendancePage.filters.from')}
         </label>
         <input
           id="attendance-from"
           type="date"
           value={from}
           onChange={(event) => onFromChange(event.target.value)}
-          className="rounded-lg border border-slate-700 bg-slate-800 px-3 py-1.5 font-mono text-sm text-white focus:border-teal-500 focus:outline-none"
+          className="ui-control-input min-h-0 w-auto py-1.5 font-mono text-sm"
         />
-        <label htmlFor="attendance-to" className="text-xs text-slate-500">
-          To
+        <label htmlFor="attendance-to" className="ui-control-label">
+          {t('attendancePage.filters.to')}
         </label>
         <input
           id="attendance-to"
           type="date"
           value={to}
           onChange={(event) => onToChange(event.target.value)}
-          className="rounded-lg border border-slate-700 bg-slate-800 px-3 py-1.5 font-mono text-sm text-white focus:border-teal-500 focus:outline-none"
+          className="ui-control-input min-h-0 w-auto py-1.5 font-mono text-sm"
         />
       </div>
       <div className="flex items-center gap-2">
-        <label htmlFor="attendance-group" className="text-xs text-slate-500">
-          Group
+        <label htmlFor="attendance-group" className="ui-control-label">
+          {t('attendancePage.filters.group')}
         </label>
         <select
           id="attendance-group"
           value={groupId ?? ''}
           onChange={(event) => onGroupChange?.(event.target.value)}
-          className="rounded-lg border border-slate-700 bg-slate-800 px-3 py-1.5 text-sm text-white focus:border-teal-500 focus:outline-none"
+          className="ui-control-select min-h-0 w-auto py-1.5 pl-3 pr-8 text-sm"
         >
-          <option value="">All groups</option>
+          <option value="">{t('attendancePage.filters.allGroups')}</option>
           {groups.map((group) => (
             <option key={group.id} value={group.id}>
               {group.nama_group}
@@ -64,16 +74,16 @@ export default function AttendanceFilters({
         </select>
       </div>
       <div className="flex items-center gap-2">
-        <label htmlFor="attendance-employee" className="text-xs text-slate-500">
-          Employee
+        <label htmlFor="attendance-employee" className="ui-control-label">
+          {t('attendancePage.filters.employee')}
         </label>
         <select
           id="attendance-employee"
           value={employeeId ?? ''}
           onChange={(event) => onEmployeeChange?.(event.target.value)}
-          className="max-w-[220px] rounded-lg border border-slate-700 bg-slate-800 px-3 py-1.5 text-sm text-white focus:border-teal-500 focus:outline-none"
+          className="ui-control-select min-h-0 max-w-[220px] py-1.5 pl-3 pr-8 text-sm"
         >
-          <option value="">All employees</option>
+          <option value="">{t('attendancePage.filters.allEmployees')}</option>
           {employees.map((employee) => (
             <option key={employee.id} value={employee.id}>
               {employee.name}
@@ -81,14 +91,14 @@ export default function AttendanceFilters({
           ))}
         </select>
       </div>
-      <label className="inline-flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-800 px-3 py-1.5 text-xs text-slate-300">
+      <label className="inline-flex items-center gap-2 rounded-lg border border-border/70 bg-muted/45 px-3 py-1.5 text-xs text-muted-foreground">
         <input
           type="checkbox"
           checked={Boolean(incompleteOnly)}
           onChange={(event) => onIncompleteOnlyChange?.(event.target.checked)}
-          className="h-4 w-4 rounded border-slate-600 bg-slate-900 text-teal-500"
+          className="ui-control-check"
         />
-        Not complete only
+        {t('attendancePage.filters.incompleteOnly')}
       </label>
       <div className="flex flex-wrap gap-2">
         {PRESET_RANGE.map((range) => (
@@ -96,19 +106,21 @@ export default function AttendanceFilters({
             key={range.key}
             type="button"
             onClick={() => onSetRange(range.key)}
-            className="rounded-lg border border-slate-700 bg-slate-800 px-3 py-1.5 text-xs text-slate-300 transition-colors hover:border-teal-500/60 hover:text-teal-400"
+            className="ui-btn-secondary min-h-0 px-3 py-1.5 text-xs"
           >
-            {range.label}
+            {presetLabel(range.key, range.label)}
           </button>
         ))}
       </div>
       <div className="ml-auto flex gap-4 text-xs">
-        <span className="text-slate-500">
-          <span className="font-mono font-bold text-white">{count}</span> records
+        <span className="text-muted-foreground">
+          <span className="font-mono font-bold text-foreground">{count}</span>{' '}
+          {t('attendanceShared.records')}
         </span>
         {anomalyCount > 0 && (
-          <span className="text-amber-400">
-            <span className="font-mono font-bold">{anomalyCount}</span> anomalies
+          <span className="text-amber-500 dark:text-amber-400">
+            <span className="font-mono font-bold">{anomalyCount}</span>{' '}
+            {t('attendanceShared.anomalies')}
           </span>
         )}
       </div>

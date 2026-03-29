@@ -33,25 +33,25 @@ export default function CreateGroupModal({
     <ModalShell title={title} onClose={onClose} maxWidth="max-w-sm">
       <div className="space-y-3">
         <div>
-          <label htmlFor="group-name" className="mb-1 block text-xs text-slate-400">
+          <label htmlFor="group-name" className="mb-1 block text-xs text-muted-foreground">
             Group Name *
           </label>
           <input
             id="group-name"
             value={name}
             onChange={(event) => setName(event.target.value)}
-            className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-white focus:border-teal-500 focus:outline-none"
+            className="ui-control-input w-full text-sm"
           />
         </div>
         <div>
-          <label htmlFor="group-description" className="mb-1 block text-xs text-slate-400">
+          <label htmlFor="group-description" className="mb-1 block text-xs text-muted-foreground">
             Description
           </label>
           <input
             id="group-description"
             value={description}
             onChange={(event) => setDescription(event.target.value)}
-            className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-white focus:border-teal-500 focus:outline-none"
+            className="ui-control-input w-full text-sm"
           />
         </div>
       </div>
@@ -60,7 +60,7 @@ export default function CreateGroupModal({
         <button
           type="button"
           onClick={onClose}
-          className="flex-1 rounded-lg border border-slate-700 px-4 py-2 text-sm text-slate-400 transition-colors hover:text-white"
+          className="ui-btn-secondary flex-1 rounded-lg px-4 py-2 text-sm font-medium"
         >
           Cancel
         </button>
@@ -68,7 +68,7 @@ export default function CreateGroupModal({
           type="button"
           onClick={create}
           disabled={saving}
-          className="flex-1 rounded-lg bg-teal-500 px-4 py-2 text-sm font-semibold text-slate-900 transition-colors hover:bg-teal-400 disabled:opacity-50"
+          className="ui-btn-primary flex-1 rounded-lg px-4 py-2 text-sm font-semibold disabled:opacity-50"
         >
           {saving ? 'Saving...' : submitLabel}
         </button>

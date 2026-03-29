@@ -1,5 +1,4 @@
 import { NextResponse } from 'next/server';
-import pool from '@/lib/db';
 import {
   forbiddenResponse,
   getAuthContextFromCookies,
@@ -9,10 +8,10 @@ import {
   getDeviceInfoFromSdk,
   getDeviceTimeFromSdk,
   initializeMachineFromSdk,
-  pullUsersFromSdk,
   setUserOnSdk,
   syncDeviceTimeFromSdk,
 } from '@/lib/easylink-sdk-client';
+import { runMachineUserPollingJob } from '@/lib/machine/pull-users-pipeline';
 import {
   buildPaginatedResponse,
   computePaginationMeta,
@@ -62,6 +61,21 @@ function isTerminalStatus(status) {
   );
 }
 
+const SUPPORTED_MACHINE_ACTIONS = [
+  'info',
+  'time',
+  'sync_time',
+  'pull_users',
+  'users',
+  'users_partial',
+  'scanlog_new',
+  'devinfo',
+  'set_user',
+  'initialize_machine',
+];
+
+const TASK12_ALIAS_NAMES = new Set(['devinfo', 'scanlog_new', 'users_partial']);
+
 function normalizeAction(value) {
   const action = String(value || '')
     .trim()
@@ -69,12 +83,15 @@ function normalizeAction(value) {
   const aliases = {
     info: 'info',
     device_info: 'info',
+    devinfo: 'info',
     time: 'time',
     device_time: 'time',
     sync_time: 'sync_time',
     set_time: 'sync_time',
     pull_users: 'pull_users',
     users: 'pull_users',
+    users_partial: 'pull_users',
+    scanlog_new: 'pull_users',
     set_user: 'set_user',
     add_user: 'set_user',
     upload_user: 'set_user',
@@ -153,33 +170,6 @@ function assertDangerConfirmation(action, payload) {
   }
 }
 
-async function importUsersToTbUser(users) {
-  if (!users.length) return { inserted: 0, updated: 0 };
-
-  const defaultPwd = process.env.EASYLINK_DEFAULT_USER_PASSWORD || '1234';
-  let inserted = 0;
-  let updated = 0;
-
-  for (const user of users) {
-    const [result] = await pool.query(
-      `
-        INSERT INTO tb_user (pin, nama, pwd, rfid, privilege)
-        VALUES (?, ?, ?, ?, ?)
-        ON DUPLICATE KEY UPDATE
-          nama = VALUES(nama),
-          rfid = VALUES(rfid),
-          privilege = VALUES(privilege)
-      `,
-      [user.pin, user.nama, defaultPwd, user.rfid || '', Number(user.privilege || 0)]
-    );
-
-    if (result.affectedRows === 1) inserted += 1;
-    if (result.affectedRows > 1) updated += 1;
-  }
-
-  return { inserted, updated };
-}
-
 async function runMachineAction(action, payload = {}) {
   const source = 'windows-sdk';
 
@@ -218,14 +208,22 @@ async function runMachineAction(action, payload = {}) {
       1000,
       { min: 1, max: 100000 }
     );
-    const result = await pullUsersFromSdk({ source, limit, page, maxPages });
-    const imported = await importUsersToTbUser(result.rows);
+    const jobKey = createDedupeKey(action, payload);
+    const result = await runMachineUserPollingJob({
+      jobKey,
+      source,
+      limit,
+      page,
+      maxPages,
+    });
     return {
       source: result.source,
-      pulled_count: result.rows.length,
-      inserted_count: imported.inserted,
-      updated_count: imported.updated,
-      users_preview: result.rows.slice(0, 10),
+      pulled_count: result.pulledCount,
+      inserted_count: result.insertedCount,
+      updated_count: result.updatedCount,
+      users_preview: result.previewUsers,
+      validation_errors: result.validationErrors,
+      invalid_count: result.invalidCount,
     };
   }
 
@@ -471,19 +469,19 @@ export async function POST(req) {
   }
 
   const action = normalizeAction(actionRaw);
+  const artifactMetadata = TASK12_ALIAS_NAMES.has(actionRaw)
+    ? {
+        source: 'task-12',
+        alias: actionRaw,
+        canonical_action: action,
+      }
+    : null;
   if (!action) {
     return NextResponse.json(
       {
         ok: false,
         error: 'Unknown action',
-        supported_actions: [
-          'info',
-          'time',
-          'sync_time',
-          'pull_users',
-          'set_user',
-          'initialize_machine',
-        ],
+        supported_actions: SUPPORTED_MACHINE_ACTIONS,
       },
       { status: 400 }
     );
@@ -520,13 +518,15 @@ export async function POST(req) {
   if (!asyncMode) {
     try {
       const result = await runMachineAction(action, requestPayload);
-      return NextResponse.json({
+      const responseBody = {
         ok: true,
         action,
         status: 'success',
         result,
         init_confirmation_phrase: requiredInitPhrase(),
-      });
+      };
+      if (artifactMetadata) responseBody.artifact_metadata = artifactMetadata;
+      return NextResponse.json(responseBody);
     } catch (error) {
       return NextResponse.json(
         {
@@ -541,15 +541,14 @@ export async function POST(req) {
   }
 
   const { job, duplicate } = enqueueMachineJob(action, requestPayload);
-  return NextResponse.json(
-    {
-      ok: true,
-      accepted: true,
-      duplicate,
-      row: serializeJob(job),
-      queue: queueMeta(),
-      init_confirmation_phrase: requiredInitPhrase(),
-    },
-    { status: 202 }
-  );
+  const acceptedBody = {
+    ok: true,
+    accepted: true,
+    duplicate,
+    row: serializeJob(job),
+    queue: queueMeta(),
+    init_confirmation_phrase: requiredInitPhrase(),
+  };
+  if (artifactMetadata) acceptedBody.artifact_metadata = artifactMetadata;
+  return NextResponse.json(acceptedBody, { status: 202 });
 }

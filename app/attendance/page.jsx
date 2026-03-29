@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Download, FileSpreadsheet, Printer } from 'lucide-react';
+import { useAppLocale } from '@/components/app-shell';
 import AttendanceFilters from '@/components/attendance/attendance-filters';
 import AttendanceTable from '@/components/attendance/attendance-table';
 import NoteModal from '@/components/attendance/note-modal';
@@ -19,25 +20,94 @@ import {
   startOfRange,
 } from '@/lib/attendance-helpers';
 import { requestJson } from '@/lib/request-json';
+import { getUIText } from '@/lib/localization/ui-texts';
 
-const ADMIN_TABS = [
-  { key: 'summary', label: 'Daily Attendance' },
-  { key: 'raw', label: 'Raw Scanlog' },
-  { key: 'dashboard', label: 'Employee Dashboard' },
-];
-const MEMBER_TABS = [
-  { key: 'summary', label: 'Daily Attendance' },
-  { key: 'dashboard', label: 'Employee Dashboard' },
-];
+const ADMIN_TABS = ['summary', 'raw', 'dashboard'];
+const MEMBER_TABS = ['summary', 'dashboard'];
+
+const toSafeNumber = (value) => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+
+const formatMinutesToHours = (minutes) => {
+  const totalMinutes = toSafeNumber(minutes);
+  if (totalMinutes <= 0) return '-';
+  const hours = Math.floor(totalMinutes / 60);
+  const remainder = totalMinutes % 60;
+  return `${hours}j ${remainder}m`;
+};
+
+const normalizePredictionContext = (context) => {
+  if (!context || typeof context !== 'object') {
+    return {
+      yearMonth: null,
+      minimumHours: null,
+      targetSource: null,
+      hasData: false,
+    };
+  }
+
+  const rawHours =
+    context.minimum_hours ??
+    context.minimumHours ??
+    context.target_hours ??
+    context.targetHours ??
+    context.monthly_target_hours ??
+    context.monthlyTargetHours;
+  const parsedHours = Number(rawHours);
+
+  return {
+    yearMonth:
+      context.year_month ??
+      context.yearMonth ??
+      context.month ??
+      context.period ??
+      context.periode ??
+      null,
+    minimumHours: Number.isFinite(parsedHours) ? parsedHours : null,
+    targetSource: context.target_source ?? context.targetSource ?? null,
+    hasData: Boolean(
+      context.year_month ??
+      context.yearMonth ??
+      context.month ??
+      context.period ??
+      context.periode ??
+      context.minimum_hours ??
+      context.minimumHours ??
+      context.target_hours ??
+      context.targetHours ??
+      context.monthly_target_hours ??
+      context.monthlyTargetHours ??
+      context.target_source ??
+      context.targetSource
+    ),
+  };
+};
+
+const formatTargetSource = (source) => {
+  if (!source) return '-';
+  return String(source)
+    .split('_')
+    .map((part) => (part ? part[0].toUpperCase() + part.slice(1) : part))
+    .join(' ');
+};
 
 export default function AttendancePage() {
   const { warning } = useToast();
+  const { locale } = useAppLocale();
+  const resolvedLocale = locale === 'id' ? 'id' : 'en';
+  const t = useCallback((path) => getUIText(path, resolvedLocale), [resolvedLocale]);
   const [currentUser, setCurrentUser] = useState(null);
   const [activeTab, setActiveTab] = useState('summary');
   const [from, setFrom] = useState(startOfRange('week'));
   const [to, setTo] = useState(isoDate());
   const [groupId, setGroupId] = useState('');
   const [rows, setRows] = useState([]);
+  const [scopePayload, setScopePayload] = useState({
+    cumulative_summary: null,
+    prediction_context: null,
+  });
   const [rawRows, setRawRows] = useState([]);
   const [groups, setGroups] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -67,7 +137,10 @@ export default function AttendancePage() {
   const isAdmin = Boolean(currentUser?.is_admin);
   const isLeader = Boolean(currentUser?.is_leader);
   const canEditNotes = isAdmin || isLeader;
-  const TABS = isAdmin ? ADMIN_TABS : MEMBER_TABS;
+  const TABS = useMemo(() => {
+    const keys = isAdmin ? ADMIN_TABS : MEMBER_TABS;
+    return keys.map((key) => ({ key, label: t(`attendancePage.tabs.${key}`) }));
+  }, [isAdmin, t]);
   const rawEmployeeQuery = useMemo(() => {
     if (!employeeFilter) return { pin: '', employeeId: '' };
     if (employeeFilter.startsWith('emp-')) {
@@ -85,13 +158,33 @@ export default function AttendancePage() {
       const query = new URLSearchParams({ from, to });
       if (groupId) query.set('group_id', groupId);
       const data = await requestJson(`/api/attendance?${query.toString()}`);
-      setRows(Array.isArray(data) ? data : []);
+      const nextRows = Array.isArray(data) ? data : Array.isArray(data?.rows) ? data.rows : [];
+      setRows(nextRows);
+      setScopePayload({
+        cumulative_summary:
+          !Array.isArray(data) &&
+          data?.cumulative_summary &&
+          typeof data.cumulative_summary === 'object'
+            ? data.cumulative_summary
+            : null,
+        prediction_context:
+          !Array.isArray(data) &&
+          data?.prediction_context &&
+          typeof data.prediction_context === 'object'
+            ? data.prediction_context
+            : null,
+      });
     } catch (error) {
-      warning(error.message || 'Failed to fetch attendance data.', 'Attendance request failed');
+      setRows([]);
+      setScopePayload({ cumulative_summary: null, prediction_context: null });
+      warning(
+        error.message || t('reportPage.errors.fetchFailed'),
+        t('reportPage.errors.requestFailed')
+      );
     } finally {
       setLoading(false);
     }
-  }, [from, to, groupId, warning]);
+  }, [from, to, groupId, warning, t]);
 
   const loadRaw = useCallback(async () => {
     if (!isAdmin) {
@@ -132,16 +225,16 @@ export default function AttendancePage() {
         setRawPage(nextPage);
       }
     } catch (error) {
-      const message = error.message || 'Failed to fetch raw scanlog.';
+      const message = error.message || t('reportPage.errors.fetchFailed');
       setRawRows([]);
       setRawTotal(0);
       setRawPages(1);
       setRawError(message);
-      warning(message, 'Raw scanlog request failed');
+      warning(message, t('reportPage.errors.requestFailed'));
     } finally {
       setRawLoading(false);
     }
-  }, [from, to, groupId, warning, isAdmin, rawPage, rawLimit, rawEmployeeQuery]);
+  }, [from, to, groupId, warning, isAdmin, rawPage, rawLimit, rawEmployeeQuery, t]);
 
   const loadGroups = useCallback(async () => {
     if (!isAdmin && currentUser?.groups) {
@@ -221,7 +314,10 @@ export default function AttendancePage() {
       await load();
       return true;
     } catch (error) {
-      warning(error.message || 'Failed to save attendance note.', 'Unable to save note');
+      warning(
+        error.message || t('attendancePage.noteModal.saveFailedMessage'),
+        t('attendancePage.noteModal.saveFailedTitle')
+      );
       return false;
     }
   };
@@ -272,6 +368,123 @@ export default function AttendancePage() {
     return lateData.filter((item) => String(item.pin || '') === pin);
   }, [lateData, employeeFilter]);
 
+  const roleScopeSummary = useMemo(() => {
+    if (isAdmin) return null;
+
+    const scopedRows = rows.filter((row) => {
+      if (!employeeFilter) return true;
+      if (employeeFilter.startsWith('emp-')) {
+        return String(row.karyawan_id || '') === employeeFilter.slice(4);
+      }
+      if (employeeFilter.startsWith('pin-')) {
+        return String(row.pin || '') === employeeFilter.slice(4);
+      }
+      return true;
+    });
+
+    const summaryByScopeKey = new Map();
+    const predictionByScopeKey = new Map();
+
+    scopedRows.forEach((row, index) => {
+      const scopeKey =
+        row.pin != null
+          ? `pin-${row.pin}`
+          : row.karyawan_id != null
+            ? `emp-${row.karyawan_id}`
+            : `row-${index}`;
+
+      if (
+        !summaryByScopeKey.has(scopeKey) &&
+        row.cumulative_summary &&
+        typeof row.cumulative_summary === 'object'
+      ) {
+        summaryByScopeKey.set(scopeKey, row.cumulative_summary);
+      }
+
+      if (
+        !predictionByScopeKey.has(scopeKey) &&
+        row.prediction_context &&
+        typeof row.prediction_context === 'object'
+      ) {
+        predictionByScopeKey.set(scopeKey, row.prediction_context);
+      }
+    });
+
+    const scopeCumulative =
+      scopePayload.cumulative_summary && typeof scopePayload.cumulative_summary === 'object'
+        ? scopePayload.cumulative_summary
+        : summaryByScopeKey.size > 0
+          ? [...summaryByScopeKey.values()].reduce(
+              (acc, item) => {
+                acc.total_days += toSafeNumber(item.total_days);
+                acc.total_scans += toSafeNumber(item.total_scans);
+                acc.late_days += toSafeNumber(item.late_days);
+                acc.early_leave_days += toSafeNumber(item.early_leave_days);
+                acc.manual_adjustments += toSafeNumber(item.manual_adjustments);
+                acc.reviewed_days += toSafeNumber(item.reviewed_days);
+                acc.pending_review_days += toSafeNumber(item.pending_review_days);
+                acc.total_duration_minutes += toSafeNumber(item.total_duration_minutes);
+                return acc;
+              },
+              {
+                total_days: 0,
+                total_scans: 0,
+                late_days: 0,
+                early_leave_days: 0,
+                manual_adjustments: 0,
+                reviewed_days: 0,
+                pending_review_days: 0,
+                total_duration_minutes: 0,
+              }
+            )
+          : null;
+
+    const normalizedPredictionFromPayload = normalizePredictionContext(
+      scopePayload.prediction_context
+    );
+    const normalizedPredictionRows = [...predictionByScopeKey.values()]
+      .map((item) => normalizePredictionContext(item))
+      .filter((item) => item.hasData);
+
+    const primaryPrediction = normalizedPredictionFromPayload.hasData
+      ? normalizedPredictionFromPayload
+      : normalizedPredictionRows[0] || {
+          yearMonth: null,
+          minimumHours: null,
+          targetSource: null,
+          hasData: false,
+        };
+
+    const hasMixedPrediction = normalizedPredictionRows.some(
+      (item) =>
+        item.yearMonth !== primaryPrediction.yearMonth ||
+        item.minimumHours !== primaryPrediction.minimumHours ||
+        item.targetSource !== primaryPrediction.targetSource
+    );
+
+    return {
+      employeesInScope: Math.max(summaryByScopeKey.size, predictionByScopeKey.size),
+      recordsInScope: scopedRows.length,
+      cumulative: scopeCumulative
+        ? {
+            ...scopeCumulative,
+            average_duration_minutes: toSafeNumber(scopeCumulative.total_days)
+              ? Math.round(
+                  toSafeNumber(scopeCumulative.total_duration_minutes) /
+                    Math.max(1, toSafeNumber(scopeCumulative.total_days))
+                )
+              : null,
+          }
+        : null,
+      prediction: {
+        ...primaryPrediction,
+        hasData: primaryPrediction.hasData,
+        hasMixedPrediction,
+        scopedCount: normalizedPredictionRows.length,
+      },
+    };
+  }, [isAdmin, rows, employeeFilter, scopePayload]);
+
   const pageMeta = (total) => {
     const pages = Math.max(1, Math.ceil(total / rowsPerPage));
     return { pages, total };
@@ -313,13 +526,18 @@ export default function AttendancePage() {
       )
       .join('');
 
-    const html = `<!doctype html><html><head><meta charset="utf-8"/><title>Attendance Print</title><style>
+    const printTitle = t('attendancePage.print.title');
+    const printRangeLabel = t('attendancePage.print.rangeLabel');
+    const printTabLabel = isRawTab
+      ? t('attendancePage.print.rawTitle')
+      : t('attendancePage.print.summaryTitle');
+    const html = `<!doctype html><html><head><meta charset="utf-8"/><title>${printTitle}</title><style>
       body { font-family: Arial, sans-serif; padding: 16px; }
       table { border-collapse: collapse; width: 100%; font-size: 11px; }
       th, td { border: 1px solid #ddd; padding: 6px; text-align: left; }
       th { background: #f1f5f9; }
     </style></head><body>
-      <h2>${isRawTab ? 'Raw Scanlog' : 'Daily Attendance'} (${from} to ${to})</h2>
+      <h2>${printTabLabel} (${printRangeLabel}: ${from} - ${to})</h2>
       <table><thead><tr>${headers.map((key) => `<th>${key}</th>`).join('')}</tr></thead><tbody>${rowsHtml}</tbody></table>
     </body></html>`;
 
@@ -338,14 +556,16 @@ export default function AttendancePage() {
   };
 
   const renderPager = (page, setPage, meta) => (
-    <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-800 px-4 py-3 text-xs text-slate-400">
+    <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border px-4 py-3 text-xs text-muted-foreground">
       <div>
-        Showing {(page - 1) * rowsPerPage + 1}-{Math.min(page * rowsPerPage, meta.total)} of{' '}
-        {meta.total}
+        {getUIText('attendancePage.pager.showing', resolvedLocale)
+          .replace('{{from}}', String((page - 1) * rowsPerPage + 1))
+          .replace('{{to}}', String(Math.min(page * rowsPerPage, meta.total)))
+          .replace('{{total}}', String(meta.total))}
       </div>
       <div className="flex items-center gap-2">
-        <label htmlFor="attendance-rows" className="text-slate-500">
-          Rows
+        <label htmlFor="attendance-rows" className="ui-control-label">
+          {t('attendanceShared.rows')}
         </label>
         <select
           id="attendance-rows"
@@ -354,7 +574,7 @@ export default function AttendancePage() {
             setRowsPerPage(Number(event.target.value));
             resetPages();
           }}
-          className="rounded border border-slate-700 bg-slate-950 px-2 py-1 text-slate-200"
+          className="ui-control-select !w-auto min-h-0 py-1 pl-2 pr-8 text-xs"
         >
           {[10, 20, 30, 50, 100].map((size) => (
             <option key={size} value={size}>
@@ -366,34 +586,36 @@ export default function AttendancePage() {
           type="button"
           onClick={() => setPage((prev) => Math.max(1, prev - 1))}
           disabled={page <= 1}
-          className="rounded border border-slate-700 px-2 py-1 text-slate-200 disabled:cursor-not-allowed disabled:opacity-40"
+          className="ui-btn-secondary min-h-0 px-2 py-1 text-xs disabled:cursor-not-allowed disabled:opacity-40"
         >
-          Previous
+          {t('attendanceShared.previous')}
         </button>
-        <span className="font-mono text-slate-300">
+        <span className="font-mono text-foreground">
           {page}/{meta.pages}
         </span>
         <button
           type="button"
           onClick={() => setPage((prev) => Math.min(meta.pages, prev + 1))}
           disabled={page >= meta.pages}
-          className="rounded border border-slate-700 px-2 py-1 text-slate-200 disabled:cursor-not-allowed disabled:opacity-40"
+          className="ui-btn-secondary min-h-0 px-2 py-1 text-xs disabled:cursor-not-allowed disabled:opacity-40"
         >
-          Next
+          {t('attendanceShared.next')}
         </button>
       </div>
     </div>
   );
 
   const renderRawPager = () => (
-    <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-800 px-4 py-3 text-xs text-slate-400">
+    <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border px-4 py-3 text-xs text-muted-foreground">
       <div>
-        Showing {rawRows.length === 0 ? 0 : (rawPage - 1) * rawLimit + 1}-
-        {Math.min((rawPage - 1) * rawLimit + rawRows.length, rawTotal)} of {rawTotal}
+        {getUIText('attendancePage.pager.showing', resolvedLocale)
+          .replace('{{from}}', String(rawRows.length === 0 ? 0 : (rawPage - 1) * rawLimit + 1))
+          .replace('{{to}}', String(Math.min((rawPage - 1) * rawLimit + rawRows.length, rawTotal)))
+          .replace('{{total}}', String(rawTotal))}
       </div>
       <div className="flex items-center gap-2">
-        <label htmlFor="attendance-raw-rows" className="text-slate-500">
-          Rows
+        <label htmlFor="attendance-raw-rows" className="ui-control-label">
+          {t('attendanceShared.rows')}
         </label>
         <select
           id="attendance-raw-rows"
@@ -402,7 +624,7 @@ export default function AttendancePage() {
             setRawLimit(Number(event.target.value));
             setRawPage(1);
           }}
-          className="rounded border border-slate-700 bg-slate-950 px-2 py-1 text-slate-200"
+          className="ui-control-select !w-auto min-h-0 py-1 pl-2 pr-8 text-xs"
         >
           {[20, 50, 100, 200, 500].map((size) => (
             <option key={size} value={size}>
@@ -414,62 +636,60 @@ export default function AttendancePage() {
           type="button"
           onClick={() => setRawPage((prev) => Math.max(1, prev - 1))}
           disabled={rawPage <= 1}
-          className="rounded border border-slate-700 px-2 py-1 text-slate-200 disabled:cursor-not-allowed disabled:opacity-40"
+          className="ui-btn-secondary min-h-0 px-2 py-1 text-xs disabled:cursor-not-allowed disabled:opacity-40"
         >
-          Previous
+          {t('attendanceShared.previous')}
         </button>
-        <span className="font-mono text-slate-300">
+        <span className="font-mono text-foreground">
           {rawPage}/{rawPages}
         </span>
         <button
           type="button"
           onClick={() => setRawPage((prev) => Math.min(rawPages, prev + 1))}
           disabled={rawPage >= rawPages}
-          className="rounded border border-slate-700 px-2 py-1 text-slate-200 disabled:cursor-not-allowed disabled:opacity-40"
+          className="ui-btn-secondary min-h-0 px-2 py-1 text-xs disabled:cursor-not-allowed disabled:opacity-40"
         >
-          Next
+          {t('attendanceShared.next')}
         </button>
       </div>
     </div>
   );
 
   return (
-    <div className="max-w-7xl space-y-6">
+    <div className="ui-page-shell max-w-7xl space-y-6 p-6">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <p className="mb-1 text-xs font-mono uppercase tracking-widest text-teal-400">Records</p>
-          <h1 className="text-3xl font-bold text-white">Absensi Karyawan</h1>
-          <p className="mt-1 text-sm text-slate-400">
-            Raw scanlog linked to employee fullname, group filtering, and late dashboard.
+          <p className="mb-1 text-xs font-mono uppercase tracking-widest text-teal-400">
+            {t('attendancePage.header.label')}
           </p>
+          <h1 className="text-3xl font-bold text-foreground">{t('attendancePage.header.title')}</h1>
+          <p className="ui-readable-muted mt-1">{t('attendancePage.header.description')}</p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Link
-            href="/attendance/review"
-            className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-2.5 text-sm text-amber-300 transition-colors hover:bg-amber-500/20"
-          >
-            Review Punches
-          </Link>
+          {isAdmin && (
+            <Link
+              href="/attendance/review"
+              className="ui-btn-secondary border-amber-500/30 bg-amber-500/10 text-amber-300 hover:bg-amber-500/20"
+            >
+              {t('attendancePage.actions.reviewPunches')}
+            </Link>
+          )}
           <button
             type="button"
             onClick={exportExcel}
-            className="flex items-center gap-2 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-2.5 text-sm text-emerald-300 transition-colors hover:bg-emerald-500/20"
+            className="ui-btn-secondary border-emerald-500/30 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20"
           >
-            <FileSpreadsheet className="h-4 w-4" /> Export Excel
+            <FileSpreadsheet className="h-4 w-4" /> {t('attendancePage.actions.exportExcel')}
           </button>
           <button
             type="button"
             onClick={exportCsv}
-            className="flex items-center gap-2 rounded-xl border border-teal-500/30 bg-teal-500/10 px-4 py-2.5 text-sm text-teal-400 transition-colors hover:bg-teal-500/20"
+            className="ui-btn-secondary border-teal-500/30 bg-teal-500/10 text-teal-400 hover:bg-teal-500/20"
           >
-            <Download className="h-4 w-4" /> Export CSV
+            <Download className="h-4 w-4" /> {t('attendancePage.actions.exportCsv')}
           </button>
-          <button
-            type="button"
-            onClick={printCurrentTab}
-            className="flex items-center gap-2 rounded-xl border border-slate-700 bg-slate-900 px-4 py-2.5 text-sm text-slate-300 transition-colors hover:border-slate-500 hover:text-white"
-          >
-            <Printer className="h-4 w-4" /> Print / PDF
+          <button type="button" onClick={printCurrentTab} className="ui-btn-secondary">
+            <Printer className="h-4 w-4" /> {t('attendancePage.actions.printPdf')}
           </button>
         </div>
       </div>
@@ -510,7 +730,129 @@ export default function AttendancePage() {
         }}
       />
 
-      <div className="flex flex-wrap gap-2 rounded-xl border border-slate-800 bg-slate-900 p-2">
+      {!isAdmin && (
+        <div className="grid gap-4 lg:grid-cols-2">
+          <section className="ui-card-shell p-4">
+            <p className="text-[11px] font-mono uppercase tracking-wider text-teal-400">
+              {t('attendancePage.roleScope.eyebrow')}
+            </p>
+            <h2 className="mt-1 text-sm font-semibold text-foreground">
+              {t('attendancePage.roleScope.title')}
+            </h2>
+            {!roleScopeSummary?.cumulative ? (
+              <p className="mt-3 text-xs text-muted-foreground">
+                {t('attendancePage.roleScope.empty')}
+              </p>
+            ) : (
+              <div className="mt-4 grid grid-cols-2 gap-3 text-xs">
+                <div className="ui-card-muted p-2">
+                  <p className="text-muted-foreground">{t('attendancePage.roleScope.totalDays')}</p>
+                  <p className="mt-1 font-mono text-foreground">
+                    {toSafeNumber(roleScopeSummary.cumulative.total_days)}
+                  </p>
+                </div>
+                <div className="ui-card-muted p-2">
+                  <p className="text-muted-foreground">{t('attendancePage.roleScope.totalScan')}</p>
+                  <p className="mt-1 font-mono text-foreground">
+                    {toSafeNumber(roleScopeSummary.cumulative.total_scans)}
+                  </p>
+                </div>
+                <div className="ui-card-muted p-2">
+                  <p className="text-muted-foreground">{t('attendancePage.roleScope.late')}</p>
+                  <p className="mt-1 font-mono text-amber-300">
+                    {toSafeNumber(roleScopeSummary.cumulative.late_days)}
+                  </p>
+                </div>
+                <div className="ui-card-muted p-2">
+                  <p className="text-muted-foreground">
+                    {t('attendancePage.roleScope.earlyLeave')}
+                  </p>
+                  <p className="mt-1 font-mono text-rose-300">
+                    {toSafeNumber(roleScopeSummary.cumulative.early_leave_days)}
+                  </p>
+                </div>
+                <div className="ui-card-muted p-2">
+                  <p className="text-muted-foreground">{t('attendancePage.roleScope.reviewed')}</p>
+                  <p className="mt-1 font-mono text-emerald-300">
+                    {toSafeNumber(roleScopeSummary.cumulative.reviewed_days)}
+                  </p>
+                </div>
+                <div className="ui-card-muted p-2">
+                  <p className="text-muted-foreground">
+                    {t('attendancePage.roleScope.pendingReview')}
+                  </p>
+                  <p className="mt-1 font-mono text-amber-300">
+                    {toSafeNumber(roleScopeSummary.cumulative.pending_review_days)}
+                  </p>
+                </div>
+                <div className="ui-card-muted col-span-2 p-2">
+                  <p className="text-muted-foreground">
+                    {t('attendancePage.roleScope.avgDuration')}
+                  </p>
+                  <p className="mt-1 font-mono text-foreground">
+                    {formatMinutesToHours(roleScopeSummary.cumulative.average_duration_minutes)}
+                  </p>
+                </div>
+              </div>
+            )}
+            <p className="mt-3 text-[11px] text-muted-foreground">
+              {getUIText('attendancePage.roleScope.footer', resolvedLocale)
+                .replace('{{employees}}', String(roleScopeSummary?.employeesInScope || 0))
+                .replace('{{records}}', String(roleScopeSummary?.recordsInScope || 0))}
+            </p>
+          </section>
+
+          <section className="ui-card-shell p-4">
+            <p className="text-[11px] font-mono uppercase tracking-wider text-teal-400">
+              {t('attendancePage.prediction.eyebrow')}
+            </p>
+            <h2 className="mt-1 text-sm font-semibold text-foreground">
+              {t('attendancePage.prediction.title')}
+            </h2>
+            {!roleScopeSummary?.prediction?.hasData ? (
+              <p className="mt-3 text-xs text-muted-foreground">
+                {t('attendancePage.prediction.empty')}
+              </p>
+            ) : (
+              <div className="mt-4 space-y-3 text-xs">
+                <div className="ui-card-muted p-3">
+                  <p className="text-muted-foreground">
+                    {t('attendancePage.prediction.monthTarget')}
+                  </p>
+                  <p className="mt-1 font-mono text-foreground">
+                    {roleScopeSummary.prediction.yearMonth || '-'}
+                  </p>
+                </div>
+                <div className="ui-card-muted p-3">
+                  <p className="text-muted-foreground">
+                    {t('attendancePage.prediction.monthlyMinimum')}
+                  </p>
+                  <p className="mt-1 font-mono text-sky-300">
+                    {roleScopeSummary.prediction.minimumHours != null
+                      ? `${roleScopeSummary.prediction.minimumHours} ${t('attendancePage.prediction.hourSuffix')}`
+                      : '-'}
+                  </p>
+                </div>
+                <div className="ui-card-muted p-3">
+                  <p className="text-muted-foreground">
+                    {t('attendancePage.prediction.targetSource')}
+                  </p>
+                  <p className="mt-1 font-mono text-foreground">
+                    {formatTargetSource(roleScopeSummary.prediction.targetSource)}
+                  </p>
+                </div>
+                {roleScopeSummary.prediction.hasMixedPrediction && (
+                  <p className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-[11px] text-amber-300">
+                    {t('attendancePage.prediction.mixedWarning')}
+                  </p>
+                )}
+              </div>
+            )}
+          </section>
+        </div>
+      )}
+
+      <div className="ui-card-shell flex flex-wrap gap-2 p-2">
         {TABS.map((tab) => (
           <button
             key={tab.key}
@@ -522,7 +864,7 @@ export default function AttendancePage() {
             className={`rounded-lg px-3 py-2 text-xs font-medium transition-colors ${
               activeTab === tab.key
                 ? 'bg-teal-500 text-slate-900'
-                : 'text-slate-400 hover:bg-slate-800 hover:text-white'
+                : 'text-muted-foreground hover:bg-muted hover:text-foreground'
             }`}
           >
             {tab.label}
@@ -531,7 +873,7 @@ export default function AttendancePage() {
       </div>
 
       {activeTab === 'summary' && (
-        <div className="overflow-hidden rounded-xl border border-slate-800 bg-slate-900">
+        <div className="ui-table-shell">
           <AttendanceTable
             loading={loading}
             rows={pagedSummaryRows}
@@ -542,55 +884,52 @@ export default function AttendancePage() {
       )}
 
       {activeTab === 'raw' && (
-        <div className="overflow-hidden rounded-xl border border-slate-800 bg-slate-900">
+        <div className="ui-table-shell">
           <InlineStatusPanel
             message={rawError}
             variant="error"
-            actionLabel="Retry"
+            actionLabel={t('attendancePage.raw.retry')}
             onAction={() => loadRaw()}
             className="m-4"
           />
           <TableShell>
             <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-slate-800 text-left">
-                  <th className="px-4 py-3 text-xs uppercase tracking-wide text-slate-500">
-                    Tanggal
+              <thead className="ui-table-head">
+                <tr className="text-left">
+                  <th className="ui-table-head-cell px-4 py-3">{t('attendancePage.raw.date')}</th>
+                  <th className="ui-table-head-cell px-4 py-3">{t('attendancePage.raw.time')}</th>
+                  <th className="ui-table-head-cell px-4 py-3">{t('attendancePage.raw.pin')}</th>
+                  <th className="ui-table-head-cell px-4 py-3">
+                    {t('attendancePage.raw.employee')}
                   </th>
-                  <th className="px-4 py-3 text-xs uppercase tracking-wide text-slate-500">Jam</th>
-                  <th className="px-4 py-3 text-xs uppercase tracking-wide text-slate-500">PIN</th>
-                  <th className="px-4 py-3 text-xs uppercase tracking-wide text-slate-500">
-                    Employee Fullname
-                  </th>
-                  <th className="px-4 py-3 text-xs uppercase tracking-wide text-slate-500">
-                    Group
-                  </th>
-                  <th className="px-4 py-3 text-xs uppercase tracking-wide text-slate-500">
-                    Review
-                  </th>
-                  <th className="px-4 py-3 text-xs uppercase tracking-wide text-slate-500">
-                    Verify / IO / Workcode
+                  <th className="ui-table-head-cell px-4 py-3">{t('attendancePage.raw.group')}</th>
+                  <th className="ui-table-head-cell px-4 py-3">{t('attendancePage.raw.review')}</th>
+                  <th className="ui-table-head-cell px-4 py-3">
+                    {t('attendancePage.raw.verifyIoWorkcode')}
                   </th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-800/40">
+              <tbody>
                 {rawLoading ? (
                   <TableLoadingRow colSpan={7} />
                 ) : rawRows.length === 0 ? (
-                  <TableEmptyRow colSpan={7} label="No raw scanlog rows in range" />
+                  <TableEmptyRow colSpan={7} label={t('attendancePage.raw.empty')} />
                 ) : (
                   rawRows.map((row) => (
                     <tr
                       key={`${row.pin}-${row.scan_date}-${row.scan_time}-${row.verifymode}-${row.iomode}-${row.workcode}`}
+                      className="ui-table-row"
                     >
-                      <td className="px-4 py-3 font-mono text-xs text-slate-400">
+                      <td className="ui-table-cell-muted px-4 py-3 font-mono text-xs">
                         {String(row.scan_date).slice(0, 10)}
                       </td>
-                      <td className="px-4 py-3 font-mono text-xs text-teal-300">
+                      <td className="ui-table-cell px-4 py-3 font-mono text-xs text-teal-300">
                         {String(row.scan_time).slice(0, 8)}
                       </td>
-                      <td className="px-4 py-3 font-mono text-xs text-slate-300">{row.pin}</td>
-                      <td className="px-4 py-3 text-white">
+                      <td className="ui-table-cell px-4 py-3 font-mono text-xs text-foreground">
+                        {row.pin}
+                      </td>
+                      <td className="ui-table-cell px-4 py-3 text-foreground">
                         {row.karyawan_id ? (
                           <Link
                             href={`/employees/${row.karyawan_id}`}
@@ -602,19 +941,21 @@ export default function AttendancePage() {
                           row.nama
                         )}
                       </td>
-                      <td className="px-4 py-3 text-xs text-slate-500">{row.nama_group || '-'}</td>
-                      <td className="px-4 py-3">
+                      <td className="ui-table-cell-muted px-4 py-3 text-xs">
+                        {row.nama_group || '-'}
+                      </td>
+                      <td className="ui-table-cell px-4 py-3">
                         {row.reviewed_status === 'reviewed' ? (
                           <span className="inline-flex rounded border border-emerald-500/20 bg-emerald-500/10 px-2 py-0.5 text-xs text-emerald-300">
-                            Reviewed
+                            {t('attendancePage.raw.reviewed')}
                           </span>
                         ) : (
                           <span className="inline-flex rounded border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-xs text-amber-300">
-                            Pending
+                            {t('attendancePage.raw.pending')}
                           </span>
                         )}
                       </td>
-                      <td className="px-4 py-3 font-mono text-xs text-slate-500">
+                      <td className="ui-table-cell-muted px-4 py-3 font-mono text-xs">
                         {row.verifymode}/{row.iomode}/{row.workcode}
                       </td>
                     </tr>
@@ -629,18 +970,20 @@ export default function AttendancePage() {
 
       {activeTab === 'dashboard' && (
         <div className="space-y-4">
-          <div className="rounded-xl border border-slate-800 bg-slate-900 p-4">
-            <h2 className="text-sm font-semibold text-white">
-              How Many Times Employee Is Late (Top 12)
+          <div className="ui-card-shell p-4">
+            <h2 className="text-sm font-semibold text-foreground">
+              {t('attendancePage.dashboard.title')}
             </h2>
             <div className="mt-4 space-y-2">
               {filteredLateData.length === 0 ? (
-                <p className="text-xs text-slate-500">No attendance rows in selected range.</p>
+                <p className="text-xs text-muted-foreground">
+                  {t('attendancePage.dashboard.empty')}
+                </p>
               ) : (
                 pagedLateData.map((item) => (
                   <div key={`${item.pin}-${item.nama}`} className="space-y-1">
                     <div className="flex items-center justify-between text-xs">
-                      <span className="text-slate-300">
+                      <span className="text-foreground">
                         {item.karyawan_id ? (
                           <Link
                             href={`/employees/${item.karyawan_id}`}
@@ -651,11 +994,13 @@ export default function AttendancePage() {
                         ) : (
                           item.nama
                         )}{' '}
-                        <span className="text-slate-500">(PIN {item.pin})</span>
+                        <span className="text-muted-foreground">(PIN {item.pin})</span>
                       </span>
-                      <span className="font-mono text-amber-300">{item.lateCount} late</span>
+                      <span className="font-mono text-amber-300">
+                        {item.lateCount} {t('attendancePage.dashboard.lateSuffix')}
+                      </span>
                     </div>
-                    <div className="h-2 rounded bg-slate-800">
+                    <div className="h-2 rounded bg-muted">
                       <div
                         className="h-2 rounded bg-amber-400"
                         style={{
@@ -663,9 +1008,11 @@ export default function AttendancePage() {
                         }}
                       />
                     </div>
-                    <div className="text-[11px] text-slate-500">
-                      Group: {item.group} | Anomaly: {item.anomalyCount} | Pulang awal:{' '}
-                      {item.earlyCount} | Records: {item.totalRows}
+                    <div className="text-[11px] text-muted-foreground">
+                      {t('attendancePage.dashboard.group')}: {item.group} |{' '}
+                      {t('attendancePage.dashboard.anomaly')}: {item.anomalyCount} |{' '}
+                      {t('attendancePage.dashboard.earlyLeave')}: {item.earlyCount} |{' '}
+                      {t('attendancePage.dashboard.records')}: {item.totalRows}
                     </div>
                   </div>
                 ))
@@ -675,30 +1022,30 @@ export default function AttendancePage() {
 
           <TableShell>
             <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-slate-800 text-left">
-                  <th className="px-4 py-2 text-xs uppercase tracking-wide text-slate-500">
-                    Employee
+              <thead className="ui-table-head">
+                <tr className="text-left">
+                  <th className="ui-table-head-cell px-4 py-2">
+                    {t('attendancePage.dashboard.employee')}
                   </th>
-                  <th className="px-4 py-2 text-xs uppercase tracking-wide text-slate-500">
-                    Group
+                  <th className="ui-table-head-cell px-4 py-2">{t('attendancePage.raw.group')}</th>
+                  <th className="ui-table-head-cell px-4 py-2">
+                    {t('attendancePage.dashboard.late')}
                   </th>
-                  <th className="px-4 py-2 text-xs uppercase tracking-wide text-slate-500">Late</th>
-                  <th className="px-4 py-2 text-xs uppercase tracking-wide text-slate-500">
-                    Pulang Awal
+                  <th className="ui-table-head-cell px-4 py-2">
+                    {t('attendancePage.dashboard.earlyLeave')}
                   </th>
-                  <th className="px-4 py-2 text-xs uppercase tracking-wide text-slate-500">
-                    Anomaly
+                  <th className="ui-table-head-cell px-4 py-2">
+                    {t('attendancePage.dashboard.anomaly')}
                   </th>
-                  <th className="px-4 py-2 text-xs uppercase tracking-wide text-slate-500">
-                    Total Rows
+                  <th className="ui-table-head-cell px-4 py-2">
+                    {t('attendancePage.dashboard.totalRows')}
                   </th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-800/40">
+              <tbody>
                 {pagedLateData.map((item) => (
-                  <tr key={`dashboard-${item.pin}-${item.nama}`}>
-                    <td className="px-4 py-2 text-white">
+                  <tr key={`dashboard-${item.pin}-${item.nama}`} className="ui-table-row">
+                    <td className="ui-table-cell px-4 py-2 text-foreground">
                       {item.karyawan_id ? (
                         <Link
                           href={`/employees/${item.karyawan_id}`}
@@ -710,13 +1057,19 @@ export default function AttendancePage() {
                         item.nama
                       )}
                     </td>
-                    <td className="px-4 py-2 text-xs text-slate-500">{item.group}</td>
-                    <td className="px-4 py-2 font-mono text-xs text-amber-300">{item.lateCount}</td>
-                    <td className="px-4 py-2 font-mono text-xs text-rose-300">{item.earlyCount}</td>
-                    <td className="px-4 py-2 font-mono text-xs text-slate-300">
+                    <td className="ui-table-cell-muted px-4 py-2 text-xs">{item.group}</td>
+                    <td className="ui-table-cell px-4 py-2 font-mono text-xs text-amber-300">
+                      {item.lateCount}
+                    </td>
+                    <td className="ui-table-cell px-4 py-2 font-mono text-xs text-rose-300">
+                      {item.earlyCount}
+                    </td>
+                    <td className="ui-table-cell px-4 py-2 font-mono text-xs text-foreground">
                       {item.anomalyCount}
                     </td>
-                    <td className="px-4 py-2 font-mono text-xs text-slate-400">{item.totalRows}</td>
+                    <td className="ui-table-cell-muted px-4 py-2 font-mono text-xs">
+                      {item.totalRows}
+                    </td>
                   </tr>
                 ))}
               </tbody>

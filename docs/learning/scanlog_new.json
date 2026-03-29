@@ -1,0 +1,13 @@
+{
+  "Result": true,
+  "Data": [
+    {
+      "PIN": "110",
+      "WorkCode": 0,
+      "SN": "FIO66208021230737",
+      "VerifyMode": 1,
+      "ScanDate": "2026-03-27 23:20:04",
+      "IOMode": 2
+    }
+  ]
+}

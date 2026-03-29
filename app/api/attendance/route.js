@@ -8,6 +8,11 @@ import {
   unauthorizedResponse,
   forbiddenResponse,
 } from '@/lib/auth-session';
+import {
+  canAccessAttendance,
+  canManageAttendanceNotes,
+  getAttendanceGroupIds,
+} from '@/lib/authz/authorization-adapter';
 
 function toMinutes(value) {
   if (!value || typeof value !== 'string') return null;
@@ -31,12 +36,53 @@ async function hasAttendanceNoteColumn(columnName) {
   return rows.length > 0;
 }
 
+const PREDICTION_VIEW_MISSING_ERRORS = new Set([
+  'ER_NO_SUCH_TABLE',
+  'ER_NO_SUCH_VIEW',
+  'ER_BAD_TABLE_ERROR',
+  'ER_SP_DOES_NOT_EXIST',
+]);
+
+async function loadPredictionContextForPins(pins) {
+  if (!pins.length) return new Map();
+  const placeholders = pins.map(() => '?').join(',');
+  try {
+    const [predictionRows] = await pool.query(
+      `SELECT * FROM vw_prediction_target_effective WHERE pin IN (${placeholders})`,
+      pins
+    );
+    const contextMap = new Map();
+    for (const row of predictionRows) {
+      if (!row.pin || contextMap.has(row.pin)) continue;
+      contextMap.set(row.pin, row);
+    }
+    return contextMap;
+  } catch (error) {
+    if (error && PREDICTION_VIEW_MISSING_ERRORS.has(error.code)) {
+      return new Map();
+    }
+    throw error;
+  }
+}
+
+function createCumulativeSummaryTemplate() {
+  return {
+    total_days: 0,
+    total_scans: 0,
+    late_days: 0,
+    early_leave_days: 0,
+    manual_adjustments: 0,
+    reviewed_days: 0,
+    pending_review_days: 0,
+    total_duration_minutes: 0,
+  };
+}
+
 export async function GET(req) {
   // Auth gate: need at least one approved group or admin
   const auth = await getAuthContextFromCookies();
   if (!auth) return unauthorizedResponse();
-  const hasAttendanceAccess = auth.is_admin || auth.can_schedule || auth.can_dashboard;
-  if (!hasAttendanceAccess) return forbiddenResponse('No attendance access.');
+  if (!canAccessAttendance(auth)) return forbiddenResponse('No attendance access.');
 
   const { searchParams } = new URL(req.url);
   const dateFrom = searchParams.get('from') || new Date().toISOString().slice(0, 10);
@@ -48,20 +94,17 @@ export async function GET(req) {
   const hasManualHours = await hasAttendanceNoteColumn('manual_hours');
   const hasManualApproved = await hasAttendanceNoteColumn('is_manual_approved');
 
-  const allowedGroupIds = auth.is_admin
-    ? null
-    : auth.groups
-        .filter((group) => group.can_schedule || group.can_dashboard)
-        .map((group) => Number(group.group_id));
+  const allowedGroupIds = getAttendanceGroupIds(auth);
+  const accessibleGroupIds = Array.isArray(allowedGroupIds) ? allowedGroupIds : [];
 
-  if (!auth.is_admin && allowedGroupIds.length === 0) {
+  if (!auth.is_admin && accessibleGroupIds.length === 0) {
     return NextResponse.json([]);
   }
 
   if (
     !auth.is_admin &&
     Number.isInteger(parsedGroupId) &&
-    !allowedGroupIds.includes(parsedGroupId)
+    !accessibleGroupIds.includes(parsedGroupId)
   ) {
     return forbiddenResponse('This group is not in your access scope.');
   }
@@ -140,13 +183,27 @@ export async function GET(req) {
 
   const [rows] = await pool.query(query, params);
 
+  const exposeReviewControls = auth.is_admin;
+  const includeTeamPayload = !auth.is_admin;
+  const pinList = Array.from(new Set(rows.map((row) => row.pin).filter(Boolean)));
+  const predictionContextByPin = includeTeamPayload
+    ? await loadPredictionContextForPins(pinList)
+    : new Map();
+
   const lateMinutesThreshold = 15;
   const result = rows.map((row) => {
-    let status = row.note_status || 'normal';
+    const {
+      note_manual_hours: rawManualHours = null,
+      note_manual_approved: rawManualApproved = null,
+      ...rowBase
+    } = row;
+    const manualHours = Number(rawManualHours || 0);
+    const manualApproved = Boolean(Number(rawManualApproved || 0));
+    let status = rowBase.note_status || 'normal';
     const flags = [];
 
-    const scheduledInMinutes = toMinutes(row.jam_masuk);
-    const actualInMinutes = toMinutes(row.masuk);
+    const scheduledInMinutes = toMinutes(rowBase.jam_masuk);
+    const actualInMinutes = toMinutes(rowBase.masuk);
     if (scheduledInMinutes !== null && actualInMinutes !== null) {
       if (actualInMinutes - scheduledInMinutes > lateMinutesThreshold) {
         flags.push('terlambat');
@@ -154,9 +211,9 @@ export async function GET(req) {
       }
     }
 
-    const scheduledOutMinutes = toMinutes(row.jam_keluar);
-    const actualOutMinutes = toMinutes(row.keluar);
-    if (scheduledOutMinutes !== null && actualOutMinutes !== null && !row.next_day) {
+    const scheduledOutMinutes = toMinutes(rowBase.jam_keluar);
+    const actualOutMinutes = toMinutes(rowBase.keluar);
+    if (scheduledOutMinutes !== null && actualOutMinutes !== null && !rowBase.next_day) {
       if (scheduledOutMinutes - actualOutMinutes > lateMinutesThreshold) {
         flags.push('pulang_awal');
         if (status === 'normal') status = 'pulang_awal';
@@ -164,14 +221,12 @@ export async function GET(req) {
     }
 
     let durationMinutes = null;
-    if (actualInMinutes !== null && actualOutMinutes !== null && row.masuk !== row.keluar) {
+    if (actualInMinutes !== null && actualOutMinutes !== null && rowBase.masuk !== rowBase.keluar) {
       let diff = actualOutMinutes - actualInMinutes;
-      if (diff < 0 && row.next_day) diff += 24 * 60;
+      if (diff < 0 && rowBase.next_day) diff += 24 * 60;
       if (diff > 0) durationMinutes = diff;
     }
 
-    const manualHours = Number(row.note_manual_hours || 0);
-    const manualApproved = Boolean(Number(row.note_manual_approved || 0));
     if (manualHours > 0 && manualApproved) {
       durationMinutes = Math.round(manualHours * 60);
       flags.push('manual_adjustment');
@@ -179,7 +234,7 @@ export async function GET(req) {
     }
 
     const hasReview = Boolean(
-      row.note_status || (row.note_catatan && String(row.note_catatan).trim())
+      rowBase.note_status || (rowBase.note_catatan && String(rowBase.note_catatan).trim())
     );
     const reviewedStatus = hasReview
       ? 'reviewed'
@@ -187,29 +242,87 @@ export async function GET(req) {
         ? 'pending'
         : 'not_required';
 
-    return {
-      ...row,
+    const entry = {
+      ...rowBase,
       computed_status: status,
       flags,
       reviewed_status: reviewedStatus,
       has_review: hasReview ? 1 : 0,
-      note_manual_hours: manualHours || null,
-      note_manual_approved: manualApproved ? 1 : 0,
       durasi_menit: durationMinutes,
       durasi_label: durationMinutes
         ? `${Math.floor(durationMinutes / 60)}j ${durationMinutes % 60}m`
         : '-',
     };
+
+    if (exposeReviewControls) {
+      entry.note_manual_hours = manualHours || null;
+      entry.note_manual_approved = manualApproved ? 1 : 0;
+      entry.review_controls = {
+        manual_hours: manualHours || null,
+        manual_approved: manualApproved ? 1 : 0,
+        manual_adjustment_applied: manualHours > 0 && manualApproved,
+        has_manual_columns: Boolean(hasManualHours || hasManualApproved),
+      };
+    }
+
+    return entry;
   });
 
-  return NextResponse.json(result);
+  if (!includeTeamPayload) {
+    return NextResponse.json(result);
+  }
+
+  const summaryByPin = new Map();
+  for (const entry of result) {
+    const pin = entry.pin;
+    if (!pin) continue;
+    const summary = summaryByPin.get(pin) ?? createCumulativeSummaryTemplate();
+    summary.total_days += 1;
+    summary.total_scans += Number(entry.scan_count || 0);
+    if (entry.flags.includes('terlambat')) summary.late_days += 1;
+    if (entry.flags.includes('pulang_awal')) summary.early_leave_days += 1;
+    if (entry.flags.includes('manual_adjustment')) summary.manual_adjustments += 1;
+    summary.total_duration_minutes += entry.durasi_menit || 0;
+    if (entry.reviewed_status === 'reviewed') {
+      summary.reviewed_days += 1;
+    } else {
+      summary.pending_review_days += 1;
+    }
+    summaryByPin.set(pin, summary);
+  }
+
+  const finalResult = result.map((entry) => {
+    if (!entry.pin) {
+      return {
+        ...entry,
+        cumulative_summary: null,
+        prediction_context: null,
+      };
+    }
+    const summary = summaryByPin.get(entry.pin) ?? null;
+    const cumulativeSummary = summary
+      ? {
+          ...summary,
+          average_duration_minutes: summary.total_days
+            ? Math.round(summary.total_duration_minutes / summary.total_days)
+            : null,
+        }
+      : null;
+    return {
+      ...entry,
+      cumulative_summary: cumulativeSummary,
+      prediction_context: predictionContextByPin.get(entry.pin) ?? null,
+    };
+  });
+
+  return NextResponse.json(finalResult);
 }
 
 // Update note/status for a scan entry
 export async function POST(req) {
   const auth = await getAuthContextFromCookies();
   if (!auth) return unauthorizedResponse();
-  if (!auth.is_admin && !auth.is_leader) {
+  if (!canManageAttendanceNotes(auth)) {
     return forbiddenResponse('Only admins and group leaders can add notes.');
   }
   const { pin, tanggal, status, catatan, manual_hours, manual_approved } = await req.json();

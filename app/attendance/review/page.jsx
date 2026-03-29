@@ -41,6 +41,30 @@ const VERIFY_MAP = {
   15: 'Palm',
 };
 const IO_MAP = { 0: 'Check In', 1: 'Check Out', 2: 'Break Out', 3: 'Break In' };
+const TAXONOMY_OPTIONS = [
+  { value: 'late', label: 'late' },
+  { value: 'acceptable', label: 'acceptable' },
+  { value: 'invalid', label: 'invalid' },
+];
+const DEFAULT_MUTATION = { status: 'acceptable', reason: '', note: '' };
+
+function capabilityEnabled(value) {
+  return value === true || value === 1 || value === '1' || value === 'true';
+}
+
+function canReviewPunch(row, punch, isAdmin) {
+  const capabilityCandidates = [
+    punch?.can_review,
+    punch?.canReview,
+    row?.can_review,
+    row?.canReview,
+  ];
+  const hasCapabilitySignal = capabilityCandidates.some((value) => value != null);
+  if (hasCapabilitySignal) {
+    return capabilityCandidates.some(capabilityEnabled);
+  }
+  return isAdmin;
+}
 
 function statusLabel(value) {
   if (value === 'double_punch') return 'Double Punch';
@@ -60,6 +84,7 @@ export default function AttendanceReviewPage() {
   const [groupId, setGroupId] = useState('');
   const [pinFilter, setPinFilter] = useState('');
   const [hasHiddenTable, setHasHiddenTable] = useState(false);
+  const [mutationDrafts, setMutationDrafts] = useState({});
 
   const isAdmin = Boolean(currentUser?.is_admin);
 
@@ -130,31 +155,62 @@ export default function AttendanceReviewPage() {
 
   const [selectedProfile, setSelectedProfile] = useState('');
 
-  const toggleHidden = async (row, punch) => {
-    if (!isAdmin || !hasHiddenTable) return;
+  const updateMutationDraft = useCallback((draftKey, patch) => {
+    setMutationDrafts((prev) => ({
+      ...prev,
+      [draftKey]: {
+        status: prev[draftKey]?.status || DEFAULT_MUTATION.status,
+        reason: prev[draftKey]?.reason || '',
+        note: prev[draftKey]?.note || '',
+        ...patch,
+      },
+    }));
+  }, []);
+
+  const submitMutation = async (row, punch, action) => {
+    if (!canReviewPunch(row, punch, isAdmin)) return;
+    if ((action === 'hide' || action === 'unhide') && !hasHiddenTable) return;
     const key = `${row.pin}-${punch.scan_at}-${punch.sn}-${punch.iomode}-${punch.workcode}`;
-    setSavingKey(key);
+    const draft = mutationDrafts[key] || DEFAULT_MUTATION;
+    const status = String(draft.status || DEFAULT_MUTATION.status)
+      .trim()
+      .toLowerCase();
+    const reason = String(draft.reason || '').trim();
+    const note = String(draft.note || '').trim();
+
+    if (action === 'tag' && !TAXONOMY_OPTIONS.some((option) => option.value === status)) {
+      warning('Select a valid taxonomy status before tagging.', 'Invalid status');
+      return;
+    }
+
+    setSavingKey(`${action}:${key}`);
     try {
       await requestJson('/api/attendance/review', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          action: punch.is_hidden ? 'unhide' : 'hide',
+          action,
           pin: row.pin,
           scan_at: punch.scan_at,
           sn: punch.sn,
           iomode: punch.iomode,
           workcode: punch.workcode,
-          reason: 'admin normalization',
+          status,
+          reason:
+            reason || (action === 'hide' || action === 'unhide' ? 'admin normalization' : null),
+          note: note || null,
         }),
       });
-      success(
-        punch.is_hidden ? 'Punch restored.' : 'Punch hidden from comparison.',
-        'Review updated'
-      );
+      const successMessage =
+        action === 'tag'
+          ? `Tag updated: ${status}.`
+          : action === 'unhide'
+            ? 'Punch restored.'
+            : 'Punch hidden from comparison.';
+      success(successMessage, 'Review updated');
       await loadRows();
     } catch (error) {
-      warning(error.message || 'Failed to update punch visibility.', 'Action failed');
+      warning(error.message || 'Failed to mutate review punch.', 'Action failed');
     } finally {
       setSavingKey('');
     }
@@ -375,7 +431,7 @@ export default function AttendanceReviewPage() {
                       <tr key={`${key}-detail`}>
                         <td colSpan={8} className="bg-slate-950/60 px-4 py-3">
                           <div className="mb-2 text-xs text-slate-500">
-                            Punch timeline (admin can soft-hide accidental duplicates)
+                            Punch timeline (admin can soft-hide duplicates and apply taxonomy tags)
                           </div>
                           <div className="overflow-x-auto">
                             <table className="w-full text-xs">
@@ -393,7 +449,12 @@ export default function AttendanceReviewPage() {
                               <tbody className="divide-y divide-slate-800/40">
                                 {row.punches.map((punch) => {
                                   const actionKey = `${row.pin}-${punch.scan_at}-${punch.sn}-${punch.iomode}-${punch.workcode}`;
-                                  const busy = savingKey === actionKey;
+                                  const canReview = canReviewPunch(row, punch, isAdmin);
+                                  const busy =
+                                    savingKey === `hide:${actionKey}` ||
+                                    savingKey === `unhide:${actionKey}` ||
+                                    savingKey === `tag:${actionKey}`;
+                                  const draft = mutationDrafts[actionKey] || DEFAULT_MUTATION;
                                   return (
                                     <tr key={actionKey}>
                                       <td className="px-2 py-1.5 font-mono text-teal-300">
@@ -423,16 +484,69 @@ export default function AttendanceReviewPage() {
                                         )}
                                       </td>
                                       <td className="px-2 py-1.5 text-right">
-                                        {isAdmin ? (
-                                          <button
-                                            type="button"
-                                            disabled={busy || !hasHiddenTable}
-                                            onClick={() => toggleHidden(row, punch)}
-                                            className="inline-flex items-center gap-1 rounded border border-slate-700 px-2 py-1 text-xs text-slate-300 hover:text-white disabled:opacity-50"
-                                          >
-                                            <EyeOff className="h-3 w-3" />{' '}
-                                            {punch.is_hidden ? 'Unhide' : 'Hide'}
-                                          </button>
+                                        {canReview ? (
+                                          <div className="inline-flex flex-col items-end gap-1">
+                                            <select
+                                              value={draft.status}
+                                              onChange={(e) =>
+                                                updateMutationDraft(actionKey, {
+                                                  status: e.target.value,
+                                                })
+                                              }
+                                              className="w-24 rounded border border-slate-700 bg-slate-900 px-1.5 py-1 text-[11px] text-white"
+                                            >
+                                              {TAXONOMY_OPTIONS.map((option) => (
+                                                <option key={option.value} value={option.value}>
+                                                  {option.label}
+                                                </option>
+                                              ))}
+                                            </select>
+                                            <input
+                                              value={draft.reason}
+                                              onChange={(e) =>
+                                                updateMutationDraft(actionKey, {
+                                                  reason: e.target.value,
+                                                })
+                                              }
+                                              placeholder="reason"
+                                              className="w-36 rounded border border-slate-700 bg-slate-900 px-1.5 py-1 text-[11px] text-white placeholder:text-slate-600"
+                                            />
+                                            <input
+                                              value={draft.note}
+                                              onChange={(e) =>
+                                                updateMutationDraft(actionKey, {
+                                                  note: e.target.value,
+                                                })
+                                              }
+                                              placeholder="note"
+                                              className="w-36 rounded border border-slate-700 bg-slate-900 px-1.5 py-1 text-[11px] text-white placeholder:text-slate-600"
+                                            />
+                                            <div className="inline-flex items-center gap-1">
+                                              <button
+                                                type="button"
+                                                disabled={busy}
+                                                onClick={() => submitMutation(row, punch, 'tag')}
+                                                className="inline-flex items-center rounded border border-amber-500/40 bg-amber-500/10 px-2 py-1 text-[11px] text-amber-300 hover:bg-amber-500/20 disabled:opacity-50"
+                                              >
+                                                Tag
+                                              </button>
+                                              <button
+                                                type="button"
+                                                disabled={busy || !hasHiddenTable}
+                                                onClick={() =>
+                                                  submitMutation(
+                                                    row,
+                                                    punch,
+                                                    punch.is_hidden ? 'unhide' : 'hide'
+                                                  )
+                                                }
+                                                className="inline-flex items-center gap-1 rounded border border-slate-700 px-2 py-1 text-[11px] text-slate-300 hover:text-white disabled:opacity-50"
+                                              >
+                                                <EyeOff className="h-3 w-3" />{' '}
+                                                {punch.is_hidden ? 'Unhide' : 'Hide'}
+                                              </button>
+                                            </div>
+                                          </div>
                                         ) : (
                                           <span className="inline-flex items-center gap-1 text-slate-500">
                                             <ShieldCheck className="h-3 w-3" /> admin only

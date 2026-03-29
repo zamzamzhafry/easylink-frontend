@@ -1,6 +1,28 @@
 import { z } from 'zod';
 
+export const canonicalEmployeeRoleSchema = z.enum(['admin', 'group_leader', 'employee']);
+
 export const employeeRoleSchema = z.enum(['admin', 'leader', 'scheduler', 'viewer']);
+
+export const legacyEmployeeRoleAliasSchema = z.enum([
+  'admin',
+  'leader',
+  'scheduler',
+  'viewer',
+  'group_leader',
+  'employee',
+  'hr',
+]);
+
+export const LEGACY_EMPLOYEE_ROLE_TO_CANONICAL_ROLE = {
+  admin: 'admin',
+  leader: 'group_leader',
+  scheduler: 'group_leader',
+  viewer: 'employee',
+  group_leader: 'group_leader',
+  employee: 'employee',
+  hr: 'group_leader',
+} as const;
 
 export const employeeSessionSchema = z.object({
   employeeId: z.number().int().positive(),
@@ -12,6 +34,9 @@ export const employeeSessionSchema = z.object({
 });
 
 export type EmployeeRole = z.infer<typeof employeeRoleSchema>;
+export type CanonicalEmployeeRole = z.infer<typeof canonicalEmployeeRoleSchema>;
+export type LegacyEmployeeRoleAlias = z.infer<typeof legacyEmployeeRoleAliasSchema>;
+export type EmployeeRoleLike = EmployeeRole | LegacyEmployeeRoleAlias;
 export type EmployeeSession = z.infer<typeof employeeSessionSchema>;
 
 export type EmployeeMachineIdentity = {
@@ -22,10 +47,22 @@ export type EmployeeMachineIdentity = {
   validTo: string | null;
 };
 
-export const canViewDashboard = (roles: EmployeeRole[]): boolean => {
-  return roles.includes('admin') || roles.includes('leader') || roles.includes('viewer');
+export const toCanonicalEmployeeRole = (role: EmployeeRoleLike): CanonicalEmployeeRole => {
+  return LEGACY_EMPLOYEE_ROLE_TO_CANONICAL_ROLE[role] ?? 'employee';
 };
 
-export const canManageSchedule = (roles: EmployeeRole[]): boolean => {
-  return roles.includes('admin') || roles.includes('scheduler');
+export const toCanonicalEmployeeRoles = (
+  roles: readonly EmployeeRoleLike[]
+): CanonicalEmployeeRole[] => {
+  return [...new Set(roles.map((role) => toCanonicalEmployeeRole(role)))];
+};
+
+export const canViewDashboard = (roles: readonly EmployeeRoleLike[]): boolean => {
+  const canonicalRoles = toCanonicalEmployeeRoles(roles);
+  return canonicalRoles.length > 0;
+};
+
+export const canManageSchedule = (roles: readonly EmployeeRoleLike[]): boolean => {
+  const canonicalRoles = toCanonicalEmployeeRoles(roles);
+  return canonicalRoles.includes('admin') || canonicalRoles.includes('group_leader');
 };

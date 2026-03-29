@@ -10,23 +10,21 @@ const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
 function Field({ label, children, hint }) {
   return (
-    <label className="block space-y-1">
-      <span className="text-xs font-medium text-slate-300">{label}</span>
+    <div className="block space-y-1">
+      <span className="text-xs font-medium text-foreground">{label}</span>
       {children}
-      {hint && <span className="text-[11px] text-slate-500">{hint}</span>}
-    </label>
+      {hint && <span className="text-[11px] text-muted-foreground">{hint}</span>}
+    </div>
   );
 }
 
-const inputCls =
-  'w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-white placeholder-slate-500 focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500';
-const selectCls = inputCls;
+const inputCls = 'ui-control-input text-sm';
+const selectCls = 'ui-control-select text-sm';
 const btnPrimary =
-  'inline-flex items-center gap-1.5 rounded-lg bg-teal-600 px-4 py-2 text-sm font-medium text-white hover:bg-teal-500 transition disabled:opacity-50';
-const btnGhost =
-  'inline-flex items-center gap-1.5 rounded-lg border border-slate-700 px-3 py-1.5 text-xs text-slate-300 hover:bg-slate-800 transition';
+  'ui-btn-primary min-h-0 gap-1.5 rounded-lg px-4 py-2 text-sm disabled:opacity-50';
+const btnGhost = 'ui-btn-secondary min-h-0 gap-1.5 rounded-lg px-3 py-1.5 text-xs';
 const btnDanger =
-  'inline-flex items-center gap-1 rounded-lg px-2 py-1.5 text-xs text-red-400 hover:bg-red-900/30 transition';
+  'inline-flex items-center gap-1 rounded-lg border border-destructive/40 bg-destructive/10 px-2 py-1.5 text-xs text-destructive transition hover:bg-destructive/20';
 
 /* ── tabs ─────────────────────────────────────────────────── */
 
@@ -183,7 +181,7 @@ export default function SettingsModal({ onClose }) {
     return (
       <ModalShell title="Settings" onClose={onClose} maxWidth="max-w-2xl">
         <div className="flex items-center justify-center py-12">
-          <RefreshCw className="h-5 w-5 animate-spin text-slate-500" />
+          <RefreshCw className="h-5 w-5 animate-spin text-muted-foreground" />
         </div>
       </ModalShell>
     );
@@ -200,13 +198,16 @@ export default function SettingsModal({ onClose }) {
       maxWidth="max-w-2xl"
     >
       {/* tab bar */}
-      <div className="mb-4 flex gap-1 rounded-lg bg-slate-800/60 p-1">
+      <div className="mb-4 flex gap-1 rounded-lg bg-muted p-1">
         {TABS.map(({ key, label, icon: Icon }) => (
           <button
+            type="button"
             key={key}
             onClick={() => setTab(key)}
             className={`flex flex-1 items-center justify-center gap-1.5 rounded-md px-3 py-2 text-xs font-medium transition ${
-              tab === key ? 'bg-slate-700 text-white shadow' : 'text-slate-400 hover:text-white'
+              tab === key
+                ? 'border border-border bg-card text-foreground shadow-sm'
+                : 'text-muted-foreground hover:bg-card/60 hover:text-foreground'
             }`}
           >
             <Icon className="h-3.5 w-3.5" />
@@ -217,12 +218,12 @@ export default function SettingsModal({ onClose }) {
 
       {/* status */}
       {error && (
-        <div className="mb-3 rounded-lg bg-red-900/30 border border-red-800 px-3 py-2 text-xs text-red-300">
+        <div className="mb-3 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">
           {error}
         </div>
       )}
       {success && (
-        <div className="mb-3 rounded-lg bg-teal-900/30 border border-teal-800 px-3 py-2 text-xs text-teal-300">
+        <div className="mb-3 rounded-lg border border-emerald-500/35 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-700 dark:text-emerald-300">
           {success}
         </div>
       )}
@@ -231,15 +232,16 @@ export default function SettingsModal({ onClose }) {
       {tab === 'scheduling' && (
         <div className="space-y-4">
           {/* enable toggle */}
-          <div className="flex items-center justify-between rounded-lg border border-slate-700 bg-slate-800/50 px-4 py-3">
+          <div className="flex items-center justify-between rounded-lg border border-border bg-card px-4 py-3">
             <div>
-              <p className="text-sm font-medium text-white">Auto-fetch scanlogs</p>
-              <p className="text-xs text-slate-400">Pull logs from machine on schedule</p>
+              <p className="text-sm font-medium text-foreground">Auto-fetch scanlogs</p>
+              <p className="text-xs text-muted-foreground">Pull logs from machine on schedule</p>
             </div>
             <button
+              type="button"
               onClick={() => updateScheduling('enabled', !sched.enabled)}
               className={`relative h-6 w-11 rounded-full transition ${
-                sched.enabled ? 'bg-teal-500' : 'bg-slate-600'
+                sched.enabled ? 'bg-primary' : 'bg-muted'
               }`}
             >
               <span
@@ -300,12 +302,13 @@ export default function SettingsModal({ onClose }) {
                 const active = (sched.daysOfWeek || []).includes(idx);
                 return (
                   <button
-                    key={idx}
+                    type="button"
+                    key={label}
                     onClick={() => toggleDay(idx)}
                     className={`flex h-8 w-9 items-center justify-center rounded-md text-xs font-medium transition ${
                       active
-                        ? 'bg-teal-600 text-white'
-                        : 'border border-slate-700 text-slate-500 hover:text-white'
+                        ? 'bg-primary text-primary-foreground'
+                        : 'border border-border text-muted-foreground hover:bg-muted hover:text-foreground'
                     }`}
                   >
                     {label}
@@ -356,12 +359,12 @@ export default function SettingsModal({ onClose }) {
       {/* ─── DEVICE TAB ──────────────────────────────────── */}
       {tab === 'device' && (
         <div className="space-y-4">
-          <p className="text-xs text-slate-400">
+          <p className="text-xs text-muted-foreground">
             Configure connection details for the EasyLink Windows SDK and physical device.
           </p>
 
-          <div className="rounded-lg border border-slate-700 bg-slate-800/50 p-4 space-y-3">
-            <p className="text-xs font-semibold text-teal-400 uppercase tracking-wider">
+          <div className="space-y-3 rounded-lg border border-border bg-card p-4">
+            <p className="text-xs font-semibold uppercase tracking-wider text-primary">
               Windows SDK (REST API)
             </p>
             <div className="grid grid-cols-2 gap-3">
@@ -384,8 +387,8 @@ export default function SettingsModal({ onClose }) {
             </div>
           </div>
 
-          <div className="rounded-lg border border-slate-700 bg-slate-800/50 p-4 space-y-3">
-            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
+          <div className="space-y-3 rounded-lg border border-border bg-card p-4">
+            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
               Direct Device
             </p>
             <div className="grid grid-cols-2 gap-3">
@@ -434,8 +437,8 @@ export default function SettingsModal({ onClose }) {
       {tab === 'holidays' && (
         <div className="space-y-4">
           {/* add new */}
-          <div className="rounded-lg border border-dashed border-slate-700 bg-slate-800/30 p-3">
-            <p className="mb-2 text-xs font-semibold text-teal-400 uppercase tracking-wider">
+          <div className="rounded-lg border border-dashed border-border bg-muted/50 p-3">
+            <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-primary">
               Add custom holiday
             </p>
             <div className="grid grid-cols-[140px_1fr_auto] gap-2 items-end">
@@ -456,6 +459,7 @@ export default function SettingsModal({ onClose }) {
                 />
               </Field>
               <button
+                type="button"
                 onClick={addHoliday}
                 className={btnPrimary}
                 disabled={!newDate || !newName.trim()}
@@ -464,12 +468,12 @@ export default function SettingsModal({ onClose }) {
                 Add
               </button>
             </div>
-            <label className="mt-2 flex items-center gap-2 text-xs text-slate-400">
+            <label className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
               <input
                 type="checkbox"
                 checked={newIsCuti}
                 onChange={(e) => setNewIsCuti(e.target.checked)}
-                className="rounded border-slate-600 bg-slate-800 text-teal-500 focus:ring-teal-500"
+                className="h-4 w-4 rounded border-border bg-background text-primary focus:ring-2 focus:ring-ring/40"
               />
               Cuti Bersama
             </label>
@@ -478,27 +482,28 @@ export default function SettingsModal({ onClose }) {
           {/* list */}
           <div className="max-h-[340px] space-y-1 overflow-y-auto pr-1">
             {holidays.length === 0 && (
-              <p className="py-6 text-center text-sm text-slate-500">No holidays loaded</p>
+              <p className="py-6 text-center text-sm text-muted-foreground">No holidays loaded</p>
             )}
             {holidays.map((h) => (
               <div
                 key={h.date}
-                className="flex items-center justify-between rounded-lg border border-slate-700/50 bg-slate-800/40 px-3 py-2"
+                className="flex items-center justify-between rounded-lg border border-border bg-card/70 px-3 py-2"
               >
                 <div className="flex items-center gap-3 min-w-0">
-                  <span className="shrink-0 text-xs font-mono text-slate-500">{h.date}</span>
-                  <span className="truncate text-sm text-white">{h.name}</span>
+                  <span className="shrink-0 text-xs font-mono text-muted-foreground">{h.date}</span>
+                  <span className="truncate text-sm text-foreground">{h.name}</span>
                   {h.is_cuti_bersama && (
-                    <span className="shrink-0 rounded bg-amber-900/40 px-1.5 py-0.5 text-[10px] text-amber-400">
+                    <span className="shrink-0 rounded border border-amber-500/35 bg-amber-500/15 px-1.5 py-0.5 text-[10px] text-amber-700 dark:text-amber-300">
                       Cuti
                     </span>
                   )}
-                  <span className="shrink-0 rounded bg-slate-700/60 px-1.5 py-0.5 text-[10px] text-slate-500">
+                  <span className="shrink-0 rounded border border-border/70 bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
                     {h.source}
                   </span>
                 </div>
                 {h.source === 'custom' && (
                   <button
+                    type="button"
                     onClick={() => deleteHoliday(h.date)}
                     className={btnDanger}
                     title="Remove"
@@ -512,7 +517,7 @@ export default function SettingsModal({ onClose }) {
 
           {/* refresh */}
           <div className="flex justify-end">
-            <button onClick={loadHolidays} className={btnGhost}>
+            <button type="button" onClick={loadHolidays} className={btnGhost}>
               <RefreshCw className="h-3 w-3" />
               Refresh
             </button>
@@ -522,13 +527,18 @@ export default function SettingsModal({ onClose }) {
 
       {/* ─── Footer ──────────────────────────────────────── */}
       {(tab === 'scheduling' || tab === 'device') && (
-        <div className="mt-5 flex items-center justify-between border-t border-slate-700/50 pt-4">
-          <span className="text-xs text-slate-500">{dirty ? 'Unsaved changes' : ''}</span>
+        <div className="mt-5 flex items-center justify-between border-t border-border pt-4">
+          <span className="text-xs text-muted-foreground">{dirty ? 'Unsaved changes' : ''}</span>
           <div className="flex gap-2">
-            <button onClick={onClose} className={btnGhost}>
+            <button type="button" onClick={onClose} className={btnGhost}>
               Cancel
             </button>
-            <button onClick={saveConfig} className={btnPrimary} disabled={saving || !dirty}>
+            <button
+              type="button"
+              onClick={saveConfig}
+              className={btnPrimary}
+              disabled={saving || !dirty}
+            >
               <Save className="h-3.5 w-3.5" />
               {saving ? 'Saving...' : 'Save'}
             </button>

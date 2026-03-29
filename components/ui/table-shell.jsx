@@ -2,12 +2,7 @@ import { cn } from '@/lib/utils';
 
 export function TableShell({ children, className, innerClassName }) {
   return (
-    <div
-      className={cn(
-        'overflow-hidden rounded-xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900',
-        className
-      )}
-    >
+    <div className={cn('ui-table-shell', className)}>
       <div className={cn('overflow-x-auto', innerClassName)}>{children}</div>
     </div>
   );
@@ -15,15 +10,9 @@ export function TableShell({ children, className, innerClassName }) {
 
 export function TableHeadRow({ headers }) {
   return (
-    <tr className="border-b border-slate-200 text-left dark:border-slate-800">
+    <tr className="ui-table-head text-left">
       {headers.map(({ key, label, className }) => (
-        <th
-          key={key}
-          className={cn(
-            'whitespace-nowrap px-4 py-3 text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-500',
-            className
-          )}
-        >
+        <th key={key} className={cn('ui-table-head-cell whitespace-nowrap px-4 py-3', className)}>
           {label}
         </th>
       ))}
@@ -33,11 +22,8 @@ export function TableHeadRow({ headers }) {
 
 export function TableLoadingRow({ colSpan, label = 'Loading...' }) {
   return (
-    <tr>
-      <td
-        colSpan={colSpan}
-        className="px-4 py-10 text-center text-xs text-slate-500 dark:text-slate-500"
-      >
+    <tr className="ui-table-row">
+      <td colSpan={colSpan} className="ui-table-cell-muted px-4 py-10 text-center text-xs">
         {label}
       </td>
     </tr>
@@ -46,11 +32,8 @@ export function TableLoadingRow({ colSpan, label = 'Loading...' }) {
 
 export function TableEmptyRow({ colSpan, label = 'No data' }) {
   return (
-    <tr>
-      <td
-        colSpan={colSpan}
-        className="px-4 py-10 text-center text-xs text-slate-500 dark:text-slate-500"
-      >
+    <tr className="ui-table-row">
+      <td colSpan={colSpan} className="ui-table-cell-muted px-4 py-10 text-center text-xs">
         {label}
       </td>
     </tr>

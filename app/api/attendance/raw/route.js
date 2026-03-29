@@ -12,6 +12,7 @@ import {
   computePaginationMeta,
   parsePaginationParams,
 } from '@/lib/pagination';
+import { canAccessRawAttendance } from '@/lib/authz/authorization-adapter';
 
 function nextIsoDate(dateString) {
   const date = new Date(`${String(dateString)}T00:00:00.000Z`);
@@ -22,7 +23,7 @@ function nextIsoDate(dateString) {
 export async function GET(req) {
   const auth = await getAuthContextFromCookies();
   if (!auth) return unauthorizedResponse();
-  if (!auth.is_admin) return forbiddenResponse('Admin only.');
+  if (!canAccessRawAttendance(auth)) return forbiddenResponse('Admin only.');
 
   const { searchParams } = new URL(req.url);
   const dateFrom = searchParams.get('from') || new Date().toISOString().slice(0, 10);

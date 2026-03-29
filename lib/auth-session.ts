@@ -2,14 +2,34 @@ import crypto from 'crypto';
 import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
 import pool from '@/lib/db';
+import {
+  LEGACY_EMPLOYEE_ROLE_TO_CANONICAL_ROLE,
+  type CanonicalEmployeeRole,
+} from '@/lib/domain/employee-auth-model';
 
 const SESSION_COOKIE = 'easylink_session';
 const SESSION_TTL_SECONDS = 60 * 60 * 12; // 12h
+
+function parseEnabledFlag(raw: string | null | undefined, defaultEnabled = true) {
+  if (raw == null) return defaultEnabled;
+  const normalized = raw.trim().toLowerCase();
+  return !['0', 'false', 'off', 'no', 'disabled'].includes(normalized);
+}
+
+const LEGACY_PIN_FALLBACK_ENABLED = parseEnabledFlag(
+  process.env.EASYLINK_ENABLE_LEGACY_PIN_FALLBACK,
+  true
+);
+const LEGACY_SESSION_PAYLOAD_COMPAT_ENABLED = parseEnabledFlag(
+  process.env.EASYLINK_ENABLE_LEGACY_SESSION_PAYLOAD_COMPAT,
+  true
+);
 const SECRET = process.env.AUTH_SECRET || 'dev-only-change-this-secret';
 
 type SessionPayload = {
-  pin: string;
+  subject: string;
   exp: number;
+  payload_format: 'canonical' | 'legacy';
 };
 
 type UserRow = {
@@ -42,8 +62,77 @@ export type AuthContext = {
   can_schedule: boolean;
   can_dashboard: boolean;
   is_leader: boolean;
+  is_hr?: boolean;
+  nip?: string;
+  karyawan_id?: number;
   groups: GroupAccess[];
+  canonical_roles: CanonicalEmployeeRole[];
 };
+
+export type LegacyAuthFlagSnapshot = Pick<
+  AuthContext,
+  'privilege' | 'is_admin' | 'is_leader' | 'can_schedule' | 'can_dashboard' | 'is_hr'
+>;
+
+export const LEGACY_AUTH_FLAG_TO_CANONICAL_ROLE: Record<string, CanonicalEmployeeRole> = {
+  is_admin: 'admin',
+  is_leader: 'group_leader',
+  is_hr: 'group_leader',
+  can_schedule: 'group_leader',
+  can_dashboard: 'employee',
+};
+
+export const LEGACY_AUTH_ADMIN_PRIVILEGE_MIN = 4;
+
+const legacyRoleLabelToCanonicalRoleMap: Record<string, CanonicalEmployeeRole> = {
+  ...LEGACY_EMPLOYEE_ROLE_TO_CANONICAL_ROLE,
+};
+
+export function mapLegacyRoleLabelToCanonicalRole(
+  roleLabel: string | null | undefined
+): CanonicalEmployeeRole {
+  const normalized = String(roleLabel ?? '')
+    .trim()
+    .toLowerCase();
+
+  return legacyRoleLabelToCanonicalRoleMap[normalized] ?? 'employee';
+}
+
+export function getCanonicalRoleFromLegacyAuthFlags(
+  auth: LegacyAuthFlagSnapshot
+): CanonicalEmployeeRole {
+  const privilege = Number(auth.privilege ?? 0);
+  if (auth.is_admin || privilege >= LEGACY_AUTH_ADMIN_PRIVILEGE_MIN) return 'admin';
+  if (auth.is_leader || auth.is_hr || auth.can_schedule) return 'group_leader';
+  return 'employee';
+}
+
+export function getCanonicalRolesFromLegacyAuth(
+  auth: LegacyAuthFlagSnapshot,
+  legacyRoleLabels: readonly (string | null | undefined)[] = []
+): CanonicalEmployeeRole[] {
+  const mappedLegacyRoles = legacyRoleLabels.map((roleLabel) =>
+    mapLegacyRoleLabelToCanonicalRole(roleLabel)
+  );
+
+  const canonicalRoles = [
+    getCanonicalRoleFromLegacyAuthFlags(auth),
+    ...mappedLegacyRoles,
+    auth.can_dashboard ? 'employee' : null,
+  ].filter(Boolean) as CanonicalEmployeeRole[];
+
+  return [...new Set(canonicalRoles)];
+}
+
+const legacyAuthFallbackTelemetry = { hits: 0 };
+
+export function recordLegacyAuthFallbackHit() {
+  legacyAuthFallbackTelemetry.hits += 1;
+}
+
+export function getLegacyAuthFallbackHits() {
+  return legacyAuthFallbackTelemetry.hits;
+}
 
 const tableExistsCache = new Map<string, boolean>();
 
@@ -60,7 +149,12 @@ function sign(raw: string) {
 }
 
 function encodeSession(payload: SessionPayload) {
-  const raw = base64UrlEncode(JSON.stringify(payload));
+  const encodedPayload = {
+    sub: payload.subject,
+    exp: payload.exp,
+    v: 2,
+  };
+  const raw = base64UrlEncode(JSON.stringify(encodedPayload));
   return `${raw}.${sign(raw)}`;
 }
 
@@ -72,12 +166,35 @@ function decodeSession(token?: string | null): SessionPayload | null {
 
   try {
     const decoded = JSON.parse(base64UrlDecode(raw));
-    const pin = String(decoded?.pin ?? '').trim();
     const exp = Number(decoded?.exp ?? 0);
-    if (!pin || !Number.isFinite(exp) || exp <= Math.floor(Date.now() / 1000)) {
+
+    if (!Number.isFinite(exp) || exp <= Math.floor(Date.now() / 1000)) {
       return null;
     }
-    return { pin, exp };
+
+    const canonicalSubject = String(decoded?.sub ?? '').trim();
+    if (canonicalSubject) {
+      return {
+        subject: canonicalSubject,
+        exp,
+        payload_format: 'canonical',
+      };
+    }
+
+    const legacyPin = String(decoded?.pin ?? '').trim();
+    if (!legacyPin) {
+      return null;
+    }
+
+    if (!LEGACY_SESSION_PAYLOAD_COMPAT_ENABLED) {
+      return null;
+    }
+
+    return {
+      subject: legacyPin,
+      exp,
+      payload_format: 'legacy',
+    };
   } catch {
     return null;
   }
@@ -102,9 +219,11 @@ async function hasTable(tableName: string) {
   return exists;
 }
 
-
 // NEW: Auth Restructure based on NIP
-export async function createAuthContextByNip(nip: string, connectionParam: any = null): Promise<any> {
+export async function createAuthContextByNip(
+  nip: string,
+  connectionParam: any = null
+): Promise<AuthContext | null> {
   let connection = connectionParam;
   let shouldRelease = false;
 
@@ -127,15 +246,29 @@ export async function createAuthContextByNip(nip: string, connectionParam: any =
       'SELECT role_key, group_id FROM tb_karyawan_roles WHERE karyawan_id = ?',
       [user.karyawan_id]
     );
-
     const is_admin = roles.some((r: any) => r.role_key === 'admin');
     const is_leader = roles.some((r: any) => r.role_key === 'group_leader');
     const is_hr = roles.some((r: any) => r.role_key === 'hr');
 
+    const legacyFlagSnapshot: LegacyAuthFlagSnapshot = {
+      privilege: is_admin ? 4 : 1,
+      is_admin,
+      is_leader,
+      is_hr,
+      can_schedule: is_admin || is_leader,
+      can_dashboard: is_admin || is_leader,
+    };
+    const canonical_roles = getCanonicalRolesFromLegacyAuth(
+      legacyFlagSnapshot,
+      (roles as any[]).map((r) => r.role_key)
+    );
+
     // Fetch groups if leader
     let groups: any[] = [];
     if (is_leader) {
-      const groupIds = roles.filter((r: any) => r.role_key === 'group_leader' && r.group_id).map((r: any) => r.group_id);
+      const groupIds = roles
+        .filter((r: any) => r.role_key === 'group_leader' && r.group_id)
+        .map((r: any) => r.group_id);
       if (groupIds.length > 0) {
         const [groupRows] = await connection.query(
           'SELECT id as group_id, nama_group FROM tb_group WHERE id IN (?)',
@@ -146,7 +279,7 @@ export async function createAuthContextByNip(nip: string, connectionParam: any =
           nama_group: g.nama_group,
           can_schedule: 1,
           can_dashboard: 1,
-          is_leader: true
+          is_leader: true,
         }));
       }
     }
@@ -162,7 +295,8 @@ export async function createAuthContextByNip(nip: string, connectionParam: any =
       is_hr,
       can_schedule: is_admin || is_leader,
       can_dashboard: is_admin || is_leader,
-      groups
+      groups,
+      canonical_roles,
     };
   } catch (error) {
     console.error('Error in createAuthContextByNip:', error);
@@ -173,6 +307,7 @@ export async function createAuthContextByNip(nip: string, connectionParam: any =
 }
 
 export async function createAuthContextByPin(pin: string): Promise<AuthContext | null> {
+  recordLegacyAuthFallbackHit();
   const [userRows] = await pool.query(
     `SELECT pin, nama, privilege
      FROM tb_user
@@ -211,15 +346,29 @@ export async function createAuthContextByPin(pin: string): Promise<AuthContext |
     }));
   }
 
+  const groupHasSchedule = groups.some((group) => group.can_schedule);
+  const groupHasDashboard = groups.some((group) => group.can_dashboard);
+  const leaderAccess = isAdmin || groups.some((group) => group.is_leader);
+  const legacyFlagSnapshot: LegacyAuthFlagSnapshot = {
+    privilege,
+    is_admin: isAdmin,
+    is_leader: leaderAccess,
+    is_hr: false,
+    can_schedule: isAdmin || groupHasSchedule,
+    can_dashboard: isAdmin || groupHasDashboard,
+  };
+  const canonical_roles = getCanonicalRolesFromLegacyAuth(legacyFlagSnapshot);
+
   return {
     pin: String(user.pin),
     nama: user.nama || `PIN ${user.pin}`,
     privilege,
     is_admin: isAdmin,
-    can_schedule: isAdmin || groups.some((group) => group.can_schedule),
-    can_dashboard: isAdmin || groups.some((group) => group.can_dashboard),
-    is_leader: isAdmin || groups.some((group) => group.is_leader),
+    can_schedule: isAdmin || groupHasSchedule,
+    can_dashboard: isAdmin || groupHasDashboard,
+    is_leader: leaderAccess,
     groups,
+    canonical_roles,
   };
 }
 
@@ -227,18 +376,24 @@ export async function getAuthContextFromCookies(): Promise<AuthContext | null> {
   const token = cookies().get(SESSION_COOKIE)?.value;
   const payload = decodeSession(token);
   if (!payload) return null;
-  
+
   // Try NIP-based auth first
-  const nipContext = await createAuthContextByNip(payload.pin);
+  const nipContext = await createAuthContextByNip(payload.subject);
   if (nipContext) return nipContext;
 
+  if (!LEGACY_PIN_FALLBACK_ENABLED) return null;
+
   // Fallback to legacy PIN-based auth
-  return createAuthContextByPin(payload.pin);
+  return createAuthContextByPin(payload.subject);
 }
 
 export function setAuthCookie(response: NextResponse, pin: string) {
   const exp = Math.floor(Date.now() / 1000) + SESSION_TTL_SECONDS;
-  const token = encodeSession({ pin, exp });
+  const token = encodeSession({
+    subject: pin,
+    exp,
+    payload_format: 'canonical',
+  });
   response.cookies.set({
     name: SESSION_COOKIE,
     value: token,

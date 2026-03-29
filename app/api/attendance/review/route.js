@@ -8,6 +8,11 @@ import {
   getAuthContextFromCookies,
   unauthorizedResponse,
 } from '@/lib/auth-session';
+import {
+  canAccessAttendance,
+  canAccessRawAttendance,
+  getAttendanceGroupIds,
+} from '@/lib/authz/authorization-adapter';
 
 const tableExistsCache = new Map();
 
@@ -55,12 +60,84 @@ function buildStatus({ firstScan, lastScan, shiftIn, shiftOut, nextDay, scanCoun
   return status;
 }
 
+async function ensureReviewTagTable() {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS tb_scanlog_review_tag (
+      pin VARCHAR(32) NOT NULL,
+      scan_at DATETIME NOT NULL,
+      sn VARCHAR(64) NOT NULL,
+      iomode INT NOT NULL,
+      workcode INT NOT NULL,
+      status ENUM('late','acceptable','invalid') NOT NULL,
+      note VARCHAR(255),
+      tagged_by VARCHAR(32) NOT NULL,
+      tagged_at DATETIME NOT NULL,
+      PRIMARY KEY (pin, scan_at, sn, iomode, workcode)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+  `);
+}
+
+async function ensureReviewMutationAuditTable() {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS tb_scanlog_review_mutation_audit (
+      id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+      action VARCHAR(32) NOT NULL,
+      pin VARCHAR(32) NOT NULL,
+      scan_at DATETIME NOT NULL,
+      sn VARCHAR(64) NOT NULL,
+      iomode INT NOT NULL,
+      workcode INT NOT NULL,
+      tag_status ENUM('late','acceptable','invalid') DEFAULT NULL,
+      note VARCHAR(255) DEFAULT NULL,
+      reason VARCHAR(255) DEFAULT NULL,
+      actor_pin VARCHAR(32) NOT NULL,
+      acted_at DATETIME NOT NULL,
+      PRIMARY KEY (id),
+      KEY idx_review_mutation_lookup (pin, scan_at, sn, iomode, workcode),
+      KEY idx_review_mutation_action_time (action, acted_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+  `);
+}
+
+async function appendReviewMutationAudit({
+  action,
+  pin,
+  scanAt,
+  sn,
+  iomode,
+  workcode,
+  status,
+  note,
+  reason,
+  actorPin,
+}) {
+  await ensureReviewMutationAuditTable();
+  await pool.query(
+    `INSERT INTO tb_scanlog_review_mutation_audit
+       (action, pin, scan_at, sn, iomode, workcode, tag_status, note, reason, actor_pin, acted_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
+    [
+      action,
+      pin,
+      scanAt,
+      sn,
+      iomode,
+      workcode,
+      status || null,
+      note || null,
+      reason || null,
+      actorPin,
+    ]
+  );
+}
+
+const TAXONOMY_STATUSES = new Set(['late', 'acceptable', 'invalid']);
+
 export async function GET(req) {
   const auth = await getAuthContextFromCookies();
   if (!auth) return unauthorizedResponse();
 
-  const canAccess = auth.is_admin || auth.can_schedule || auth.can_dashboard;
-  if (!canAccess) return forbiddenResponse('No attendance review access.');
+  if (!canAccessAttendance(auth)) return forbiddenResponse('No attendance review access.');
 
   const canFilterDeleted = await hasKaryawanColumn('isDeleted');
   const hasHiddenTable = await hasTable('tb_scanlog_hidden');
@@ -71,13 +148,8 @@ export async function GET(req) {
   const groupId = searchParams.get('group_id') || '';
   const pinFilter = searchParams.get('pin') || '';
 
-  const allowedGroups = auth.is_admin
-    ? null
-    : Array.isArray(auth.groups)
-      ? auth.groups
-          .filter((group) => group.can_schedule || group.can_dashboard)
-          .map((group) => Number(group.group_id))
-      : [];
+  const allowedGroups = getAttendanceGroupIds(auth);
+  const accessibleGroupIds = Array.isArray(allowedGroups) ? allowedGroups : [];
 
   const where = ['DATE(sl.scan_date) BETWEEN ? AND ?'];
   const params = [from, to];
@@ -93,11 +165,11 @@ export async function GET(req) {
   }
 
   if (!auth.is_admin) {
-    if (!allowedGroups.length) {
+    if (!accessibleGroupIds.length) {
       return NextResponse.json({ rows: [], has_hidden_table: hasHiddenTable });
     }
-    where.push(`eg.group_id IN (${allowedGroups.map(() => '?').join(',')})`);
-    params.push(...allowedGroups);
+    where.push(`eg.group_id IN (${accessibleGroupIds.map(() => '?').join(',')})`);
+    params.push(...accessibleGroupIds);
   }
 
   if (canFilterDeleted) where.push('COALESCE(k.isDeleted, 0) = 0');
@@ -211,24 +283,13 @@ export async function GET(req) {
 export async function POST(req) {
   const auth = await getAuthContextFromCookies();
   if (!auth) return unauthorizedResponse();
-  if (!auth.is_admin) return forbiddenResponse('Admin only.');
-
-  const hasHiddenTable = await hasTable('tb_scanlog_hidden');
-  if (!hasHiddenTable) {
-    return NextResponse.json(
-      {
-        ok: false,
-        error: 'tb_scanlog_hidden does not exist. Run migration_scanlog_hidden.sql first.',
-      },
-      { status: 400 }
-    );
-  }
+  if (!canAccessRawAttendance(auth)) return forbiddenResponse('Admin only.');
 
   const body = await req.json();
   const action = body?.action;
   const pin = String(body?.pin || '').trim();
   const scanAt = body?.scan_at;
-  const sn = body?.sn ?? '';
+  const sn = String(body?.sn ?? '');
   const iomode = Number(body?.iomode ?? 0);
   const workcode = Number(body?.workcode ?? 0);
   const reason = body?.reason ? String(body.reason).slice(0, 255) : null;
@@ -241,6 +302,16 @@ export async function POST(req) {
   }
 
   if (action === 'hide') {
+    const hasHiddenTable = await hasTable('tb_scanlog_hidden');
+    if (!hasHiddenTable) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: 'tb_scanlog_hidden does not exist. Run migration_scanlog_hidden.sql first.',
+        },
+        { status: 400 }
+      );
+    }
     await pool.query(
       `INSERT INTO tb_scanlog_hidden (pin, scan_at, sn, iomode, workcode, reason, hidden_by, is_active, hidden_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, 1, NOW())
@@ -251,10 +322,30 @@ export async function POST(req) {
          hidden_at = NOW()`,
       [pin, scanAt, sn, iomode, workcode, reason, auth.pin]
     );
+    await appendReviewMutationAudit({
+      action,
+      pin,
+      scanAt,
+      sn,
+      iomode,
+      workcode,
+      reason,
+      actorPin: auth.pin,
+    });
     return NextResponse.json({ ok: true });
   }
 
   if (action === 'unhide') {
+    const hasHiddenTable = await hasTable('tb_scanlog_hidden');
+    if (!hasHiddenTable) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: 'tb_scanlog_hidden does not exist. Run migration_scanlog_hidden.sql first.',
+        },
+        { status: 400 }
+      );
+    }
     await pool.query(
       `UPDATE tb_scanlog_hidden
        SET is_active = 0,
@@ -267,6 +358,51 @@ export async function POST(req) {
          AND workcode = ?`,
       [auth.pin, pin, scanAt, sn, iomode, workcode]
     );
+    await appendReviewMutationAudit({
+      action,
+      pin,
+      scanAt,
+      sn,
+      iomode,
+      workcode,
+      reason,
+      actorPin: auth.pin,
+    });
+    return NextResponse.json({ ok: true });
+  }
+
+  if (action === 'tag') {
+    const statusInput = String(body?.status || '')
+      .trim()
+      .toLowerCase();
+    if (!TAXONOMY_STATUSES.has(statusInput)) {
+      return NextResponse.json({ ok: false, error: 'Invalid taxonomy status.' }, { status: 400 });
+    }
+    const note = body?.note ? String(body.note).slice(0, 255) : null;
+    await ensureReviewTagTable();
+    await pool.query(
+      `INSERT INTO tb_scanlog_review_tag
+         (pin, scan_at, sn, iomode, workcode, status, note, tagged_by, tagged_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW())
+       ON DUPLICATE KEY UPDATE
+         status = VALUES(status),
+         note = VALUES(note),
+         tagged_by = VALUES(tagged_by),
+         tagged_at = NOW()`,
+      [pin, scanAt, sn, iomode, workcode, statusInput, note, auth.pin]
+    );
+    await appendReviewMutationAudit({
+      action,
+      pin,
+      scanAt,
+      sn,
+      iomode,
+      workcode,
+      status: statusInput,
+      note,
+      reason,
+      actorPin: auth.pin,
+    });
     return NextResponse.json({ ok: true });
   }
 

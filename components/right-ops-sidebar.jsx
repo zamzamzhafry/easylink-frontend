@@ -1,8 +1,10 @@
 'use client';
 
 import Link from 'next/link';
-import { Bell, Clock3, RefreshCw, ShieldCheck } from 'lucide-react';
+import { Bell, ChevronLeft, ChevronRight, Clock3, RefreshCw, ShieldCheck } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useAppLocale } from '@/components/app-shell';
+import { getUIText } from '@/lib/localization/ui-texts';
 import { requestJson } from '@/lib/request-json';
 import { cn } from '@/lib/utils';
 
@@ -31,8 +33,11 @@ function statusClass(status) {
   return 'border-border bg-muted text-muted-foreground';
 }
 
-function QueueList({ rows, emptyLabel = 'No jobs' }) {
+function QueueList({ rows, emptyLabel = 'No jobs', showMoreLabel = 'Show more' }) {
   const safeRows = Array.isArray(rows) ? rows : [];
+  const [visibleCount, setVisibleCount] = useState(6);
+  const visibleRows = safeRows.slice(0, visibleCount);
+  const hasMore = safeRows.length > visibleRows.length;
 
   if (safeRows.length === 0) {
     return <p className="text-xs text-muted-foreground">{emptyLabel}</p>;
@@ -40,7 +45,7 @@ function QueueList({ rows, emptyLabel = 'No jobs' }) {
 
   return (
     <div className="space-y-2">
-      {safeRows.slice(0, 5).map((row) => {
+      {visibleRows.map((row) => {
         const status = row?.status || 'unknown';
         const label = row?.id ? `#${row.id}` : row?.job_id ? `#${row.job_id}` : 'job';
         return (
@@ -68,49 +73,126 @@ function QueueList({ rows, emptyLabel = 'No jobs' }) {
           </div>
         );
       })}
+      {hasMore ? (
+        <button
+          type="button"
+          onClick={() => setVisibleCount((prev) => prev + 6)}
+          className="ui-btn-secondary min-h-0 w-full px-2 py-1 text-[11px]"
+        >
+          {showMoreLabel}
+        </button>
+      ) : null}
     </div>
   );
 }
 
-export default function RightOpsSidebar({ currentUser }) {
+function LazyAccordionSection({ id, title, summary, open, onToggle, children }) {
+  return (
+    <section className="ui-card-muted p-3">
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-xs font-semibold text-foreground">{title}</p>
+        <div className="flex items-center gap-2">
+          {summary ? <p className="text-[10px] text-muted-foreground">{summary}</p> : null}
+          <button
+            type="button"
+            onClick={onToggle}
+            className="ui-btn-secondary min-h-0 px-2 py-1 text-[10px]"
+            aria-expanded={open}
+            aria-controls={id}
+            aria-label={`${open ? 'Collapse' : 'Expand'} ${title}`}
+          >
+            {open ? 'Hide' : 'Show'}
+          </button>
+        </div>
+      </div>
+      {open ? (
+        <div id={id} className="mt-2">
+          {children}
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+export default function RightOpsSidebar({ currentUser, collapsed = false, onToggle }) {
+  const { locale } = useAppLocale();
+  const resolvedLocale = locale === 'id' ? 'id' : 'en';
+  const t = (path) => getUIText(path, resolvedLocale);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [scanlogQueue, setScanlogQueue] = useState({ concurrency: 1, active: 0, pending: 0 });
   const [machineQueue, setMachineQueue] = useState({ concurrency: 1, active: 0, pending: 0 });
+  const [migrationFlags, setMigrationFlags] = useState(null);
   const [scanlogRows, setScanlogRows] = useState([]);
   const [machineRows, setMachineRows] = useState([]);
   const [pendingReviewCount, setPendingReviewCount] = useState(0);
+  const [expandedSections, setExpandedSections] = useState({
+    scanlog: false,
+    migration: false,
+    machine: false,
+    preview: false,
+  });
 
   const isAdmin = Boolean(currentUser?.is_admin);
+  const needsScanlogDetails =
+    !collapsed && (expandedSections.scanlog || expandedSections.migration);
+  const needsMachineDetails = !collapsed && expandedSections.machine;
 
   const refreshData = useCallback(async () => {
     if (!isAdmin) return;
     setLoading(true);
     try {
       const today = todayIso();
-      const [scanlogData, machineData, reviewData] = await Promise.all([
-        requestJson('/api/scanlog/sync?limit=6'),
-        requestJson('/api/machine?limit=6'),
-        requestJson(`/api/attendance/review?from=${today}&to=${today}`),
-      ]);
+      const requests = [requestJson(`/api/attendance/review?from=${today}&to=${today}`)];
+      const reviewIndex = 0;
+      const scanlogIndex = needsScanlogDetails
+        ? requests.push(requestJson('/api/scanlog/sync?limit=6')) - 1
+        : -1;
+      const machineIndex = needsMachineDetails
+        ? requests.push(requestJson('/api/machine?limit=6')) - 1
+        : -1;
+      const responses = await Promise.all(requests);
+      const reviewData = responses[reviewIndex];
+      const scanlogData = scanlogIndex >= 0 ? responses[scanlogIndex] : null;
+      const machineData = machineIndex >= 0 ? responses[machineIndex] : null;
 
       const reviewRows = Array.isArray(reviewData?.rows) ? reviewData.rows : [];
       const pendingReviews = reviewRows.filter(
         (row) => String(row?.computed_status || 'normal').toLowerCase() !== 'normal'
       ).length;
 
-      setScanlogQueue(scanlogData?.queue || { concurrency: 1, active: 0, pending: 0 });
-      setMachineQueue(machineData?.queue || { concurrency: 1, active: 0, pending: 0 });
-      setScanlogRows(Array.isArray(scanlogData?.rows) ? scanlogData.rows : []);
-      setMachineRows(Array.isArray(machineData?.rows) ? machineData.rows : []);
+      if (scanlogData) {
+        setScanlogQueue(scanlogData?.queue || { concurrency: 1, active: 0, pending: 0 });
+        setMigrationFlags(scanlogData?.migration || null);
+        setScanlogRows(Array.isArray(scanlogData?.rows) ? scanlogData.rows : []);
+      } else {
+        setScanlogRows([]);
+      }
+
+      if (machineData) {
+        setMachineQueue(machineData?.queue || { concurrency: 1, active: 0, pending: 0 });
+        setMachineRows(Array.isArray(machineData?.rows) ? machineData.rows : []);
+      } else {
+        setMachineRows([]);
+      }
+
       setPendingReviewCount(pendingReviews);
       setError('');
     } catch (fetchError) {
-      setError(fetchError?.message || 'Failed to load ops status');
+      setError(
+        fetchError?.message || getUIText('rightOpsSidebar.errors.fetchFailed', resolvedLocale)
+      );
     } finally {
       setLoading(false);
     }
-  }, [isAdmin]);
+  }, [isAdmin, needsMachineDetails, needsScanlogDetails, resolvedLocale]);
+
+  const toggleSection = useCallback((key) => {
+    setExpandedSections((previous) => ({
+      ...previous,
+      [key]: !previous[key],
+    }));
+  }, []);
 
   useEffect(() => {
     if (!isAdmin) return;
@@ -133,81 +215,172 @@ export default function RightOpsSidebar({ currentUser }) {
   if (!isAdmin) return null;
 
   return (
-    <aside className="app-right-sidebar fixed inset-y-0 right-0 z-30 hidden w-80 flex-col border-l border-border bg-card/95 p-4 backdrop-blur xl:flex">
-      <div className="mb-4 flex items-center justify-between gap-2 border-b border-border pb-3">
-        <div className="min-w-0">
+    <aside
+      className={cn(
+        'app-right-sidebar fixed inset-y-0 right-0 z-30 hidden flex-col border-l border-border bg-card/95 backdrop-blur transition-all duration-300 xl:flex',
+        collapsed ? 'w-16 p-2' : 'w-80 p-4'
+      )}
+      aria-label="Admin operations sidebar"
+    >
+      <div
+        className={cn(
+          'mb-4 flex items-center gap-2 border-b border-border pb-3',
+          collapsed ? 'justify-center' : 'justify-between'
+        )}
+      >
+        <div className={cn('min-w-0', collapsed && 'sr-only')}>
           <p className="flex items-center gap-2 text-sm font-semibold text-card-foreground">
-            <ShieldCheck className="h-4 w-4 text-teal-400" /> Admin Ops
+            <ShieldCheck className="h-4 w-4 text-teal-400" /> {t('rightOpsSidebar.title')}
           </p>
-          <p className="text-[11px] text-muted-foreground">Queue monitor + review alerts</p>
+          <p className="text-[11px] text-muted-foreground">{t('rightOpsSidebar.subtitle')}</p>
         </div>
-        <button
-          type="button"
-          onClick={() => void refreshData()}
-          className="rounded-lg border border-border bg-background/70 p-2 text-muted-foreground transition-colors hover:text-foreground"
-          aria-label="Refresh right sidebar"
-        >
-          <RefreshCw className={cn('h-4 w-4', loading && 'animate-spin')} />
-        </button>
+
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => void refreshData()}
+            className="ui-btn-secondary min-h-0 p-2"
+            aria-label="Refresh right sidebar"
+          >
+            <RefreshCw className={cn('h-4 w-4', loading && 'animate-spin')} />
+          </button>
+          <button
+            type="button"
+            onClick={() => onToggle?.()}
+            className="ui-btn-secondary min-h-0 p-2"
+            aria-label={collapsed ? 'Expand right sidebar' : 'Collapse right sidebar'}
+            aria-expanded={!collapsed}
+          >
+            {collapsed ? <ChevronLeft className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+          </button>
+        </div>
       </div>
 
       <Link
         href="/attendance/review"
-        className="mb-4 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-amber-100 transition-colors hover:bg-amber-500/15"
+        className={cn(
+          'mb-4 rounded-xl border border-amber-500/30 bg-amber-500/10 text-amber-100 transition-colors hover:bg-amber-500/15',
+          collapsed ? 'p-2' : 'p-3'
+        )}
+        aria-label={getUIText('rightOpsSidebar.reviewAria', resolvedLocale).replace(
+          '{{pending}}',
+          String(pendingReviewCount)
+        )}
       >
-        <div className="flex items-center justify-between gap-2">
+        <div
+          className={cn(
+            'flex items-center gap-2',
+            collapsed ? 'justify-center' : 'justify-between'
+          )}
+        >
           <div className="flex items-center gap-2">
-            <Bell className="h-4 w-4" />
-            <p className="text-xs font-semibold">Punch-time reviews</p>
+            <Bell className={cn('h-4 w-4', pendingReviewCount > 0 && 'bell-ring-subtle')} />
+            {!collapsed ? (
+              <p className="text-xs font-semibold">{t('rightOpsSidebar.reviewTitle')}</p>
+            ) : null}
           </div>
           <span className="rounded-full border border-amber-300/40 px-2 py-0.5 text-[10px] font-semibold">
             {pendingReviewCount}
           </span>
         </div>
-        <p className="mt-1 flex items-center gap-1 text-[11px] text-amber-200/90">
-          <Clock3 className="h-3 w-3" />
-          Rows that need review today
-        </p>
+        {!collapsed ? (
+          <p className="mt-1 flex items-center gap-1 text-[11px] text-amber-200/90">
+            <Clock3 className="h-3 w-3" />
+            {t('rightOpsSidebar.reviewHint')}
+          </p>
+        ) : null}
       </Link>
 
       {error && (
-        <div className="mb-3 rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-200">
-          {error}
+        <div
+          className={cn(
+            'mb-3 rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-200',
+            collapsed && 'px-2 py-1 text-[10px]'
+          )}
+        >
+          {collapsed ? '!' : error}
         </div>
       )}
 
-      <div className="space-y-4 overflow-y-auto pb-4">
-        <section className="rounded-xl border border-border bg-background/40 p-3">
-          <div className="mb-2 flex items-center justify-between gap-2">
-            <p className="text-xs font-semibold text-foreground">Scanlog Queue</p>
-            <p className="text-[10px] text-muted-foreground">
-              Active {scanlogQueue.active}/{scanlogQueue.concurrency} · Pending{' '}
-              {scanlogQueue.pending}
-            </p>
-          </div>
-          <QueueList rows={scanlogRows} emptyLabel="No scanlog jobs" />
-        </section>
+      {!collapsed ? (
+        <div className="space-y-4 overflow-y-auto pb-4">
+          <LazyAccordionSection
+            id="scanlog-queue-panel"
+            title={t('rightOpsSidebar.sections.scanlog')}
+            summary={getUIText('rightOpsSidebar.queueSummary', resolvedLocale)
+              .replace('{{active}}', String(scanlogQueue.active))
+              .replace('{{concurrency}}', String(scanlogQueue.concurrency))
+              .replace('{{pending}}', String(scanlogQueue.pending))}
+            open={expandedSections.scanlog}
+            onToggle={() => toggleSection('scanlog')}
+          >
+            <QueueList
+              rows={scanlogRows}
+              emptyLabel={t('rightOpsSidebar.empty.scanlog')}
+              showMoreLabel={t('rightOpsSidebar.actions.showMore')}
+            />
+          </LazyAccordionSection>
 
-        <section className="rounded-xl border border-border bg-background/40 p-3">
-          <div className="mb-2 flex items-center justify-between gap-2">
-            <p className="text-xs font-semibold text-foreground">Machine Queue</p>
-            <p className="text-[10px] text-muted-foreground">
-              Active {machineQueue.active}/{machineQueue.concurrency} · Pending{' '}
-              {machineQueue.pending}
-            </p>
-          </div>
-          <QueueList rows={machineRows} emptyLabel="No machine jobs" />
-        </section>
+          <LazyAccordionSection
+            id="migration-gates-panel"
+            title={t('rightOpsSidebar.sections.migration')}
+            summary={
+              migrationFlags?.compatibilityFirst?.runtimeDefaulted
+                ? t('rightOpsSidebar.migration.compatibilityFirst')
+                : t('rightOpsSidebar.migration.flagOverride')
+            }
+            open={expandedSections.migration}
+            onToggle={() => toggleSection('migration')}
+          >
+            <div className="grid grid-cols-1 gap-2 text-[11px] text-muted-foreground">
+              <div className="rounded-lg border border-border bg-background/60 px-2 py-1">
+                {t('rightOpsSidebar.migration.policy')}:{' '}
+                {migrationFlags?.flags?.policySource?.mode || 'legacy'}
+              </div>
+              <div className="rounded-lg border border-border bg-background/60 px-2 py-1">
+                {t('rightOpsSidebar.migration.dataSource')}:{' '}
+                {migrationFlags?.flags?.dataSourceCutover?.mode || 'legacy_only'}
+              </div>
+              <div className="rounded-lg border border-border bg-background/60 px-2 py-1">
+                {t('rightOpsSidebar.migration.machineParity')}:{' '}
+                {migrationFlags?.flags?.machineParityExposure?.mode || 'off'}
+              </div>
+              <div className="rounded-lg border border-border bg-background/60 px-2 py-1">
+                {t('rightOpsSidebar.migration.reporting')}:{' '}
+                {migrationFlags?.flags?.reportingInteraction?.mode || 'legacy'}
+              </div>
+            </div>
+          </LazyAccordionSection>
 
-        <details className="rounded-xl border border-border bg-background/30 p-3">
-          <summary className="cursor-pointer text-xs font-semibold text-muted-foreground">
-            Admin JSON preview
-          </summary>
-          <pre className="mt-2 max-h-56 overflow-auto rounded-lg border border-border bg-background p-2 text-[11px] text-foreground">
-            {JSON.stringify(debugPreview, null, 2)}
-          </pre>
-        </details>
-      </div>
+          <LazyAccordionSection
+            id="machine-queue-panel"
+            title={t('rightOpsSidebar.sections.machine')}
+            summary={getUIText('rightOpsSidebar.queueSummary', resolvedLocale)
+              .replace('{{active}}', String(machineQueue.active))
+              .replace('{{concurrency}}', String(machineQueue.concurrency))
+              .replace('{{pending}}', String(machineQueue.pending))}
+            open={expandedSections.machine}
+            onToggle={() => toggleSection('machine')}
+          >
+            <QueueList
+              rows={machineRows}
+              emptyLabel={t('rightOpsSidebar.empty.machine')}
+              showMoreLabel={t('rightOpsSidebar.actions.showMore')}
+            />
+          </LazyAccordionSection>
+
+          <LazyAccordionSection
+            id="admin-preview-panel"
+            title={t('rightOpsSidebar.sections.preview')}
+            open={expandedSections.preview}
+            onToggle={() => toggleSection('preview')}
+          >
+            <pre className="max-h-56 overflow-auto rounded-lg border border-border bg-background p-2 text-[11px] text-foreground">
+              {JSON.stringify(debugPreview, null, 2)}
+            </pre>
+          </LazyAccordionSection>
+        </div>
+      ) : null}
     </aside>
   );
 }

@@ -142,21 +142,45 @@ export default function ScheduleGrid({
     const todayIndex = dates.findIndex((date) => formatIsoDate(date) === today);
     if (todayIndex < 0) return;
 
-    const scrollTarget = employeeColWidth + todayIndex * dayColWidth - holder.clientWidth * 0.35;
-    holder.scrollLeft = Math.max(0, scrollTarget);
+    const prefersReducedMotion =
+      typeof window !== 'undefined' &&
+      typeof window.matchMedia === 'function' &&
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    const alignToToday = (behavior = 'auto') => {
+      const scrollTarget = employeeColWidth + todayIndex * dayColWidth - holder.clientWidth * 0.35;
+      holder.scrollTo({
+        left: Math.max(0, scrollTarget),
+        behavior,
+      });
+    };
+
+    let frameTwo = 0;
+    alignToToday('auto');
+    const frameOne = window.requestAnimationFrame(() => {
+      alignToToday(prefersReducedMotion ? 'auto' : 'smooth');
+      frameTwo = window.requestAnimationFrame(() => {
+        alignToToday('auto');
+      });
+    });
+
+    return () => {
+      window.cancelAnimationFrame(frameOne);
+      if (frameTwo) window.cancelAnimationFrame(frameTwo);
+    };
   }, [dates, dayColWidth, today]);
 
   return (
     <TableShell innerClassName="overflow-x-auto" bodyRef={tableRef}>
-      <div className="border-b border-slate-800 px-4 py-3 text-xs text-slate-300">
-        <span className="font-semibold text-white">Selected Group:</span>{' '}
-        <span className="text-teal-300">{selectedGroupLabel || 'All Groups'}</span>
+      <div className="border-b border-border px-4 py-3 text-xs text-muted-foreground">
+        <span className="font-semibold text-foreground">Selected Group:</span>{' '}
+        <span className="text-primary">{selectedGroupLabel || 'All Groups'}</span>
       </div>
       <table className="w-full text-sm" style={{ minWidth: `${tableMinWidth}px` }}>
-        <thead className="sticky top-0 z-30 bg-slate-900">
-          <tr className="border-b border-slate-800">
+        <thead className="sticky top-0 z-30">
+          <tr className="border-b border-border bg-background/75 supports-[backdrop-filter]:bg-background/60 supports-[backdrop-filter]:backdrop-blur-md">
             <th
-              className="sticky left-0 z-40 bg-slate-900 px-4 py-3 text-left text-xs font-medium text-slate-500"
+              className="sticky left-0 z-40 border-r border-border/70 bg-background/85 px-4 py-3 text-left text-xs font-medium text-muted-foreground supports-[backdrop-filter]:bg-background/65 supports-[backdrop-filter]:backdrop-blur-md"
               style={{ width: `${employeeColWidth}px`, minWidth: `${employeeColWidth}px` }}
             >
               Employee
@@ -173,25 +197,25 @@ export default function ScheduleGrid({
                   key={iso}
                   className={`px-2 py-3 text-center text-xs font-medium ${
                     holiday
-                      ? 'bg-rose-500/10 text-rose-300'
+                      ? 'bg-rose-500/15 text-rose-700 dark:text-rose-300'
                       : isSunday
-                        ? 'bg-rose-500/5 text-rose-300'
+                        ? 'bg-rose-500/10 text-rose-700/90 dark:text-rose-300'
                         : isFriday
-                          ? 'bg-emerald-500/10 text-emerald-300'
+                          ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
                           : isToday
-                            ? 'bg-cyan-500/10 text-cyan-300'
-                            : 'text-slate-500'
+                            ? 'bg-cyan-500/15 text-cyan-700 dark:text-cyan-300'
+                            : 'text-muted-foreground'
                   }`}
                   style={{ width: `${dayColWidth}px`, minWidth: `${dayColWidth}px` }}
                 >
                   <div>{dayLabel(date)}</div>
                   <div
-                    className={`mt-0.5 font-mono text-base ${isToday ? 'text-cyan-300' : 'text-slate-300'}`}
+                    className={`mt-0.5 font-mono text-base ${isToday ? 'text-cyan-700 dark:text-cyan-300' : 'text-foreground'}`}
                   >
                     {date.getDate()}
                   </div>
                   {holiday && (
-                    <div className="mt-1 line-clamp-2 text-[10px] font-normal text-rose-200">
+                    <div className="mt-1 line-clamp-2 text-[10px] font-normal text-rose-700/90 dark:text-rose-200">
                       {holiday.name}
                     </div>
                   )}
@@ -201,7 +225,7 @@ export default function ScheduleGrid({
           </tr>
         </thead>
 
-        <tbody className="divide-y divide-slate-800/40">
+        <tbody className="divide-y divide-border/60">
           {loading ? (
             <TableLoadingRow colSpan={colSpan} />
           ) : employees.length === 0 ? (
@@ -218,24 +242,24 @@ export default function ScheduleGrid({
 
               return (
                 <tr key={employee.id} className="data-row">
-                  <td className="sticky left-0 z-20 bg-slate-950 px-4 py-2">
+                  <td className="sticky left-0 z-20 border-r border-border/60 bg-background/90 px-4 py-2 supports-[backdrop-filter]:bg-background/75 supports-[backdrop-filter]:backdrop-blur-md">
                     <Link
                       href={`/employees/${employee.id}`}
-                      className="text-sm font-medium text-white hover:text-teal-300 transition-colors"
+                      className="text-sm font-medium text-foreground transition-colors hover:text-primary"
                     >
                       {employee.nama}
                     </Link>
-                    <div className="font-mono text-xs text-slate-600">
+                    <div className="font-mono text-xs text-muted-foreground/80">
                       PIN {employee.pin || '-'}
                     </div>
-                    <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] text-slate-500">
+                    <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] text-muted-foreground">
                       <span>Shifted: {metrics.shifted_days}d</span>
                       <span>Done: {metrics.done_hours.toFixed(1)}h</span>
                       <span>Pending: {metrics.pending_hours.toFixed(1)}h</span>
                       <span>Future: {metrics.future_hours.toFixed(1)}h</span>
                     </div>
                     {employee.nama_group && (
-                      <div className="mt-0.5 text-xs text-teal-500/70">{employee.nama_group}</div>
+                      <div className="mt-0.5 text-xs text-primary/80">{employee.nama_group}</div>
                     )}
                   </td>
 
@@ -257,15 +281,15 @@ export default function ScheduleGrid({
                     const anomalyStatus = anomalyByKey?.get(`${employee.id}|${dateString}`) || null;
 
                     const bgClass = holiday
-                      ? 'bg-rose-500/10'
+                      ? 'bg-rose-500/12'
                       : isSunday
-                        ? 'bg-rose-500/5'
+                        ? 'bg-rose-500/10'
                         : isFriday
-                          ? 'bg-emerald-500/5'
+                          ? 'bg-emerald-500/10'
                           : isPaidLeave
-                            ? 'bg-sky-500/5'
+                            ? 'bg-sky-500/10'
                             : isToday
-                              ? 'bg-cyan-950/30'
+                              ? 'bg-cyan-500/10 dark:bg-cyan-500/15'
                               : '';
 
                     return (

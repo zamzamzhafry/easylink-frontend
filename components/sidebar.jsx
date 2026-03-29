@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { usePathname } from 'next/navigation';
 import {
   BarChart3,
@@ -11,6 +11,7 @@ import {
   Crown,
   DatabaseZap,
   Fingerprint,
+  Languages,
   LayersIcon,
   LayoutDashboard,
   LogOut,
@@ -27,54 +28,8 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import SettingsModal from '@/components/settings/settings-modal';
-
-const navSections = [
-  {
-    key: 'overview',
-    label: 'Overview',
-    items: [{ href: '/', label: 'Dashboard', icon: LayoutDashboard, auth: 'all' }],
-  },
-  {
-    key: 'planning',
-    label: 'Planning & Attendance',
-    items: [
-      { href: '/schedule', label: 'Schedule', icon: CalendarRange, auth: 'schedule' },
-      { href: '/attendance', label: 'Absensi', icon: CalendarClock, auth: 'member' },
-      {
-        href: '/attendance/review',
-        label: 'Attendance Review',
-        icon: CalendarClock,
-        auth: 'member',
-      },
-      { href: '/performance', label: 'Performance', icon: BarChart3, auth: 'dashboard' },
-    ],
-  },
-  {
-    key: 'master',
-    label: 'Master Data',
-    items: [
-      { href: '/employees', label: 'Employees', icon: Users, auth: 'admin' },
-      { href: '/groups', label: 'Groups', icon: LayersIcon, auth: 'admin' },
-      { href: '/shifts', label: 'Shift Maker', icon: Timer, auth: 'admin' },
-      { href: '/users', label: 'Users', icon: UserCog, auth: 'admin' },
-      { href: '/scanlog', label: 'Scan Log', icon: DatabaseZap, auth: 'admin' },
-      { href: '/machine', label: 'Machine Connect', icon: PlugZap, auth: 'admin' },
-    ],
-  },
-];
-
-function canSeeNav(user, authType) {
-  if (!user) return authType === 'all';
-  if (user.is_admin) return true;
-  if (authType === 'all') return true;
-  // 'member': any approved group access (can_schedule OR can_dashboard)
-  if (authType === 'member') return Boolean(user.can_schedule || user.can_dashboard);
-  // 'schedule': can view schedule (leader or can_schedule)
-  if (authType === 'schedule') return Boolean(user.can_schedule);
-  // 'dashboard': performance view
-  if (authType === 'dashboard') return Boolean(user.can_dashboard);
-  return false;
-}
+import { canSeeNavItem } from '@/lib/authz/authorization-adapter';
+import { getUIText } from '@/lib/localization/ui-texts';
 
 export default function Sidebar({
   collapsed = false,
@@ -82,8 +37,66 @@ export default function Sidebar({
   currentUser = null,
   theme = 'dark',
   onThemeToggle,
+  locale = 'en',
+  onLocaleChange,
 }) {
   const path = usePathname();
+  const resolvedLocale = locale === 'id' ? 'id' : 'en';
+  const t = useCallback((path) => getUIText(path, resolvedLocale), [resolvedLocale]);
+  const navSections = useMemo(
+    () => [
+      {
+        key: 'overview',
+        label: t('sidebar.sections.overview'),
+        items: [
+          { href: '/', label: t('sidebar.items.dashboard'), icon: LayoutDashboard, auth: 'all' },
+        ],
+      },
+      {
+        key: 'planning',
+        label: t('sidebar.sections.planning'),
+        items: [
+          {
+            href: '/schedule',
+            label: t('sidebar.items.schedule'),
+            icon: CalendarRange,
+            auth: 'schedule',
+          },
+          {
+            href: '/attendance',
+            label: t('sidebar.items.attendance'),
+            icon: CalendarClock,
+            auth: 'member',
+          },
+          {
+            href: '/attendance/review',
+            label: t('sidebar.items.attendanceReview'),
+            icon: CalendarClock,
+            auth: 'member',
+          },
+          {
+            href: '/performance',
+            label: t('sidebar.items.performance'),
+            icon: BarChart3,
+            auth: 'dashboard',
+          },
+        ],
+      },
+      {
+        key: 'master',
+        label: t('sidebar.sections.master'),
+        items: [
+          { href: '/employees', label: t('sidebar.items.employees'), icon: Users, auth: 'admin' },
+          { href: '/groups', label: t('sidebar.items.groups'), icon: LayersIcon, auth: 'admin' },
+          { href: '/shifts', label: t('sidebar.items.shifts'), icon: Timer, auth: 'admin' },
+          { href: '/users', label: t('sidebar.items.users'), icon: UserCog, auth: 'admin' },
+          { href: '/scanlog', label: t('sidebar.items.scanlog'), icon: DatabaseZap, auth: 'admin' },
+          { href: '/machine', label: t('sidebar.items.machine'), icon: PlugZap, auth: 'admin' },
+        ],
+      },
+    ],
+    [t]
+  );
   const [openSections, setOpenSections] = useState({
     overview: true,
     planning: true,
@@ -95,10 +108,10 @@ export default function Sidebar({
     return navSections
       .map((section) => ({
         ...section,
-        items: section.items.filter((item) => canSeeNav(currentUser, item.auth)),
+        items: section.items.filter((item) => canSeeNavItem(currentUser, item.auth)),
       }))
       .filter((section) => section.items.length > 0);
-  }, [currentUser]);
+  }, [currentUser, navSections]);
 
   const logout = async () => {
     try {
@@ -121,7 +134,9 @@ export default function Sidebar({
           type="button"
           onClick={onToggle}
           className="app-sidebar-toggle inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-700 text-slate-300 transition-colors hover:border-slate-500 hover:text-white"
-          title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          title={
+            collapsed ? t('sidebar.actions.expandSidebar') : t('sidebar.actions.collapseSidebar')
+          }
         >
           {collapsed ? (
             <PanelLeftOpen className="h-4 w-4" />
@@ -140,7 +155,7 @@ export default function Sidebar({
           <span className="text-sm font-semibold leading-tight text-white">
             EasyLink
             <br />
-            <span className="text-base font-bold text-teal-400">Absensi</span>
+            <span className="text-base font-bold text-teal-400">{t('sidebar.brand.subtitle')}</span>
           </span>
         </div>
 
@@ -237,10 +252,10 @@ export default function Sidebar({
             'app-sidebar-settings mb-2 flex w-full items-center rounded-lg border border-slate-700 px-2.5 py-2 text-xs text-slate-300 transition-colors hover:border-slate-500 hover:text-white',
             collapsed ? 'justify-center' : 'gap-2'
           )}
-          title="Settings"
+          title={t('sidebar.actions.settings')}
         >
           <Settings className="h-3.5 w-3.5 shrink-0" />
-          {!collapsed && 'Settings'}
+          {!collapsed && t('sidebar.actions.settings')}
         </button>
         <button
           type="button"
@@ -249,15 +264,73 @@ export default function Sidebar({
             'app-sidebar-theme-btn mb-2 flex w-full items-center rounded-lg border border-slate-700 px-2.5 py-2 text-xs text-slate-300 transition-colors hover:border-slate-500 hover:text-white',
             collapsed ? 'justify-center' : 'gap-2'
           )}
-          title={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}
+          title={
+            theme === 'dark'
+              ? t('sidebar.actions.switchToLightMode')
+              : t('sidebar.actions.switchToDarkMode')
+          }
         >
           {theme === 'dark' ? (
             <Sun className="h-3.5 w-3.5 shrink-0 text-amber-300" />
           ) : (
             <Moon className="h-3.5 w-3.5 shrink-0 text-teal-500" />
           )}
-          {!collapsed && (theme === 'dark' ? 'Light Mode' : 'Dark Mode')}
+          {!collapsed &&
+            (theme === 'dark' ? t('sidebar.actions.lightMode') : t('sidebar.actions.darkMode'))}
         </button>
+        <div
+          className={cn(
+            'app-sidebar-locale mb-2 rounded-lg border border-slate-700 bg-slate-900/70 p-1',
+            collapsed ? 'flex justify-center' : ''
+          )}
+        >
+          {collapsed ? (
+            <button
+              type="button"
+              onClick={() => onLocaleChange?.(resolvedLocale === 'en' ? 'id' : 'en')}
+              className="inline-flex h-7 min-w-10 items-center justify-center rounded-md border border-slate-600 px-2 text-[10px] font-semibold tracking-wide text-slate-200 transition-colors hover:border-slate-400 hover:text-white"
+              title={
+                resolvedLocale === 'en'
+                  ? t('sidebar.locale.switchToBahasa')
+                  : t('sidebar.locale.switchToEnglish')
+              }
+            >
+              {resolvedLocale.toUpperCase()}
+            </button>
+          ) : (
+            <div className="flex items-center gap-1">
+              <span className="inline-flex h-7 w-7 items-center justify-center rounded-md text-slate-400">
+                <Languages className="h-3.5 w-3.5" />
+              </span>
+              <button
+                type="button"
+                onClick={() => onLocaleChange?.('en')}
+                className={cn(
+                  'h-7 rounded-md px-2 text-[10px] font-semibold tracking-wide transition-colors',
+                  resolvedLocale === 'en'
+                    ? 'bg-teal-500/20 text-teal-300'
+                    : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200'
+                )}
+                title={t('sidebar.locale.switchToEnglish')}
+              >
+                EN
+              </button>
+              <button
+                type="button"
+                onClick={() => onLocaleChange?.('id')}
+                className={cn(
+                  'h-7 rounded-md px-2 text-[10px] font-semibold tracking-wide transition-colors',
+                  resolvedLocale === 'id'
+                    ? 'bg-teal-500/20 text-teal-300'
+                    : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200'
+                )}
+                title={t('sidebar.locale.switchToBahasa')}
+              >
+                ID
+              </button>
+            </div>
+          )}
+        </div>
 
         {currentUser && !collapsed && (
           <div className="app-sidebar-userbox mb-2 rounded-lg border border-slate-800 bg-slate-950/70 px-3 py-2">
@@ -265,15 +338,15 @@ export default function Sidebar({
             <div className="mt-0.5 inline-flex items-center gap-1 text-[11px] text-slate-500">
               {currentUser.is_admin ? (
                 <>
-                  <ShieldCheck className="h-3 w-3" /> Admin
+                  <ShieldCheck className="h-3 w-3" /> {t('sidebar.roles.admin')}
                 </>
               ) : currentUser.is_leader ? (
                 <>
-                  <Crown className="h-3 w-3 text-amber-400" /> Group Leader
+                  <Crown className="h-3 w-3 text-amber-400" /> {t('sidebar.roles.groupLeader')}
                 </>
               ) : (
                 <>
-                  <ShieldCheck className="h-3 w-3" /> Member
+                  <ShieldCheck className="h-3 w-3" /> {t('sidebar.roles.member')}
                 </>
               )}
             </div>
@@ -288,11 +361,11 @@ export default function Sidebar({
           )}
         >
           <LogOut className="h-3.5 w-3.5 shrink-0" />
-          {!collapsed && 'Logout'}
+          {!collapsed && t('sidebar.actions.logout')}
         </button>
 
         <div className={cn('mt-3 text-xs text-slate-600', collapsed ? 'text-center' : '')}>
-          {collapsed ? 'v1.2' : 'demo_easylinksdk | v1.2'}
+          {collapsed ? t('sidebar.version.short') : t('sidebar.version.full')}
         </div>
       </div>
 

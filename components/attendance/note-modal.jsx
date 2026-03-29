@@ -1,10 +1,20 @@
 'use client';
 
 import { useMemo, useState } from 'react';
+import { useAppLocale } from '@/components/app-shell';
 import ModalShell from '@/components/ui/modal-shell';
 import { STATUS_MAP } from '@/lib/attendance-helpers';
+import { getUIText } from '@/lib/localization/ui-texts';
+
+const labelClass = 'mb-1 block ui-control-label';
+const inputClass = 'ui-control-input min-h-0 text-sm';
+const selectClass = 'ui-control-select min-h-0 text-sm';
+const checkboxClass = 'ui-control-check';
 
 export default function NoteModal({ row, onClose, onSave }) {
+  const { locale } = useAppLocale();
+  const resolvedLocale = locale === 'id' ? 'id' : 'en';
+  const t = (path) => getUIText(path, resolvedLocale);
   const [status, setStatus] = useState(row.note_status || row.computed_status || 'normal');
   const [catatan, setCatatan] = useState(row.note_catatan || '');
   const [manualHours, setManualHours] = useState(
@@ -36,17 +46,22 @@ export default function NoteModal({ row, onClose, onSave }) {
   };
 
   return (
-    <ModalShell title="Edit Catatan" subtitle={subtitle} onClose={onClose} maxWidth="max-w-md">
+    <ModalShell
+      title={t('attendancePage.noteModal.title')}
+      subtitle={subtitle}
+      onClose={onClose}
+      maxWidth="max-w-md"
+    >
       <div className="space-y-4">
         <div>
-          <label htmlFor="note-status" className="mb-1 block text-xs text-slate-400">
-            Status
+          <label htmlFor="note-status" className={labelClass}>
+            {t('attendancePage.noteModal.status')}
           </label>
           <select
             id="note-status"
             value={status}
             onChange={(event) => setStatus(event.target.value)}
-            className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-white focus:border-teal-500 focus:outline-none"
+            className={selectClass}
           >
             {Object.entries(STATUS_MAP).map(([key, value]) => (
               <option key={key} value={key}>
@@ -57,23 +72,23 @@ export default function NoteModal({ row, onClose, onSave }) {
         </div>
 
         <div>
-          <label htmlFor="note-catatan" className="mb-1 block text-xs text-slate-400">
-            Catatan / Keterangan
+          <label htmlFor="note-catatan" className={labelClass}>
+            {t('attendancePage.noteModal.noteLabel')}
           </label>
           <textarea
             id="note-catatan"
             rows={3}
             value={catatan}
             onChange={(event) => setCatatan(event.target.value)}
-            placeholder="Contoh: izin dokter, tugas luar kota..."
-            className="w-full resize-none rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-white focus:border-teal-500 focus:outline-none"
+            placeholder={t('attendancePage.noteModal.notePlaceholder')}
+            className={`${inputClass} resize-none`}
           />
         </div>
 
         <div className="grid gap-3 md:grid-cols-2">
           <div>
-            <label htmlFor="note-manual-hours" className="mb-1 block text-xs text-slate-400">
-              Manual Hours
+            <label htmlFor="note-manual-hours" className={labelClass}>
+              {t('attendancePage.noteModal.manualHours')}
             </label>
             <input
               id="note-manual-hours"
@@ -82,37 +97,33 @@ export default function NoteModal({ row, onClose, onSave }) {
               step="0.5"
               value={manualHours}
               onChange={(event) => setManualHours(event.target.value)}
-              placeholder="e.g. 8"
-              className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-white focus:border-teal-500 focus:outline-none"
+              placeholder={t('attendancePage.noteModal.manualHoursPlaceholder')}
+              className={inputClass}
             />
           </div>
-          <label className="mt-6 inline-flex items-center gap-2 text-xs text-slate-300">
+          <label className="mt-6 inline-flex items-center gap-2 text-xs text-muted-foreground">
             <input
               type="checkbox"
               checked={manualApproved}
               onChange={(event) => setManualApproved(event.target.checked)}
-              className="h-4 w-4 rounded border-slate-600 bg-slate-900 text-teal-500"
+              className={checkboxClass}
             />
-            Approve manual hours override
+            {t('attendancePage.noteModal.approveOverride')}
           </label>
         </div>
       </div>
 
       <div className="mt-5 flex gap-2">
-        <button
-          type="button"
-          onClick={onClose}
-          className="flex-1 rounded-lg border border-slate-700 px-4 py-2 text-sm text-slate-400 transition-colors hover:text-white"
-        >
-          Cancel
+        <button type="button" onClick={onClose} className="ui-btn-secondary flex-1">
+          {t('attendancePage.noteModal.cancel')}
         </button>
         <button
           type="button"
           onClick={save}
           disabled={saving}
-          className="flex-1 rounded-lg bg-teal-500 px-4 py-2 text-sm font-semibold text-slate-900 transition-colors hover:bg-teal-400 disabled:opacity-50"
+          className="ui-btn-primary flex-1 disabled:opacity-50"
         >
-          {saving ? 'Saving...' : 'Save'}
+          {saving ? t('attendancePage.noteModal.saving') : t('attendancePage.noteModal.save')}
         </button>
       </div>
     </ModalShell>

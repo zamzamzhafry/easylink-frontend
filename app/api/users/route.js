@@ -11,8 +11,145 @@ import {
   parsePaginationParams,
 } from '@/lib/pagination';
 
+const IDENTIFIER_PATTERN = /^[A-Za-z0-9._-]{1,50}$/;
+
+function normalizeIdentifier(value) {
+  const normalized = String(value ?? '').trim();
+  return normalized || null;
+}
+
+function isValidIdentifier(value) {
+  if (!value) return true;
+  return IDENTIFIER_PATTERN.test(value);
+}
+
+function privilegeToCanonicalRole(privilege) {
+  return Number(privilege ?? 0) >= 14 ? 'admin' : 'employee';
+}
+
+async function upsertIdentificationMethod(connection, { employeeId, methodType, methodValue }) {
+  if (!methodValue) return;
+
+  await connection.query(
+    `UPDATE cs_employee_identification_methods
+     SET is_primary = 0
+     WHERE employee_id = ?
+       AND method_type = ?
+       AND method_value <> ?
+       AND valid_to IS NULL`,
+    [employeeId, methodType, methodValue]
+  );
+
+  await connection.query(
+    `INSERT INTO cs_employee_identification_methods
+      (employee_id, method_type, method_value, is_primary, is_verified, source_system, valid_from)
+     VALUES (?, ?, ?, 1, 1, 'users-api', NOW())
+     ON DUPLICATE KEY UPDATE
+      is_primary = 1,
+      is_verified = 1,
+      source_system = VALUES(source_system),
+      valid_to = NULL,
+      updated_at = CURRENT_TIMESTAMP`,
+    [employeeId, methodType, methodValue]
+  );
+}
+
+async function resolveCanonicalIdentityByPin(connection, pin) {
+  const [rows] = await connection.query(
+    `SELECT
+       ai.employee_id,
+       ai.login_nip,
+       k.pin AS karyawan_pin
+     FROM cs_employee_auth_identity ai
+     JOIN tb_karyawan k ON k.id = ai.employee_id
+     WHERE ai.login_nip = ?
+        OR k.pin = ?
+        OR EXISTS (
+          SELECT 1
+          FROM cs_employee_identification_methods m
+          WHERE m.employee_id = ai.employee_id
+            AND m.method_type = 'pin'
+            AND m.valid_to IS NULL
+            AND m.method_value = ?
+        )
+     LIMIT 1`,
+    [pin, pin, pin]
+  );
+
+  return Array.isArray(rows) && rows.length > 0 ? rows[0] : null;
+}
+
+async function ensureEmployeeByPin(connection, { pin, nama }) {
+  const [rows] = await connection.query(
+    'SELECT id FROM tb_karyawan WHERE pin = ? OR nip = ? LIMIT 1',
+    [pin, pin]
+  );
+  if (Array.isArray(rows) && rows.length > 0) {
+    const employeeId = Number(rows[0].id);
+    await connection.query(
+      "UPDATE tb_karyawan SET nama = COALESCE(NULLIF(?, ''), nama), pin = ? WHERE id = ?",
+      [nama, pin, employeeId]
+    );
+    return employeeId;
+  }
+
+  const [result] = await connection.query(
+    'INSERT INTO tb_karyawan (nama, pin, nip) VALUES (?, ?, ?)',
+    [nama, pin, pin]
+  );
+  return Number(result.insertId);
+}
+
+async function syncCanonicalGlobalRole(connection, { employeeId, privilege }) {
+  const roleKey = privilegeToCanonicalRole(privilege);
+
+  await connection.query(
+    `UPDATE cs_employee_role_bindings
+     SET is_active = CASE WHEN role_key = ? THEN 1 ELSE 0 END,
+         ends_at = CASE WHEN role_key = ? THEN NULL ELSE COALESCE(ends_at, NOW()) END,
+         grant_source = 'users-api',
+         updated_at = CURRENT_TIMESTAMP
+     WHERE employee_id = ?
+       AND scope_type = 'global'
+       AND scope_group_id IS NULL
+       AND role_key IN ('admin', 'employee')`,
+    [roleKey, roleKey, employeeId]
+  );
+
+  const [rows] = await connection.query(
+    `SELECT id
+     FROM cs_employee_role_bindings
+     WHERE employee_id = ?
+       AND role_key = ?
+       AND scope_type = 'global'
+       AND scope_group_id IS NULL
+     LIMIT 1`,
+    [employeeId, roleKey]
+  );
+
+  if (Array.isArray(rows) && rows.length > 0) {
+    await connection.query(
+      `UPDATE cs_employee_role_bindings
+       SET is_active = 1,
+           ends_at = NULL,
+           grant_source = 'users-api',
+           updated_at = CURRENT_TIMESTAMP
+       WHERE id = ?`,
+      [rows[0].id]
+    );
+    return;
+  }
+
+  await connection.query(
+    `INSERT INTO cs_employee_role_bindings
+      (employee_id, role_key, scope_type, scope_group_id, grant_source, is_active)
+     VALUES (?, ?, 'global', NULL, 'users-api', 1)`,
+    [employeeId, roleKey]
+  );
+}
+
 // ─────────────────────────────────────────────
-// GET /api/users  — list all tb_user with scanlog counts + group access
+// GET /api/users  — canonical employee-auth identities + compatibility metadata
 // ─────────────────────────────────────────────
 export async function GET(request) {
   const auth = await getAuthContextFromCookies();
@@ -30,16 +167,51 @@ export async function GET(request) {
   const params = [];
 
   if (search) {
-    whereClauses.push('(u.pin LIKE ? OR u.nama LIKE ? OR u.rfid LIKE ?)');
-    params.push(`%${search}%`, `%${search}%`, `%${search}%`);
+    whereClauses.push(
+      '(base.pin LIKE ? OR base.nama LIKE ? OR base.rfid LIKE ? OR base.login_nip LIKE ?)'
+    );
+    params.push(`%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`);
   }
 
   const whereSQL = whereClauses.length ? `WHERE ${whereClauses.join(' AND ')}` : '';
+  const canonicalBaseSQL = `
+    FROM (
+      SELECT
+        ai.employee_id AS karyawan_id,
+        COALESCE(pin_method.method_value, k.pin, ai.login_nip) AS pin,
+        COALESCE(k.nama, u.nama, ai.login_nip) AS nama,
+        COALESCE(rfid_method.method_value, u.rfid) AS rfid,
+        ai.login_nip,
+        CASE WHEN admin_role.employee_id IS NULL THEN 0 ELSE 14 END AS privilege
+      FROM cs_employee_auth_identity ai
+      JOIN tb_karyawan k ON k.id = ai.employee_id
+      LEFT JOIN (
+        SELECT employee_id, MAX(method_value) AS method_value
+        FROM cs_employee_identification_methods
+        WHERE method_type = 'pin' AND valid_to IS NULL
+        GROUP BY employee_id
+      ) pin_method ON pin_method.employee_id = ai.employee_id
+      LEFT JOIN (
+        SELECT employee_id, MAX(method_value) AS method_value
+        FROM cs_employee_identification_methods
+        WHERE method_type = 'rfid' AND valid_to IS NULL
+        GROUP BY employee_id
+      ) rfid_method ON rfid_method.employee_id = ai.employee_id
+      LEFT JOIN tb_user u ON u.pin = COALESCE(pin_method.method_value, k.pin)
+      LEFT JOIN (
+        SELECT DISTINCT employee_id
+        FROM cs_employee_role_bindings
+        WHERE role_key = 'admin'
+          AND is_active = 1
+          AND (ends_at IS NULL OR ends_at >= NOW())
+      ) admin_role ON admin_role.employee_id = ai.employee_id
+    ) base
+  `;
 
   try {
     const [countRows] = await pool.query(
       `SELECT COUNT(*) AS total
-       FROM tb_user u
+       ${canonicalBaseSQL}
        ${whereSQL}`,
       params
     );
@@ -49,15 +221,14 @@ export async function GET(request) {
 
     const [rows] = await pool.query(
       `SELECT
-         u.pin,
-         u.nama,
-         u.rfid,
-         u.privilege,
-         k.id AS karyawan_id
-       FROM tb_user u
-      LEFT JOIN tb_karyawan k ON k.pin = u.pin
+         base.pin,
+         base.nama,
+         base.rfid,
+         base.privilege,
+         base.karyawan_id
+       ${canonicalBaseSQL}
        ${whereSQL}
-       ORDER BY u.nama, u.pin
+       ORDER BY base.nama, base.pin
        LIMIT ? OFFSET ?`,
       [...params, meta.limit, meta.offset]
     );
@@ -156,7 +327,7 @@ export async function GET(request) {
 }
 
 // ─────────────────────────────────────────────
-// POST /api/users  — create a new tb_user
+// POST /api/users  — create canonical identity + compatibility tb_user row
 // ─────────────────────────────────────────────
 export async function POST(request) {
   const auth = await getAuthContextFromCookies();
@@ -170,36 +341,112 @@ export async function POST(request) {
     return NextResponse.json({ ok: false, error: 'Invalid JSON' }, { status: 400 });
   }
 
-  const pin = String(body.pin ?? '').trim();
+  const pin = normalizeIdentifier(body.pin);
   const nama = String(body.nama ?? '').trim();
   const pwd = String(body.pwd ?? '').trim();
-  const rfid = String(body.rfid ?? '').trim();
+  const rfid = normalizeIdentifier(body.rfid);
+  const nip = normalizeIdentifier(body.nip) || pin;
   const privilege = Number(body.privilege ?? 0);
 
   if (!pin) return NextResponse.json({ ok: false, error: 'PIN is required' }, { status: 400 });
   if (!nama) return NextResponse.json({ ok: false, error: 'Name is required' }, { status: 400 });
   if (pin.length > 12)
     return NextResponse.json({ ok: false, error: 'PIN max 12 characters' }, { status: 400 });
-
-  // Check duplicate
-  const [existing] = await pool.query('SELECT pin FROM tb_user WHERE pin = ? LIMIT 1', [pin]);
-  if (Array.isArray(existing) && existing.length > 0) {
-    return NextResponse.json({ ok: false, error: `PIN ${pin} already exists` }, { status: 409 });
+  if (!isValidIdentifier(pin) || !isValidIdentifier(nip) || !isValidIdentifier(rfid)) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error: 'Identifiers must use only letters, numbers, dot, underscore, or dash.',
+      },
+      { status: 400 }
+    );
   }
 
-  await pool.query('INSERT INTO tb_user (pin, nama, pwd, rfid, privilege) VALUES (?, ?, ?, ?, ?)', [
-    pin,
-    nama,
-    pwd,
-    rfid,
-    privilege,
-  ]);
+  const connection = await pool.getConnection();
 
-  return NextResponse.json({ ok: true, pin });
+  try {
+    await connection.beginTransaction();
+
+    const existingCanonical = await resolveCanonicalIdentityByPin(connection, pin);
+    if (existingCanonical) {
+      await connection.rollback();
+      return NextResponse.json({ ok: false, error: `PIN ${pin} already exists` }, { status: 409 });
+    }
+
+    const employeeId = await ensureEmployeeByPin(connection, { pin, nama });
+
+    await connection.query(
+      `INSERT INTO cs_employee_auth_identity
+        (employee_id, login_nip, password_hash, identity_status, password_updated_at)
+       VALUES (?, ?, ?, 'active', NOW())
+       ON DUPLICATE KEY UPDATE
+        login_nip = VALUES(login_nip),
+        password_hash = VALUES(password_hash),
+        identity_status = 'active',
+        password_updated_at = NOW(),
+        updated_at = CURRENT_TIMESTAMP`,
+      [employeeId, nip, pwd]
+    );
+
+    await upsertIdentificationMethod(connection, {
+      employeeId,
+      methodType: 'nip',
+      methodValue: nip,
+    });
+    await upsertIdentificationMethod(connection, {
+      employeeId,
+      methodType: 'pin',
+      methodValue: pin,
+    });
+    await upsertIdentificationMethod(connection, {
+      employeeId,
+      methodType: 'rfid',
+      methodValue: rfid,
+    });
+
+    await syncCanonicalGlobalRole(connection, {
+      employeeId,
+      privilege,
+    });
+
+    await connection.query(
+      `INSERT INTO tb_user (pin, nama, pwd, rfid, privilege)
+       VALUES (?, ?, ?, ?, ?)
+       ON DUPLICATE KEY UPDATE
+        nama = VALUES(nama),
+        pwd = VALUES(pwd),
+        rfid = VALUES(rfid),
+        privilege = VALUES(privilege)`,
+      [pin, nama, pwd, rfid || '', privilege]
+    );
+
+    await connection.commit();
+    return NextResponse.json({ ok: true, pin });
+  } catch (error) {
+    await connection.rollback();
+    if (error && (error.code === 'ER_DUP_ENTRY' || error.errno === 1062)) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: 'PIN or NIP already exists in canonical identity.',
+        },
+        { status: 409 }
+      );
+    }
+    return NextResponse.json(
+      {
+        ok: false,
+        error: error instanceof Error ? error.message : String(error),
+      },
+      { status: 500 }
+    );
+  } finally {
+    connection.release();
+  }
 }
 
 // ─────────────────────────────────────────────
-// PUT /api/users  — update a tb_user (body: { pin, nama?, pwd?, rfid?, privilege? })
+// PUT /api/users  — update canonical identity + compatibility tb_user data
 // ─────────────────────────────────────────────
 export async function PUT(request) {
   const auth = await getAuthContextFromCookies();
@@ -213,50 +460,188 @@ export async function PUT(request) {
     return NextResponse.json({ ok: false, error: 'Invalid JSON' }, { status: 400 });
   }
 
-  const pin = String(body.pin ?? '').trim();
+  const pin = normalizeIdentifier(body.pin);
   if (!pin) return NextResponse.json({ ok: false, error: 'PIN is required' }, { status: 400 });
 
-  // Check user exists
-  const [existing] = await pool.query('SELECT pin FROM tb_user WHERE pin = ? LIMIT 1', [pin]);
-  if (!Array.isArray(existing) || existing.length === 0) {
-    return NextResponse.json({ ok: false, error: 'User not found' }, { status: 404 });
+  const nextNip = body.nip !== undefined ? normalizeIdentifier(body.nip) : undefined;
+  const nextRfid = body.rfid !== undefined ? normalizeIdentifier(body.rfid) : undefined;
+
+  if (!isValidIdentifier(pin) || !isValidIdentifier(nextNip) || !isValidIdentifier(nextRfid)) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error: 'Identifiers must use only letters, numbers, dot, underscore, or dash.',
+      },
+      { status: 400 }
+    );
   }
 
-  const setClauses = [];
-  const params = [];
+  const connection = await pool.getConnection();
 
-  if (body.nama !== undefined) {
-    const nama = String(body.nama).trim();
-    if (!nama)
-      return NextResponse.json({ ok: false, error: 'Name cannot be empty' }, { status: 400 });
-    setClauses.push('nama = ?');
-    params.push(nama);
-  }
-  if (body.pwd !== undefined) {
-    setClauses.push('pwd = ?');
-    params.push(String(body.pwd));
-  }
-  if (body.rfid !== undefined) {
-    setClauses.push('rfid = ?');
-    params.push(String(body.rfid));
-  }
-  if (body.privilege !== undefined) {
-    setClauses.push('privilege = ?');
-    params.push(Number(body.privilege));
-  }
+  try {
+    await connection.beginTransaction();
 
-  if (setClauses.length === 0) {
-    return NextResponse.json({ ok: false, error: 'Nothing to update' }, { status: 400 });
+    const canonicalIdentity = await resolveCanonicalIdentityByPin(connection, pin);
+    const [legacyUserRows] = await connection.query(
+      'SELECT pin FROM tb_user WHERE pin = ? LIMIT 1',
+      [pin]
+    );
+
+    if (!canonicalIdentity && (!Array.isArray(legacyUserRows) || legacyUserRows.length === 0)) {
+      await connection.rollback();
+      return NextResponse.json({ ok: false, error: 'User not found' }, { status: 404 });
+    }
+
+    if (canonicalIdentity) {
+      const employeeId = Number(canonicalIdentity.employee_id);
+
+      if (body.nama !== undefined) {
+        const nextName = String(body.nama).trim();
+        if (!nextName) {
+          await connection.rollback();
+          return NextResponse.json({ ok: false, error: 'Name cannot be empty' }, { status: 400 });
+        }
+        await connection.query('UPDATE tb_karyawan SET nama = ? WHERE id = ?', [
+          nextName,
+          employeeId,
+        ]);
+      }
+
+      if (body.pwd !== undefined) {
+        await connection.query(
+          `UPDATE cs_employee_auth_identity
+           SET password_hash = ?,
+               password_updated_at = NOW(),
+               identity_status = 'active',
+               updated_at = CURRENT_TIMESTAMP
+           WHERE employee_id = ?`,
+          [String(body.pwd), employeeId]
+        );
+      }
+
+      if (nextNip !== undefined) {
+        if (!nextNip) {
+          await connection.rollback();
+          return NextResponse.json({ ok: false, error: 'NIP cannot be empty' }, { status: 400 });
+        }
+        await connection.query(
+          'UPDATE cs_employee_auth_identity SET login_nip = ?, updated_at = CURRENT_TIMESTAMP WHERE employee_id = ?',
+          [nextNip, employeeId]
+        );
+        await connection.query('UPDATE tb_karyawan SET nip = ? WHERE id = ?', [
+          nextNip,
+          employeeId,
+        ]);
+        await upsertIdentificationMethod(connection, {
+          employeeId,
+          methodType: 'nip',
+          methodValue: nextNip,
+        });
+      }
+
+      if (nextRfid !== undefined) {
+        if (nextRfid) {
+          await upsertIdentificationMethod(connection, {
+            employeeId,
+            methodType: 'rfid',
+            methodValue: nextRfid,
+          });
+        } else {
+          await connection.query(
+            `UPDATE cs_employee_identification_methods
+             SET is_primary = 0,
+                 valid_to = COALESCE(valid_to, NOW()),
+                 updated_at = CURRENT_TIMESTAMP
+             WHERE employee_id = ?
+               AND method_type = 'rfid'
+               AND valid_to IS NULL`,
+            [employeeId]
+          );
+        }
+      }
+
+      if (body.privilege !== undefined) {
+        await syncCanonicalGlobalRole(connection, {
+          employeeId,
+          privilege: Number(body.privilege),
+        });
+      }
+    }
+
+    const setClauses = [];
+    const params = [];
+
+    if (body.nama !== undefined) {
+      const nama = String(body.nama).trim();
+      if (!nama) {
+        await connection.rollback();
+        return NextResponse.json({ ok: false, error: 'Name cannot be empty' }, { status: 400 });
+      }
+      setClauses.push('nama = ?');
+      params.push(nama);
+    }
+    if (body.pwd !== undefined) {
+      setClauses.push('pwd = ?');
+      params.push(String(body.pwd));
+    }
+    if (body.rfid !== undefined) {
+      setClauses.push('rfid = ?');
+      params.push(String(body.rfid ?? ''));
+    }
+    if (body.privilege !== undefined) {
+      setClauses.push('privilege = ?');
+      params.push(Number(body.privilege));
+    }
+
+    if (setClauses.length > 0) {
+      if (Array.isArray(legacyUserRows) && legacyUserRows.length > 0) {
+        params.push(pin);
+        await connection.query(`UPDATE tb_user SET ${setClauses.join(', ')} WHERE pin = ?`, params);
+      } else {
+        const legacyName = String(body.nama ?? '').trim() || pin;
+        const legacyPwd = String(body.pwd ?? '');
+        const legacyRfid = String(body.rfid ?? '');
+        const legacyPrivilege = Number(body.privilege ?? 0);
+        await connection.query(
+          `INSERT INTO tb_user (pin, nama, pwd, rfid, privilege)
+           VALUES (?, ?, ?, ?, ?)
+           ON DUPLICATE KEY UPDATE
+            nama = VALUES(nama),
+            pwd = VALUES(pwd),
+            rfid = VALUES(rfid),
+            privilege = VALUES(privilege)`,
+          [pin, legacyName, legacyPwd, legacyRfid, legacyPrivilege]
+        );
+      }
+    }
+
+    await connection.commit();
+    return NextResponse.json({ ok: true });
+  } catch (error) {
+    await connection.rollback();
+    if (error && (error.code === 'ER_DUP_ENTRY' || error.errno === 1062)) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: 'NIP already exists for another canonical identity.',
+        },
+        { status: 409 }
+      );
+    }
+    return NextResponse.json(
+      {
+        ok: false,
+        error: error instanceof Error ? error.message : String(error),
+      },
+      { status: 500 }
+    );
+  } finally {
+    connection.release();
   }
-
-  params.push(pin);
-  await pool.query(`UPDATE tb_user SET ${setClauses.join(', ')} WHERE pin = ?`, params);
-
-  return NextResponse.json({ ok: true });
 }
 
 // ─────────────────────────────────────────────
-// DELETE /api/users  — delete a tb_user (body: { pin })
+// DELETE /api/users  — disable canonical identity + delete compatibility tb_user data
 // ─────────────────────────────────────────────
 export async function DELETE(request) {
   const auth = await getAuthContextFromCookies();
@@ -270,7 +655,7 @@ export async function DELETE(request) {
     return NextResponse.json({ ok: false, error: 'Invalid JSON' }, { status: 400 });
   }
 
-  const pin = String(body.pin ?? '').trim();
+  const pin = normalizeIdentifier(body.pin);
   if (!pin) return NextResponse.json({ ok: false, error: 'PIN is required' }, { status: 400 });
 
   // Protect deleting yourself
@@ -281,14 +666,46 @@ export async function DELETE(request) {
     );
   }
 
-  const [existing] = await pool.query('SELECT pin FROM tb_user WHERE pin = ? LIMIT 1', [pin]);
-  if (!Array.isArray(existing) || existing.length === 0) {
-    return NextResponse.json({ ok: false, error: 'User not found' }, { status: 404 });
+  const connection = await pool.getConnection();
+
+  try {
+    await connection.beginTransaction();
+
+    const canonicalIdentity = await resolveCanonicalIdentityByPin(connection, pin);
+    const [legacyRows] = await connection.query('SELECT pin FROM tb_user WHERE pin = ? LIMIT 1', [
+      pin,
+    ]);
+
+    if (!canonicalIdentity && (!Array.isArray(legacyRows) || legacyRows.length === 0)) {
+      await connection.rollback();
+      return NextResponse.json({ ok: false, error: 'User not found' }, { status: 404 });
+    }
+
+    if (canonicalIdentity) {
+      await connection.query(
+        `UPDATE cs_employee_auth_identity
+         SET identity_status = 'disabled',
+             updated_at = CURRENT_TIMESTAMP
+         WHERE employee_id = ?`,
+        [canonicalIdentity.employee_id]
+      );
+    }
+
+    await connection.query('DELETE FROM tb_user_group_access WHERE pin = ?', [pin]);
+    await connection.query('DELETE FROM tb_user WHERE pin = ?', [pin]);
+
+    await connection.commit();
+    return NextResponse.json({ ok: true });
+  } catch (error) {
+    await connection.rollback();
+    return NextResponse.json(
+      {
+        ok: false,
+        error: error instanceof Error ? error.message : String(error),
+      },
+      { status: 500 }
+    );
+  } finally {
+    connection.release();
   }
-
-  // Also delete group access entries
-  await pool.query('DELETE FROM tb_user_group_access WHERE pin = ?', [pin]);
-  await pool.query('DELETE FROM tb_user WHERE pin = ?', [pin]);
-
-  return NextResponse.json({ ok: true });
 }
