@@ -147,7 +147,7 @@ export default function MachinePage() {
     const result = row.result || {};
     const action = String(row.action || '').toLowerCase();
 
-    if (action === 'info') {
+    if (action === 'info' || action === 'devinfo') {
       setDeviceInfo(result.info ?? result.raw ?? result);
       return;
     }
@@ -157,8 +157,11 @@ export default function MachinePage() {
       return;
     }
 
-    if (action === 'pull_users' || action === 'set_user') {
+    if (['pull_users', 'set_user', 'users_partial', 'scanlog_new'].includes(action)) {
       setUserSyncResult(result);
+      if (action === 'scanlog_new') {
+        setScanSyncResult(result);
+      }
       return;
     }
 

@@ -53,6 +53,7 @@ function capabilityEnabled(value) {
 }
 
 function canReviewPunch(row, punch, isAdmin) {
+  if (isAdmin) return true;
   const capabilityCandidates = [
     punch?.can_review,
     punch?.canReview,
@@ -63,7 +64,7 @@ function canReviewPunch(row, punch, isAdmin) {
   if (hasCapabilitySignal) {
     return capabilityCandidates.some(capabilityEnabled);
   }
-  return isAdmin;
+  return false;
 }
 
 function statusLabel(value) {

@@ -47,7 +47,14 @@ export default function AppShell({ children }) {
   const router = useRouter();
   const isLoginPage = pathname === '/login';
   const [collapsed, setCollapsed] = useState(false);
-  const [rightSidebarCollapsed, setRightSidebarCollapsed] = useState(false);
+  const [rightSidebarCollapsed, setRightSidebarCollapsed] = useState(() => {
+    if (typeof window === 'undefined' || isLoginPage) return false;
+    try {
+      return window.localStorage.getItem(RIGHT_SIDEBAR_STORAGE_KEY) === '1';
+    } catch {
+      return false;
+    }
+  });
   const [authLoading, setAuthLoading] = useState(() => !isLoginPage);
   const [authUser, setAuthUser] = useState(null);
   const [theme, setTheme] = useState('dark');
@@ -147,7 +154,7 @@ export default function AppShell({ children }) {
     if (isLoginPage) return;
     try {
       const saved = window.localStorage.getItem(RIGHT_SIDEBAR_STORAGE_KEY);
-      if (saved === '1') setRightSidebarCollapsed(true);
+      setRightSidebarCollapsed(saved === '1');
     } catch {
       // noop
     }

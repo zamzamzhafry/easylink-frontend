@@ -195,13 +195,14 @@ export default function RightOpsSidebar({ currentUser, collapsed = false, onTogg
   }, []);
 
   useEffect(() => {
-    if (!isAdmin) return;
+    if (!isAdmin || collapsed) return;
+
     void refreshData();
     const timer = setInterval(() => {
       void refreshData();
     }, REFRESH_MS);
     return () => clearInterval(timer);
-  }, [isAdmin, refreshData]);
+  }, [collapsed, isAdmin, refreshData]);
 
   const debugPreview = useMemo(
     () => ({

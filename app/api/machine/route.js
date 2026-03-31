@@ -83,15 +83,15 @@ function normalizeAction(value) {
   const aliases = {
     info: 'info',
     device_info: 'info',
-    devinfo: 'info',
+    devinfo: 'devinfo',
     time: 'time',
     device_time: 'time',
     sync_time: 'sync_time',
     set_time: 'sync_time',
     pull_users: 'pull_users',
     users: 'pull_users',
-    users_partial: 'pull_users',
-    scanlog_new: 'pull_users',
+    users_partial: 'users_partial',
+    scanlog_new: 'scanlog_new',
     set_user: 'set_user',
     add_user: 'set_user',
     upload_user: 'set_user',
@@ -170,16 +170,57 @@ function assertDangerConfirmation(action, payload) {
   }
 }
 
+function getUserPollingConfig(payload = {}) {
+  const limit = toBoundedInt(payload?.limit, 100, { min: 1, max: 1000 });
+  const page = toBoundedInt(payload?.page, 1, { min: 1, max: 100000 });
+  const maxPages = toBoundedInt(
+    payload?.max_pages ?? payload?.maxPages ?? process.env.EASYLINK_USER_MAX_PAGES,
+    1000,
+    { min: 1, max: 100000 }
+  );
+  return { limit, page, maxPages };
+}
+
+async function runUserPolling(action, payload = {}, source) {
+  const { limit, page, maxPages } = getUserPollingConfig(payload);
+  const jobKey = createDedupeKey(action, payload);
+  const result = await runMachineUserPollingJob({
+    jobKey,
+    source,
+    limit,
+    page,
+    maxPages,
+  });
+
+  return {
+    source: result.source,
+    pulled_count: result.pulledCount,
+    inserted_count: result.insertedCount,
+    updated_count: result.updatedCount,
+    users_preview: result.previewUsers,
+    validation_errors: result.validationErrors,
+    invalid_count: result.invalidCount,
+  };
+}
+
+async function fetchDeviceInfo(source) {
+  const result = await getDeviceInfoFromSdk({ source });
+  return {
+    source: result.source,
+    info: result.info ?? null,
+    raw: result.raw ?? null,
+  };
+}
+
 async function runMachineAction(action, payload = {}) {
   const source = 'windows-sdk';
 
+  if (action === 'devinfo') {
+    return fetchDeviceInfo(source);
+  }
+
   if (action === 'info') {
-    const result = await getDeviceInfoFromSdk({ source });
-    return {
-      source: result.source,
-      info: result.info ?? null,
-      raw: result.raw ?? null,
-    };
+    return fetchDeviceInfo(source);
   }
 
   if (action === 'time') {
@@ -201,30 +242,15 @@ async function runMachineAction(action, payload = {}) {
   }
 
   if (action === 'pull_users') {
-    const limit = toBoundedInt(payload?.limit, 100, { min: 1, max: 1000 });
-    const page = toBoundedInt(payload?.page, 1, { min: 1, max: 100000 });
-    const maxPages = toBoundedInt(
-      payload?.max_pages ?? payload?.maxPages ?? process.env.EASYLINK_USER_MAX_PAGES,
-      1000,
-      { min: 1, max: 100000 }
-    );
-    const jobKey = createDedupeKey(action, payload);
-    const result = await runMachineUserPollingJob({
-      jobKey,
-      source,
-      limit,
-      page,
-      maxPages,
-    });
-    return {
-      source: result.source,
-      pulled_count: result.pulledCount,
-      inserted_count: result.insertedCount,
-      updated_count: result.updatedCount,
-      users_preview: result.previewUsers,
-      validation_errors: result.validationErrors,
-      invalid_count: result.invalidCount,
-    };
+    return runUserPolling('pull_users', payload, source);
+  }
+
+  if (action === 'users_partial') {
+    return runUserPolling('users_partial', payload, source);
+  }
+
+  if (action === 'scanlog_new') {
+    return runUserPolling('scanlog_new', payload, source);
   }
 
   if (action === 'set_user') {
