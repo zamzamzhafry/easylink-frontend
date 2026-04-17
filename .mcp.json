@@ -7,6 +7,15 @@
     "next-devtools": {
       "command": "npx",
       "args": ["-y", "next-devtools-mcp@latest"]
+    },
+    "context7": {
+      "url": "https://server.smithery.ai/upstash/context7-mcp/mcp"
+    },
+    "grep-app": {
+      "url": "https://server.smithery.ai/vercel/grep/mcp"
+    },
+    "web-search": {
+      "url": "https://server.smithery.ai/brave/mcp"
     }
   }
 }
