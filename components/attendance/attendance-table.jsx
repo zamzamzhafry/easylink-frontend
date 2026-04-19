@@ -11,9 +11,10 @@ import {
 } from '@/components/ui/table-shell';
 import { STATUS_MAP } from '@/lib/attendance-helpers';
 import { getUIText } from '@/lib/localization/ui-texts';
+import { compactDateDayLabel } from '@/lib/schedule-helpers';
 import { shiftClassName } from '@/lib/shift-helpers';
 
-export default function AttendanceTable({ loading, rows, onEdit }) {
+export default function AttendanceTable({ loading, rows, onEdit, holidayMap = {} }) {
   const { locale } = useAppLocale();
   const resolvedLocale = locale === 'id' ? 'id' : 'en';
   const t = (path) => getUIText(path, resolvedLocale);
@@ -31,10 +32,24 @@ export default function AttendanceTable({ loading, rows, onEdit }) {
     { key: 'action', label: '' },
   ];
 
-  const displayDate = (value) => {
-    if (!value) return '-';
+  const normalizeDateKey = (value) => {
+    if (!value) return '';
     const text = String(value);
-    return text.includes('T') ? text.slice(0, 10) : text;
+    return text.includes('T') ? text.slice(0, 10) : text.slice(0, 10);
+  };
+  const todayIso = normalizeDateKey(new Date());
+
+  const compactDateInfo = (value) => {
+    const isoDate = normalizeDateKey(value);
+    if (!isoDate) return null;
+    const parsedDate = new Date(`${isoDate}T00:00:00`);
+    return {
+      isoDate,
+      compactLabel: compactDateDayLabel(isoDate, 'id-ID'),
+      isSunday: parsedDate.getDay() === 0,
+      isFriday: parsedDate.getDay() === 5,
+      isToday: isoDate === todayIso,
+    };
   };
 
   return (
@@ -52,14 +67,49 @@ export default function AttendanceTable({ loading, rows, onEdit }) {
             rows.map((row) => {
               const status = STATUS_MAP[row.computed_status] ?? STATUS_MAP.lainnya;
               const isAnomaly = row.computed_status !== 'normal';
+              const dateInfo = compactDateInfo(row.scan_date);
+              const holiday = dateInfo?.isoDate ? holidayMap[dateInfo.isoDate] : null;
+              const dateToneClass = holiday
+                ? 'bg-rose-500/10'
+                : dateInfo?.isSunday
+                  ? 'bg-rose-500/10'
+                  : dateInfo?.isFriday
+                    ? 'bg-emerald-500/10'
+                    : dateInfo?.isToday
+                      ? 'bg-cyan-500/10 dark:bg-cyan-500/15'
+                      : '';
+              const labelToneClass = holiday
+                ? 'text-rose-700 dark:text-rose-300'
+                : dateInfo?.isSunday
+                  ? 'text-rose-700 dark:text-rose-300'
+                  : dateInfo?.isFriday
+                    ? 'text-emerald-700 dark:text-emerald-300'
+                    : dateInfo?.isToday
+                      ? 'text-cyan-700 dark:text-cyan-300'
+                      : 'text-muted-foreground';
 
               return (
                 <tr
                   key={`${row.pin}-${row.scan_date}`}
                   className={`data-row ui-table-row ${isAnomaly ? 'bg-amber-500/10' : ''}`}
                 >
-                  <td className="ui-table-cell-muted px-4 py-3 font-mono text-xs">
-                    {displayDate(row.scan_date)}
+                  <td className={`ui-table-cell-muted px-4 py-3 ${dateToneClass}`}>
+                    {dateInfo ? (
+                      <div
+                        className="leading-tight"
+                        title={holiday?.name ? `${dateInfo.isoDate} - ${holiday.name}` : dateInfo.isoDate}
+                      >
+                        <div className="font-mono text-xs text-foreground">{dateInfo.compactLabel}</div>
+                        {holiday && (
+                          <div className="line-clamp-1 text-[10px] text-rose-700/90 dark:text-rose-200">
+                            {holiday.name}
+                          </div>
+                        )}
+                        {!holiday && <div className={`text-[10px] ${labelToneClass}`}>{dateInfo.isoDate}</div>}
+                      </div>
+                    ) : (
+                      <span className="font-mono text-xs">-</span>
+                    )}
                   </td>
                   <td className="ui-table-cell px-4 py-3 font-medium">
                     {row.karyawan_id ? (

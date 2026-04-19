@@ -7,6 +7,7 @@ import { useAppLocale } from '@/components/app-shell';
 import AttendanceFilters from '@/components/attendance/attendance-filters';
 import AttendanceTable from '@/components/attendance/attendance-table';
 import NoteModal from '@/components/attendance/note-modal';
+import QuickSummariesTable from '@/components/schedule/quick-summaries-table';
 import InlineStatusPanel from '@/components/ui/inline-status-panel';
 import { TableEmptyRow, TableLoadingRow, TableShell } from '@/components/ui/table-shell';
 import { useToast } from '@/components/ui/toast-provider';
@@ -19,11 +20,18 @@ import {
   rawScanlogCsv,
   startOfRange,
 } from '@/lib/attendance-helpers';
+import {
+  buildQuickSummariesMetadataRows,
+  buildQuickSummariesTableColumns,
+  quickSummaryDateLabel,
+  quickSummaryRowsToArrays,
+  sanitizeExcelSheetName,
+} from '@/lib/quick-summaries-export';
 import { requestJson } from '@/lib/request-json';
 import { getUIText } from '@/lib/localization/ui-texts';
 
-const ADMIN_TABS = ['summary', 'raw', 'dashboard'];
-const MEMBER_TABS = ['summary', 'dashboard'];
+const ADMIN_TABS = ['summary', 'quick_summaries', 'raw', 'dashboard'];
+const MEMBER_TABS = ['summary', 'quick_summaries', 'dashboard'];
 
 const toSafeNumber = (value) => {
   const parsed = Number(value);
@@ -36,6 +44,57 @@ const formatMinutesToHours = (minutes) => {
   const hours = Math.floor(totalMinutes / 60);
   const remainder = totalMinutes % 60;
   return `${hours}j ${remainder}m`;
+};
+
+const buildDateRange = (from, to) => {
+  if (!from || !to) return [];
+  const dates = [];
+  const current = new Date(`${from}T00:00:00.000Z`);
+  const end = new Date(`${to}T00:00:00.000Z`);
+  while (current <= end) {
+    dates.push(current.toISOString().slice(0, 10));
+    current.setUTCDate(current.getUTCDate() + 1);
+  }
+  return dates;
+};
+
+const buildYearRange = (from, to) => {
+  const fromYear = Number(String(from || '').slice(0, 4));
+  const toYear = Number(String(to || '').slice(0, 4));
+  if (!Number.isFinite(fromYear) || !Number.isFinite(toYear) || fromYear > toYear) return [];
+  const years = [];
+  for (let year = fromYear; year <= toYear; year += 1) years.push(year);
+  return years;
+};
+
+const normalizeDateKey = (value) => {
+  if (!value) return '';
+  if (value instanceof Date) {
+    const year = value.getFullYear();
+    const month = String(value.getMonth() + 1).padStart(2, '0');
+    const day = String(value.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  }
+  const text = String(value);
+  return text.includes('T') ? text.slice(0, 10) : text.slice(0, 10);
+};
+
+const compactDateWithDay = (value, locale = 'id-ID') => {
+  const normalized = normalizeDateKey(value);
+  if (!normalized) return '-';
+  return quickSummaryDateLabel(normalized, locale);
+};
+
+const quickSummaryDayMeta = (dateValue, holidayMap, todayIso) => {
+  const isoDate = normalizeDateKey(dateValue);
+  const weekday = new Date(`${isoDate}T00:00:00`).getDay();
+  return {
+    isoDate,
+    isToday: isoDate === todayIso,
+    isSunday: weekday === 0,
+    isFriday: weekday === 5,
+    holiday: holidayMap?.[isoDate] || null,
+  };
 };
 
 const normalizePredictionContext = (context) => {
@@ -93,6 +152,25 @@ const formatTargetSource = (source) => {
     .join(' ');
 };
 
+const filterQuickSummaryRowsByEmployee = (rows, employeeFilter) => {
+  const source = Array.isArray(rows) ? rows : [];
+  if (!employeeFilter) return source;
+
+  if (employeeFilter.startsWith('emp-')) {
+    const employeeId = employeeFilter.slice(4);
+    return source.filter(
+      (row) => String(row?.employee?.id ?? row?.employee?.karyawan_id ?? '') === employeeId
+    );
+  }
+
+  if (employeeFilter.startsWith('pin-')) {
+    const pin = employeeFilter.slice(4);
+    return source.filter((row) => String(row?.employee?.pin ?? '') === pin);
+  }
+
+  return source;
+};
+
 export default function AttendancePage() {
   const { warning } = useToast();
   const { locale } = useAppLocale();
@@ -104,6 +182,16 @@ export default function AttendancePage() {
   const [to, setTo] = useState(isoDate());
   const [groupId, setGroupId] = useState('');
   const [rows, setRows] = useState([]);
+  const [quickSummariesData, setQuickSummariesData] = useState({
+    from: '',
+    to: '',
+    dates: [],
+    rows: [],
+  });
+  const [quickSummariesLoading, setQuickSummariesLoading] = useState(false);
+  const [quickSummariesError, setQuickSummariesError] = useState('');
+  const [holidayMap, setHolidayMap] = useState({});
+  const [quickSummaryExportScope, setQuickSummaryExportScope] = useState('current');
   const [scopePayload, setScopePayload] = useState({
     cumulative_summary: null,
     prediction_context: null,
@@ -123,6 +211,7 @@ export default function AttendancePage() {
   const [rawPage, setRawPage] = useState(1);
   const [dashboardPage, setDashboardPage] = useState(1);
   const [rowsPerPage, setRowsPerPage] = useState(20);
+  const displayLocale = resolvedLocale === 'id' ? 'id-ID' : 'en-US';
 
   // Fetch user role on mount
   useEffect(() => {
@@ -236,6 +325,36 @@ export default function AttendancePage() {
     }
   }, [from, to, groupId, warning, isAdmin, rawPage, rawLimit, rawEmployeeQuery, t]);
 
+  const loadQuickSummaries = useCallback(async () => {
+    setQuickSummariesLoading(true);
+    setQuickSummariesError('');
+    try {
+      const query = new URLSearchParams({ from, to });
+      if (groupId) query.set('group_id', String(groupId));
+      const data = await requestJson(`/api/schedule/quick-summaries?${query.toString()}`);
+      setQuickSummariesData({
+        from: String(data?.from || from),
+        to: String(data?.to || to),
+        dates: Array.isArray(data?.dates)
+          ? data.dates.map((dateValue) => String(dateValue).slice(0, 10))
+          : buildDateRange(from, to),
+        rows: Array.isArray(data?.rows) ? data.rows : [],
+      });
+    } catch (error) {
+      setQuickSummariesError(
+        error.message || 'Failed to load quick summaries for selected date range.'
+      );
+      setQuickSummariesData({
+        from,
+        to,
+        dates: buildDateRange(from, to),
+        rows: [],
+      });
+    } finally {
+      setQuickSummariesLoading(false);
+    }
+  }, [from, to, groupId]);
+
   const loadGroups = useCallback(async () => {
     if (!isAdmin && currentUser?.groups) {
       setGroups(
@@ -271,6 +390,50 @@ export default function AttendancePage() {
     if (!isAdmin && activeTab === 'raw') setActiveTab('summary');
   }, [isAdmin, activeTab]);
 
+  useEffect(() => {
+    if (activeTab !== 'quick_summaries') return;
+    loadQuickSummaries();
+  }, [activeTab, loadQuickSummaries]);
+
+  useEffect(() => {
+    const years = buildYearRange(from, to);
+    if (years.length === 0) {
+      setHolidayMap({});
+      return;
+    }
+
+    let cancelled = false;
+
+    Promise.all(
+      years.map((year) =>
+        requestJson(`/api/holidays?year=${year}`).catch(() => ({
+          rows: [],
+        }))
+      )
+    )
+      .then((results) => {
+        if (cancelled) return;
+        const map = new Map();
+        results.forEach((result) => {
+          (result?.rows || []).forEach((row) => {
+            if (!row?.date) return;
+            map.set(row.date, {
+              name: row.name || 'Hari Libur',
+              isCutiBersama: Boolean(row.is_cuti_bersama),
+            });
+          });
+        });
+        setHolidayMap(Object.fromEntries(map.entries()));
+      })
+      .catch(() => {
+        if (!cancelled) setHolidayMap({});
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [from, to]);
+
   const setRange = (unit) => {
     if (unit === 'today') {
       const today = isoDate();
@@ -281,16 +444,6 @@ export default function AttendancePage() {
 
     setFrom(startOfRange(unit));
     setTo(endOfRange(unit));
-  };
-
-  const exportCsv = () => {
-    const isRawTab = activeTab === 'raw';
-    const csv = isRawTab ? rawScanlogCsv(rawRows) : attendanceCsv(filteredSummaryRows);
-    const blob = new Blob([csv], { type: 'text/csv' });
-    const link = document.createElement('a');
-    link.href = URL.createObjectURL(blob);
-    link.download = isRawTab ? `raw_scanlog_${from}_${to}.csv` : `absensi_${from}_${to}.csv`;
-    link.click();
   };
 
   const saveNote = async ({ status, catatan, manual_hours, manual_approved }) => {
@@ -367,6 +520,32 @@ export default function AttendancePage() {
     const pin = employeeFilter.slice(4);
     return lateData.filter((item) => String(item.pin || '') === pin);
   }, [lateData, employeeFilter]);
+
+  const filteredQuickSummaryRows = useMemo(() => {
+    return filterQuickSummaryRowsByEmployee(quickSummariesData?.rows, employeeFilter);
+  }, [quickSummariesData, employeeFilter]);
+
+  const quickSummaryEmployees = useMemo(
+    () => filteredQuickSummaryRows.map((row) => row.employee).filter(Boolean),
+    [filteredQuickSummaryRows]
+  );
+
+  const quickSummaryRowMap = useMemo(() => {
+    const map = new Map();
+    filteredQuickSummaryRows.forEach((row) => {
+      const employeeId = Number(row?.employee?.id);
+      if (!employeeId || map.has(employeeId)) return;
+      map.set(employeeId, row);
+    });
+    return map;
+  }, [filteredQuickSummaryRows]);
+
+  const quickSummaryDates = useMemo(() => {
+    if (Array.isArray(quickSummariesData?.dates) && quickSummariesData.dates.length > 0) {
+      return quickSummariesData.dates;
+    }
+    return buildDateRange(from, to);
+  }, [quickSummariesData, from, to]);
 
   const roleScopeSummary = useMemo(() => {
     if (isAdmin) return null;
@@ -502,32 +681,319 @@ export default function AttendancePage() {
     dashboardPage * rowsPerPage
   );
 
+  const selectedGroupLabel = useMemo(() => {
+    if (groupId) {
+      const selected = groups.find((group) => String(group.id) === String(groupId));
+      if (selected?.nama_group) return selected.nama_group;
+      return `Group ${groupId}`;
+    }
+    return t('attendancePage.print.allGroupsFallback');
+  }, [groupId, groups, t]);
+
+  const quickSummaryRangeLabel = useMemo(
+    () =>
+      `${compactDateWithDay(quickSummariesData?.from || from, displayLocale)} - ${compactDateWithDay(
+        quickSummariesData?.to || to,
+        displayLocale
+      )}`,
+    [quickSummariesData, from, to, displayLocale]
+  );
+
+  const quickSummaryScopeLabel = useMemo(
+    () =>
+      quickSummaryExportScope === 'all'
+        ? t('attendancePage.actions.exportScopeAllGroups')
+        : selectedGroupLabel,
+    [quickSummaryExportScope, selectedGroupLabel, t]
+  );
+
+  const loadQuickSummaryExportData = useCallback(
+    async (scope) => {
+      if (scope === 'all') {
+        const query = new URLSearchParams({ from, to });
+        const data = await requestJson(`/api/schedule/quick-summaries?${query.toString()}`);
+        const rows = filterQuickSummaryRowsByEmployee(data?.rows, employeeFilter);
+        const dates =
+          Array.isArray(data?.dates) && data.dates.length > 0
+            ? data.dates.map((dateValue) => String(dateValue || '').slice(0, 10))
+            : buildDateRange(from, to);
+        return {
+          from: String(data?.from || from),
+          to: String(data?.to || to),
+          rows,
+          dates,
+        };
+      }
+
+      return {
+        from: String(quickSummariesData?.from || from),
+        to: String(quickSummariesData?.to || to),
+        rows: filteredQuickSummaryRows,
+        dates: quickSummaryDates,
+      };
+    },
+    [from, to, quickSummariesData, employeeFilter, filteredQuickSummaryRows, quickSummaryDates]
+  );
+
+  const buildQuickSummaryColumns = useCallback(
+    (dates) =>
+      buildQuickSummariesTableColumns(dates).map((column) => {
+        if (column.key === 'employee_name') {
+          return { ...column, label: t('attendancePage.raw.employee') };
+        }
+        if (column.key === 'employee_group') {
+          return { ...column, label: t('attendancePage.print.groupLabel') };
+        }
+        if (column.key === 'total_punches') {
+          return { ...column, label: t('attendancePage.print.totalPunches') };
+        }
+        if (/^\d{4}-\d{2}-\d{2}$/.test(column.key)) {
+          return { ...column, label: quickSummaryDateLabel(column.key, displayLocale) };
+        }
+        return column;
+      }),
+    [t, displayLocale]
+  );
+
+  const exportCsv = async () => {
+    const isRawTab = activeTab === 'raw';
+    const isQuickTab = activeTab === 'quick_summaries';
+
+    if (!isQuickTab) {
+      const csv = isRawTab ? rawScanlogCsv(rawRows) : attendanceCsv(filteredSummaryRows);
+      const blob = new Blob([csv], { type: 'text/csv' });
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = isRawTab ? `raw_scanlog_${from}_${to}.csv` : `absensi_${from}_${to}.csv`;
+      link.click();
+      URL.revokeObjectURL(link.href);
+      return;
+    }
+
+    const csvEscape = (value) => `"${String(value ?? '').replace(/"/g, '""')}"`;
+
+    try {
+      const scope = quickSummaryExportScope;
+      const quickData = await loadQuickSummaryExportData(scope);
+      const columns = buildQuickSummaryColumns(quickData.dates);
+      const headerRow = columns.map((column) => column.label);
+      const lines = [
+        ...buildQuickSummariesMetadataRows(
+          {
+            reportTitle: t('attendancePage.tabs.quick_summaries'),
+            from: quickData.from,
+            to: quickData.to,
+            groupLabel: quickSummaryScopeLabel,
+          },
+          {
+            labels: {
+              report: t('attendancePage.print.title'),
+              dateRange: t('attendancePage.print.dateRangeLabel'),
+              group: t('attendancePage.print.groupLabel'),
+            },
+          }
+        ),
+        headerRow,
+        ...quickSummaryRowsToArrays(quickData.rows, quickData.dates, {
+          emptyGroupLabel: t('attendancePage.print.allGroupsFallback'),
+          emptyCellLabel: '-',
+        }),
+      ];
+
+      const csv = lines.map((line) => line.map(csvEscape).join(',')).join('\n');
+      const blob = new Blob([csv], { type: 'text/csv' });
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = `quick_summaries_${quickData.from}_${quickData.to}${
+        scope === 'all' ? '_all_groups' : ''
+      }.csv`;
+      link.click();
+      URL.revokeObjectURL(link.href);
+    } catch (error) {
+      warning(error.message || t('reportPage.errors.fetchFailed'), t('reportPage.errors.requestFailed'));
+    }
+  };
+
   const exportExcel = async () => {
     const XLSX = await import('xlsx');
     const isRawTab = activeTab === 'raw';
-    const records = isRawTab ? rawRows : filteredSummaryRows;
-    const worksheet = XLSX.utils.json_to_sheet(records);
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, isRawTab ? 'Raw Scanlog' : 'Attendance');
-    XLSX.writeFile(
-      workbook,
-      isRawTab ? `raw_scanlog_${from}_${to}.xlsx` : `absensi_${from}_${to}.xlsx`
-    );
+    const isQuickTab = activeTab === 'quick_summaries';
+
+    if (!isQuickTab) {
+      const records = isRawTab ? rawRows : filteredSummaryRows;
+      const worksheet = XLSX.utils.json_to_sheet(records);
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, isRawTab ? 'Raw Scanlog' : 'Attendance');
+      XLSX.writeFile(
+        workbook,
+        isRawTab ? `raw_scanlog_${from}_${to}.xlsx` : `absensi_${from}_${to}.xlsx`
+      );
+      return;
+    }
+
+    try {
+      const scope = quickSummaryExportScope;
+      const quickData = await loadQuickSummaryExportData(scope);
+      const columns = buildQuickSummaryColumns(quickData.dates);
+      const headerRow = columns.map((column) => column.label);
+      const workbook = XLSX.utils.book_new();
+      const sheetRows = [
+        ...buildQuickSummariesMetadataRows(
+          {
+            reportTitle: t('attendancePage.tabs.quick_summaries'),
+            from: quickData.from,
+            to: quickData.to,
+            groupLabel: quickSummaryScopeLabel,
+          },
+          {
+            labels: {
+              report: t('attendancePage.print.title'),
+              dateRange: t('attendancePage.print.dateRangeLabel'),
+              group: t('attendancePage.print.groupLabel'),
+            },
+          }
+        ),
+        headerRow,
+        ...quickSummaryRowsToArrays(quickData.rows, quickData.dates, {
+          emptyGroupLabel: t('attendancePage.print.allGroupsFallback'),
+          emptyCellLabel: '-',
+        }),
+      ];
+
+      const worksheet = XLSX.utils.aoa_to_sheet(sheetRows);
+      const sheetName = sanitizeExcelSheetName(t('attendancePage.tabs.quick_summaries'), 'Quick');
+      XLSX.utils.book_append_sheet(workbook, worksheet, sheetName);
+
+      XLSX.writeFile(
+        workbook,
+        `quick_summaries_${quickData.from}_${quickData.to}${scope === 'all' ? '_all_groups' : ''}.xlsx`
+      );
+    } catch (error) {
+      warning(error.message || t('reportPage.errors.fetchFailed'), t('reportPage.errors.requestFailed'));
+    }
   };
 
-  const printCurrentTab = () => {
+  const printCurrentTab = async () => {
+    const escapeHtml = (value) =>
+      String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+
     const isRawTab = activeTab === 'raw';
+    const isQuickTab = activeTab === 'quick_summaries';
+
+    if (isQuickTab) {
+      try {
+        const scope = quickSummaryExportScope;
+        const quickData = await loadQuickSummaryExportData(scope);
+        const columns = buildQuickSummaryColumns(quickData.dates);
+        const todayIso = normalizeDateKey(new Date());
+        const columnMetas = columns.map((column) =>
+          /^\d{4}-\d{2}-\d{2}$/.test(String(column.key))
+            ? quickSummaryDayMeta(column.key, holidayMap, todayIso)
+            : null
+        );
+
+        const columnClassName = (columnIndex) => {
+          const meta = columnMetas[columnIndex];
+          if (!meta) return '';
+          if (meta.holiday) return 'holiday-col';
+          if (meta.isSunday) return 'sunday-col';
+          if (meta.isFriday) return 'friday-col';
+          if (meta.isToday) return 'today-col';
+          return '';
+        };
+
+        const headerHtml = columns
+          .map((column, index) => {
+            const columnClass = columnClassName(index);
+            const holidayName = columnMetas[index]?.holiday?.name || '';
+            const holidayLabel = holidayName
+              ? `<div class="holiday-note">${escapeHtml(holidayName)}</div>`
+              : '';
+            return `<th class="${columnClass}" title="${escapeHtml(holidayName)}">${escapeHtml(
+              column.label
+            )}${holidayLabel}</th>`;
+          })
+          .join('');
+
+        const bodyRows = quickSummaryRowsToArrays(quickData.rows, quickData.dates, {
+          emptyGroupLabel: t('attendancePage.print.allGroupsFallback'),
+          emptyCellLabel: '-',
+        });
+        const bodyHtml = bodyRows
+          .map(
+            (line) =>
+              `<tr>${line
+                .map(
+                  (value, index) =>
+                    `<td class="${columnClassName(index)}">${escapeHtml(String(value ?? '-'))}</td>`
+                )
+                .join('')}</tr>`
+          )
+          .join('');
+
+        const printTitle = t('attendancePage.tabs.quick_summaries');
+        const html = `<!doctype html><html><head><meta charset="utf-8"/><title>${escapeHtml(
+          t('attendancePage.print.title')
+        )}</title><style>
+          @page { size: A4 landscape; margin: 4mm; }
+          body { font-family: Arial, sans-serif; margin: 0; color: #111827; padding: 2mm; }
+          h1 { margin: 0 0 4px; font-size: 16px; }
+          p.meta { margin: 1px 0; font-size: 10px; color: #4b5563; }
+          table { border-collapse: collapse; width: 100%; font-size: 8.5px; table-layout: fixed; margin-top: 8px; }
+          thead { display: table-header-group; }
+          tr { page-break-inside: avoid; }
+          th, td { border: 1px solid #d1d5db; padding: 3px; text-align: left; vertical-align: top; word-break: break-word; line-height: 1.25; }
+          th { background: #f1f5f9; }
+          th:first-child, td:first-child { width: 140px; }
+          th:nth-child(2), td:nth-child(2) { width: 70px; }
+          th:nth-child(3), td:nth-child(3) { width: 72px; text-align: center; }
+          .holiday-col { background: #ffe4e6; color: #9f1239; }
+          .sunday-col { background: #fff1f2; color: #9f1239; }
+          .friday-col { background: #ecfdf5; color: #065f46; }
+          .today-col { background: #ecfeff; color: #155e75; }
+          .holiday-note { margin-top: 2px; font-size: 8px; line-height: 1.2; font-weight: 500; }
+        </style></head><body>
+          <h1>${escapeHtml(printTitle)}</h1>
+          <p class="meta">${escapeHtml(`${t('attendancePage.print.dateRangeLabel')}: ${compactDateWithDay(quickData.from, displayLocale)} - ${compactDateWithDay(quickData.to, displayLocale)}`)}</p>
+          <p class="meta">${escapeHtml(`${t('attendancePage.print.groupLabel')}: ${quickSummaryScopeLabel}`)}</p>
+          <table>
+            <thead><tr>${headerHtml}</tr></thead>
+            <tbody>${bodyHtml}</tbody>
+          </table>
+        </body></html>`;
+
+        const popup = window.open('', '_blank', 'width=1280,height=900');
+        if (!popup) return;
+        popup.document.write(html);
+        popup.document.close();
+        popup.focus();
+        popup.print();
+      } catch (error) {
+        warning(
+          error.message || t('reportPage.errors.fetchFailed'),
+          t('reportPage.errors.requestFailed')
+        );
+      }
+      return;
+    }
+
     const records = isRawTab ? rawRows : filteredSummaryRows;
     const headers = records.length ? Object.keys(records[0]) : [];
     const rowsHtml = records
       .slice(0, 1000)
       .map(
-        (row) => `<tr>${headers.map((key) => `<td>${String(row[key] ?? '-')}</td>`).join('')}</tr>`
+        (row) =>
+          `<tr>${headers.map((key) => `<td>${escapeHtml(String(row[key] ?? '-'))}</td>`).join('')}</tr>`
       )
       .join('');
 
     const printTitle = t('attendancePage.print.title');
-    const printRangeLabel = t('attendancePage.print.rangeLabel');
+    const printRangeLabel = t('attendancePage.print.dateRangeLabel');
     const printTabLabel = isRawTab
       ? t('attendancePage.print.rawTitle')
       : t('attendancePage.print.summaryTitle');
@@ -538,6 +1004,7 @@ export default function AttendancePage() {
       th { background: #f1f5f9; }
     </style></head><body>
       <h2>${printTabLabel} (${printRangeLabel}: ${from} - ${to})</h2>
+      <p>${t('attendancePage.print.groupLabel')}: ${selectedGroupLabel}</p>
       <table><thead><tr>${headers.map((key) => `<th>${key}</th>`).join('')}</tr></thead><tbody>${rowsHtml}</tbody></table>
     </body></html>`;
 
@@ -691,13 +1158,50 @@ export default function AttendancePage() {
           <button type="button" onClick={printCurrentTab} className="ui-btn-secondary">
             <Printer className="h-4 w-4" /> {t('attendancePage.actions.printPdf')}
           </button>
+          {activeTab === 'quick_summaries' && (
+            <div className="inline-flex items-center gap-2 rounded-lg border border-border/70 bg-background/60 px-2 py-1">
+              <span className="text-[11px] text-muted-foreground">
+                {t('attendancePage.actions.exportScopeTitle')}:
+              </span>
+              <div className="inline-flex rounded-md border border-border/70 bg-background/80 p-0.5 text-xs">
+                <button
+                  type="button"
+                  onClick={() => setQuickSummaryExportScope('current')}
+                  className={`rounded px-2 py-1 transition-colors ${
+                    quickSummaryExportScope === 'current'
+                      ? 'bg-teal-500/20 text-teal-300'
+                      : 'text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  {t('attendancePage.actions.exportScopeCurrentGroup')}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setQuickSummaryExportScope('all')}
+                  className={`rounded px-2 py-1 transition-colors ${
+                    quickSummaryExportScope === 'all'
+                      ? 'bg-teal-500/20 text-teal-300'
+                      : 'text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  {t('attendancePage.actions.exportScopeAllGroups')}
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
       <AttendanceFilters
         from={from}
         to={to}
-        count={activeTab === 'raw' ? rawTotal : filteredSummaryRows.length}
+        count={
+          activeTab === 'raw'
+            ? rawTotal
+            : activeTab === 'quick_summaries'
+              ? quickSummaryEmployees.length
+              : filteredSummaryRows.length
+        }
         anomalyCount={countAnomalies(filteredSummaryRows)}
         groupId={groupId}
         groups={groups}
@@ -877,9 +1381,36 @@ export default function AttendancePage() {
           <AttendanceTable
             loading={loading}
             rows={pagedSummaryRows}
+            holidayMap={holidayMap}
             onEdit={canEditNotes ? setEditing : null}
           />
           {renderPager(summaryPage, setSummaryPage, summaryMeta)}
+        </div>
+      )}
+
+      {activeTab === 'quick_summaries' && (
+        <div className="ui-card-shell p-4">
+          <div className="mb-3 flex items-center justify-between gap-2">
+            <div>
+              <h2 className="text-sm font-semibold text-foreground">
+                {t('attendancePage.tabs.quick_summaries')}
+              </h2>
+              <p className="text-xs text-muted-foreground">
+                Employee rows and compact DD + day columns, each cell includes all punch times for
+                that day.
+              </p>
+            </div>
+            <span className="font-mono text-xs text-muted-foreground">{quickSummaryRangeLabel}</span>
+          </div>
+          <QuickSummariesTable
+            loading={quickSummariesLoading}
+            error={quickSummariesError}
+            employees={quickSummaryEmployees}
+            dates={quickSummaryDates}
+            rowMap={quickSummaryRowMap}
+            holidayMap={holidayMap}
+            onRetry={loadQuickSummaries}
+          />
         </div>
       )}
 

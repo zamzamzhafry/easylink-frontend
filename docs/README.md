@@ -30,6 +30,12 @@ This folder is the handoff context for future contributors and AI agents.
 - [`api/machine-sdk-env-cleanup.md`](./api/machine-sdk-env-cleanup.md)
   - SDK-first env map (active vs legacy-looking vars)
   - Safe cleanup notes before removing direct-device fallback vars
+- [`agent-context/session-handoff-2026-04-19.md`](./agent-context/session-handoff-2026-04-19.md)
+  - Compact handoff summary of schedule/attendance export + quick-summary refactor session
+  - Includes verification status and bulk Excel benchmark snapshot
+- [`agent-context/session-handoff-2026-04-19-relocate-export-scope.md`](./agent-context/session-handoff-2026-04-19-relocate-export-scope.md)
+  - Follow-up handoff for relocating quick-summary export scope controls to export actions area
+  - Clarifies API behavior and UX intent
 
 ## Existing Migration/Refactor Docs
 

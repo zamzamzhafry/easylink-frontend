@@ -14,12 +14,14 @@ import {
   X,
 } from 'lucide-react';
 import BulkAssignModal from '@/components/schedule/bulk-assign-modal';
+import QuickSummariesTable from '@/components/schedule/quick-summaries-table';
 import ScheduleGrid from '@/components/schedule/schedule-grid';
 import ShiftLegend from '@/components/schedule/shift-legend';
 import { useToast } from '@/components/ui/toast-provider';
 import { requestJson } from '@/lib/request-json';
 import {
   addDays,
+  compactDateDayLabel,
   employeeScheduleMetrics,
   formatIsoDate,
   groupOptionsFromEmployees,
@@ -37,6 +39,7 @@ import {
 const TABS = [
   { key: 'plan', label: 'Monthly Plan' },
   { key: 'punches', label: 'Punch Shortcut' },
+  { key: 'quick_summaries', label: 'Quick Summaries' },
   { key: 'import', label: 'Import / Check' },
   { key: 'summary', label: 'Employee Metrics' },
 ];
@@ -67,6 +70,16 @@ function normalizeDate(value) {
   return text.includes('T') ? text.slice(0, 10) : text.slice(0, 10);
 }
 
+function uniqueByEmployeeId(employees) {
+  const map = new Map();
+  (employees || []).forEach((employee) => {
+    const employeeId = Number(employee?.id);
+    if (!employeeId || map.has(employeeId)) return;
+    map.set(employeeId, employee);
+  });
+  return [...map.values()];
+}
+
 export default function SchedulePage() {
   const { success, warning } = useToast();
   const [activeTab, setActiveTab] = useState('plan');
@@ -79,6 +92,14 @@ export default function SchedulePage() {
     scanCompletions: [],
   });
   const [attendanceRows, setAttendanceRows] = useState([]);
+  const [quickSummariesData, setQuickSummariesData] = useState({
+    from: '',
+    to: '',
+    dates: [],
+    rows: [],
+  });
+  const [quickSummariesLoading, setQuickSummariesLoading] = useState(false);
+  const [quickSummariesError, setQuickSummariesError] = useState('');
   const [loading, setLoading] = useState(true);
   const [bulkModal, setBulkModal] = useState(false);
   const [importResult, setImportResult] = useState({ entries: [], errors: [] });
@@ -96,6 +117,11 @@ export default function SchedulePage() {
   const from = formatIsoDate(monthStart(monthOf));
   const to = formatIsoDate(monthEnd(monthOf));
   const monthTitle = useMemo(() => monthLabel(monthOf, 'id-ID'), [monthOf]);
+  const monthDateKeys = useMemo(() => dates.map((date) => formatIsoDate(date)), [dates]);
+  const compactRangeLabel = useMemo(
+    () => `${compactDateDayLabel(from, 'id-ID')} - ${compactDateDayLabel(to, 'id-ID')}`,
+    [from, to]
+  );
 
   const getShift = useCallback(
     (employeeId, dateString) =>
@@ -146,9 +172,46 @@ export default function SchedulePage() {
     }
   }, [from, to, warning]);
 
+  const loadQuickSummaries = useCallback(async () => {
+    setQuickSummariesLoading(true);
+    setQuickSummariesError('');
+    try {
+      const query = new URLSearchParams({ from, to });
+      if (groupTab !== 'all' && groupTab !== 'ungrouped') {
+        query.set('group_id', String(groupTab));
+      }
+      const result = await requestJson(`/api/schedule/quick-summaries?${query.toString()}`);
+      setQuickSummariesData({
+        from: String(result?.from || from),
+        to: String(result?.to || to),
+        dates: Array.isArray(result?.dates)
+          ? result.dates.map((dateValue) => String(dateValue).slice(0, 10))
+          : monthDateKeys,
+        rows: Array.isArray(result?.rows) ? result.rows : [],
+      });
+    } catch (error) {
+      setQuickSummariesError(
+        error.message || 'Failed to fetch quick summaries for selected month.'
+      );
+      setQuickSummariesData({
+        from,
+        to,
+        dates: monthDateKeys,
+        rows: [],
+      });
+    } finally {
+      setQuickSummariesLoading(false);
+    }
+  }, [from, groupTab, monthDateKeys, to]);
+
   useEffect(() => {
     load();
   }, [load]);
+
+  useEffect(() => {
+    if (activeTab !== 'quick_summaries') return;
+    loadQuickSummaries();
+  }, [activeTab, loadQuickSummaries]);
 
   // Fetch current user to gate edit button
   useEffect(() => {
@@ -219,16 +282,62 @@ export default function SchedulePage() {
   const groups = useMemo(() => groupOptionsFromEmployees(data.employees), [data.employees]);
 
   const filteredEmployees = useMemo(() => {
-    if (groupTab === 'all') return data.employees;
-    if (groupTab === 'ungrouped') return data.employees.filter((employee) => !employee.group_id);
-    return data.employees.filter((employee) => String(employee.group_id) === String(groupTab));
+    const sourceEmployees = uniqueByEmployeeId(data.employees);
+    if (groupTab === 'all') return sourceEmployees;
+    if (groupTab === 'ungrouped')
+      return sourceEmployees.filter((employee) => !employee.group_id);
+    return sourceEmployees.filter((employee) => String(employee.group_id) === String(groupTab));
   }, [data.employees, groupTab]);
+
+  const quickSummaryEmployees = useMemo(() => {
+    const byEmployeeId = new Map();
+    filteredEmployees.forEach((employee) => {
+      const employeeId = Number(employee.id);
+      if (!employeeId || byEmployeeId.has(employeeId)) return;
+      byEmployeeId.set(employeeId, employee);
+    });
+    return [...byEmployeeId.values()];
+  }, [filteredEmployees]);
+
+  const quickSummaryDates = useMemo(() => {
+    if (Array.isArray(quickSummariesData?.dates) && quickSummariesData.dates.length > 0) {
+      return quickSummariesData.dates;
+    }
+    return monthDateKeys;
+  }, [monthDateKeys, quickSummariesData]);
+
+  const quickSummaryRowMap = useMemo(() => {
+    const map = new Map();
+    const rows = Array.isArray(quickSummariesData?.rows) ? quickSummariesData.rows : [];
+    rows.forEach((row) => {
+      const employeeId = Number(row?.employee?.id);
+      if (!employeeId || map.has(employeeId)) return;
+      map.set(employeeId, row);
+    });
+    return map;
+  }, [quickSummariesData]);
 
   const selectedGroupLabel = useMemo(() => {
     if (groupTab === 'all') return 'All Groups';
     if (groupTab === 'ungrouped') return 'Unassigned';
     return groups.find((item) => String(item.id) === String(groupTab))?.name || 'Unknown Group';
   }, [groupTab, groups]);
+
+  const chooseScheduleExportScope = useCallback(() => {
+    if (groupTab === 'all') return 'current';
+    const useCurrentScope = window.confirm(
+      'Export scope:\n\nOK: Current selected group\nCancel: All groups'
+    );
+    return useCurrentScope ? 'current' : 'all';
+  }, [groupTab]);
+
+  const resolveExportEmployees = useCallback(
+    (scope) => {
+      if (scope === 'all') return uniqueByEmployeeId(data.employees);
+      return filteredEmployees;
+    },
+    [data.employees, filteredEmployees]
+  );
 
   const totalEmployeePages = useMemo(
     () => Math.max(1, Math.ceil(filteredEmployees.length / rowsPerPage)),
@@ -356,17 +465,22 @@ export default function SchedulePage() {
   }, [attendanceRows, data.employees]);
 
   const exportTemplateCsv = () => {
-    const csv = scheduleCsvTemplate(filteredEmployees, dates, getShift);
+    const scope = chooseScheduleExportScope();
+    const exportEmployees = resolveExportEmployees(scope);
+    const csv = scheduleCsvTemplate(exportEmployees, dates, getShift);
     const blob = new Blob([csv], { type: 'text/csv' });
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
-    link.download = `schedule_${from}_${to}_${groupTab}.csv`;
+    link.download = `schedule_${from}_${to}_${scope === 'all' ? 'all_groups' : groupTab}.csv`;
     link.click();
+    URL.revokeObjectURL(link.href);
   };
 
   const exportTemplateExcel = async () => {
+    const scope = chooseScheduleExportScope();
+    const exportEmployees = resolveExportEmployees(scope);
     const XLSX = await import('xlsx');
-    const headerRows = scheduleTemplateRows(filteredEmployees, dates, getShift);
+    const headerRows = scheduleTemplateRows(exportEmployees, dates, getShift);
     const scheduleSheetRows = headerRows.map((row, index) => {
       if (index === 0) {
         return ['Nama', 'PIN', 'Total Jam (Formula)', ...row.slice(2)];
@@ -410,16 +524,29 @@ export default function SchedulePage() {
     XLSX.utils.book_append_sheet(workbook, shiftRefSheet, 'Shift Reference');
     XLSX.utils.book_append_sheet(workbook, infoSheet, 'Info');
 
-    XLSX.writeFile(workbook, `schedule_${from}_${to}_${groupTab}.xlsx`);
+    XLSX.writeFile(
+      workbook,
+      `schedule_${from}_${to}_${scope === 'all' ? 'all_groups' : groupTab}.xlsx`
+    );
   };
 
   const printSchedule = () => {
+    const scope = chooseScheduleExportScope();
+    const exportEmployees = resolveExportEmployees(scope);
+    const exportGroupLabel = scope === 'all' ? 'All Groups' : selectedGroupLabel;
     const popup = window.open('', '_blank', 'width=1280,height=800');
     if (!popup) {
       warning('Unable to open print window. Please allow popups.', 'Print blocked');
       return;
     }
-    popup.document.write(schedulePrintHtml(filteredEmployees, dates, getShift, { holidayMap }));
+    popup.document.write(
+      schedulePrintHtml(exportEmployees, dates, getShift, {
+        holidayMap,
+        from,
+        to,
+        groupLabel: exportGroupLabel,
+      })
+    );
     popup.document.close();
     popup.focus();
     popup.print();
@@ -468,10 +595,10 @@ export default function SchedulePage() {
           raw: false,
           defval: '',
         });
-        result = parseScheduleTemplateRows(rows, data.employees, data.shifts);
+        result = parseScheduleTemplateRows(rows, data.employees, data.shifts, { from, to });
       } else {
         const text = await file.text();
-        result = parseScheduleTemplateImport(text, data.employees, data.shifts);
+        result = parseScheduleTemplateImport(text, data.employees, data.shifts, { from, to });
       }
 
       setImportResult(result);
@@ -624,7 +751,7 @@ export default function SchedulePage() {
           <ChevronRight className="h-4 w-4" />
         </button>
         <div className="ml-auto font-mono text-xs text-slate-500">
-          {from} - {to}
+          {compactRangeLabel}
         </div>
       </div>
 
@@ -863,6 +990,33 @@ export default function SchedulePage() {
               </tbody>
             </table>
           </div>
+        </div>
+      )}
+
+      {activeTab === 'quick_summaries' && (
+        <div className="space-y-4 rounded-xl border border-slate-800 bg-slate-900 p-4">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <h2 className="text-sm font-semibold text-white">Quick Summaries</h2>
+              <p className="text-xs text-slate-400">
+                Employee rows with compact DD + day columns. Each cell shows all punch times on
+                that date.
+              </p>
+            </div>
+            <div className="font-mono text-xs text-slate-500">
+              {compactRangeLabel}
+            </div>
+          </div>
+
+          <QuickSummariesTable
+            loading={quickSummariesLoading}
+            error={quickSummariesError}
+            employees={quickSummaryEmployees}
+            dates={quickSummaryDates}
+            rowMap={quickSummaryRowMap}
+            holidayMap={holidayMap}
+            onRetry={loadQuickSummaries}
+          />
         </div>
       )}
 
