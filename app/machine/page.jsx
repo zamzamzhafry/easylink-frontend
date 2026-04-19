@@ -53,6 +53,18 @@ function currentMonthRange() {
   return { from, to };
 }
 
+function formatLocalDateTime(value, locale) {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value);
+
+  const intlLocale = locale === 'id' ? 'id-ID' : 'en-US';
+  return new Intl.DateTimeFormat(intlLocale, {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  }).format(date);
+}
+
 const TASK12_ALIASES = ['devinfo', 'scanlog_new', 'users_partial'];
 
 function actionLabel(action, locale = 'en') {
@@ -90,6 +102,8 @@ export default function MachinePage() {
 
   const [deviceInfo, setDeviceInfo] = useState(null);
   const [deviceTime, setDeviceTime] = useState(null);
+  const [machineHealth, setMachineHealth] = useState(null);
+  const [machineHealthError, setMachineHealthError] = useState('');
   const [userSyncResult, setUserSyncResult] = useState(null);
   const [scanSyncResult, setScanSyncResult] = useState(null);
   const [initResult, setInitResult] = useState(null);
@@ -131,6 +145,10 @@ export default function MachinePage() {
   const [confirmInput, setConfirmInput] = useState('');
   const [isPageVisible, setIsPageVisible] = useState(true);
   const isAdmin = Boolean(currentUser?.is_admin);
+  const machineHealthStatus = String(
+    machineHealth?.status || (machineHealthError ? 'offline' : 'checking')
+  );
+  const machineHealthChecks = Array.isArray(machineHealth?.checks) ? machineHealth.checks : [];
 
   const updateMachineRow = useCallback((row) => {
     if (!row) return;
@@ -220,6 +238,28 @@ export default function MachinePage() {
     },
     [applyMachineResult, machineLimit, machinePage, t, updateMachineRow]
   );
+
+  const refreshMachineStatus = useCallback(async () => {
+    try {
+      setMachineHealthError('');
+      const res = await fetch('/api/machine/status');
+      const data = await parseApiResponse(res);
+      if (!res.ok || !data?.ok) {
+        throw new Error(data?.error || data?.raw || `Machine status failed (${res.status})`);
+      }
+
+      setMachineHealth({
+        status: String(data?.status || 'offline'),
+        source: String(data?.source || ''),
+        checked_at: String(data?.checked_at || ''),
+        checks: Array.isArray(data?.checks) ? data.checks : [],
+      });
+      return data;
+    } catch (err) {
+      setMachineHealthError(err?.message || t('machinePage.errors.refreshStatusFailed'));
+      return null;
+    }
+  }, [t]);
 
   const refreshScanlogQueue = useCallback(async (batchId) => {
     if (!batchId) return null;
@@ -409,6 +449,26 @@ export default function MachinePage() {
 
     return () => clearInterval(timer);
   }, [isAdmin, isPageVisible, refreshMachineQueue]);
+
+  useEffect(() => {
+    if (!currentUser || !isPageVisible) return;
+
+    let cancelled = false;
+    const poll = async () => {
+      if (cancelled) return;
+      await refreshMachineStatus();
+    };
+
+    void poll();
+    const timer = setInterval(() => {
+      void poll();
+    }, 15000);
+
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [currentUser, isPageVisible, refreshMachineStatus]);
 
   useEffect(() => {
     if (!isAdmin || !isPageVisible || !activeMachineJobId) return;
@@ -633,6 +693,30 @@ export default function MachinePage() {
     setExpandedMachineRows((prev) => ({ ...prev, [id]: !prev[id] }));
   }, []);
 
+  const machineHealthPillClass =
+    {
+      online: 'text-emerald-300 bg-emerald-500/10 border-emerald-500/30',
+      degraded: 'text-amber-300 bg-amber-500/10 border-amber-500/30',
+      offline: 'text-rose-300 bg-rose-500/10 border-rose-500/30',
+      checking: 'text-slate-300 bg-slate-700/30 border-slate-700/40',
+    }[machineHealthStatus] || 'text-slate-300 bg-slate-700/30 border-slate-700/40';
+
+  const machineHealthSummary =
+    {
+      online: t('machinePage.connection.summaryOnline'),
+      degraded: t('machinePage.connection.summaryDegraded'),
+      offline: t('machinePage.connection.summaryOffline'),
+      checking: t('machinePage.connection.checking'),
+    }[machineHealthStatus] || t('machinePage.connection.checking');
+
+  const machineHealthLabel =
+    {
+      online: t('machinePage.connection.statusOnline'),
+      degraded: t('machinePage.connection.statusDegraded'),
+      offline: t('machinePage.connection.statusOffline'),
+      checking: t('machinePage.connection.statusChecking'),
+    }[machineHealthStatus] || t('machinePage.connection.statusChecking');
+
   return (
     <>
       <div className="space-y-6">
@@ -643,584 +727,665 @@ export default function MachinePage() {
           </div>
 
           {!isAdmin && (
-            <InlineStatusPanel message={t('machinePage.queue.restricted')} variant="warning" />
+            <InlineStatusPanel
+              message={t('machinePage.visibility.employeeSummary')}
+              variant="warning"
+            />
           )}
 
           <div className="ui-card-shell p-4">
-            <div className="mb-3 flex items-center justify-between">
+            <div className="mb-3 flex items-center justify-between gap-3">
               <div>
                 <p className="text-sm font-semibold text-foreground">
-                  {t('machinePage.queue.title')}
+                  {t('machinePage.connection.title')}
                 </p>
-                <p className="text-xs text-muted-foreground">
-                  {isAdmin
-                    ? tr('machinePage.queue.summary', {
-                        active: machineQueueMeta.active,
-                        concurrency: machineQueueMeta.concurrency,
-                        pending: machineQueueMeta.pending,
-                      })
-                    : t('machinePage.queue.hidden')}
-                </p>
-              </div>
-              {isAdmin && (
-                <button
-                  type="button"
-                  onClick={() => refreshMachineQueue()}
-                  className="ui-btn-secondary !min-h-0 px-3 py-2 text-xs"
-                >
-                  {t('machinePage.queue.refresh')}
-                </button>
-              )}
-            </div>
-            {machineQueueError && <p className="text-xs text-amber-400">{machineQueueError}</p>}
-
-            <div className="grid gap-3 pt-3 md:grid-cols-2 xl:grid-cols-4">
-              <button
-                type="button"
-                onClick={() => confirmMachineAction('info')}
-                disabled={Boolean(actionBusy)}
-                className="ui-btn-secondary w-full disabled:opacity-50"
-              >
-                <Info className="h-4 w-4" />{' '}
-                {actionBusy === 'info'
-                  ? t('machinePage.queue.queueing')
-                  : actionLabel('info', resolvedLocale)}
-              </button>
-
-              <button
-                type="button"
-                onClick={() => confirmMachineAction('time')}
-                disabled={Boolean(actionBusy)}
-                className="ui-btn-secondary w-full disabled:opacity-50"
-              >
-                <Clock3 className="h-4 w-4" />{' '}
-                {actionBusy === 'time'
-                  ? t('machinePage.queue.queueing')
-                  : actionLabel('time', resolvedLocale)}
-              </button>
-
-              <button
-                type="button"
-                onClick={() => confirmMachineAction('sync_time')}
-                disabled={Boolean(actionBusy)}
-                className="ui-btn-secondary w-full disabled:opacity-50"
-              >
-                <RefreshCw className="h-4 w-4" />{' '}
-                {actionBusy === 'sync_time'
-                  ? t('machinePage.queue.queueing')
-                  : actionLabel('sync_time', resolvedLocale)}
-              </button>
-
-              <button
-                type="button"
-                onClick={() => confirmMachineAction('pull_users')}
-                disabled={Boolean(actionBusy)}
-                className="ui-btn-secondary w-full disabled:opacity-50"
-              >
-                <Users className="h-4 w-4" />{' '}
-                {actionBusy === 'pull_users'
-                  ? t('machinePage.queue.queueing')
-                  : actionLabel('pull_users', resolvedLocale)}
-              </button>
-            </div>
-
-            <div className="ui-card-muted mt-4 p-3">
-              <p className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-teal-300">
-                <UserPlus className="h-4 w-4" /> {t('machinePage.addUser.menuTitle')}
-              </p>
-              <div className="grid gap-2 md:grid-cols-2">
-                <input
-                  type="text"
-                  placeholder={t('machinePage.addUser.pinPlaceholder')}
-                  value={addUserPayload.pin}
-                  onChange={(event) =>
-                    setAddUserPayload((prev) => ({ ...prev, pin: event.target.value }))
-                  }
-                  className="ui-control-input"
-                />
-                <input
-                  type="text"
-                  placeholder={t('machinePage.addUser.namePlaceholder')}
-                  value={addUserPayload.name}
-                  onChange={(event) =>
-                    setAddUserPayload((prev) => ({ ...prev, name: event.target.value }))
-                  }
-                  className="ui-control-input"
-                />
-                <input
-                  type="text"
-                  placeholder={t('machinePage.addUser.passwordPlaceholder')}
-                  value={addUserPayload.password}
-                  onChange={(event) =>
-                    setAddUserPayload((prev) => ({ ...prev, password: event.target.value }))
-                  }
-                  className="ui-control-input"
-                />
-                <input
-                  type="text"
-                  placeholder={t('machinePage.addUser.rfidPlaceholder')}
-                  value={addUserPayload.rfid}
-                  onChange={(event) =>
-                    setAddUserPayload((prev) => ({ ...prev, rfid: event.target.value }))
-                  }
-                  className="ui-control-input"
-                />
-                <select
-                  value={addUserPayload.privilege}
-                  onChange={(event) =>
-                    setAddUserPayload((prev) => ({
-                      ...prev,
-                      privilege: Number(event.target.value) || 0,
-                    }))
-                  }
-                  className="ui-control-select"
-                >
-                  <option value={0}>{t('machinePage.addUser.privilegeUser')}</option>
-                  <option value={1}>{t('machinePage.addUser.privilegeAdmin')}</option>
-                </select>
-                <button
-                  type="button"
-                  onClick={queueAddUser}
-                  disabled={Boolean(actionBusy)}
-                  className="ui-btn-primary disabled:opacity-50"
-                >
-                  {actionBusy === 'set_user'
-                    ? t('machinePage.addUser.queueBusy')
-                    : t('machinePage.addUser.queueCta')}
-                </button>
-              </div>
-            </div>
-          </div>
-
-          <div className="ui-card-shell p-4">
-            <h2 className="mb-3 text-sm font-semibold text-white">
-              {t('machinePage.task12.actionsTitle')}
-            </h2>
-            <div className="grid gap-3 md:grid-cols-3">
-              <div className="ui-card-muted space-y-2 p-3">
-                <p className="text-xs font-semibold uppercase tracking-wide text-teal-300">
-                  {t('machinePage.task12.devinfoTitle')}
-                </p>
-                <p className="text-sm text-slate-200">{t('machinePage.task12.devinfoBody')}</p>
-                <button
-                  type="button"
-                  onClick={() =>
-                    confirmMachineAction('devinfo', {
-                      title: t('machinePage.task12.devinfoQueueTitle'),
-                      message: t('machinePage.task12.devinfoQueueMessage'),
-                      confirmLabel: t('machinePage.task12.devinfoQueueConfirm'),
-                      payload: { async: true },
-                    })
-                  }
-                  disabled={Boolean(actionBusy)}
-                  className="ui-btn-secondary w-full disabled:opacity-50"
-                >
-                  {actionBusy === 'devinfo'
-                    ? t('machinePage.task12.devinfoQueueBusy')
-                    : t('machinePage.task12.devinfoQueueCta')}
-                </button>
-              </div>
-              <div className="ui-card-muted space-y-2 p-3">
-                <p className="text-xs font-semibold uppercase tracking-wide text-cyan-300">
-                  {t('machinePage.task12.scanlogNewTitle')}
-                </p>
-                <p className="text-sm text-slate-200">{t('machinePage.task12.scanlogNewBody')}</p>
-                <div className="grid gap-2 text-xs text-slate-400">
-                  <label className="flex flex-col gap-1">
-                    <span>{t('machinePage.task12.from')}</span>
-                    <input
-                      type="date"
-                      value={scanlogNewPayload.from}
-                      onChange={(event) =>
-                        setScanlogNewPayload((prev) => ({ ...prev, from: event.target.value }))
-                      }
-                      className="ui-control-input min-h-0 px-2 py-1 text-xs"
-                    />
-                  </label>
-                  <label className="flex flex-col gap-1">
-                    <span>{t('machinePage.task12.to')}</span>
-                    <input
-                      type="date"
-                      value={scanlogNewPayload.to}
-                      onChange={(event) =>
-                        setScanlogNewPayload((prev) => ({ ...prev, to: event.target.value }))
-                      }
-                      className="ui-control-input min-h-0 px-2 py-1 text-xs"
-                    />
-                  </label>
-                  <label className="flex flex-col gap-1">
-                    <span>{t('machinePage.task12.limit')}</span>
-                    <input
-                      type="number"
-                      value={scanlogNewPayload.limit}
-                      min={1}
-                      max={2000}
-                      onChange={(event) =>
-                        setScanlogNewPayload((prev) => ({
-                          ...prev,
-                          limit: Number(event.target.value) || 100,
-                        }))
-                      }
-                      className="ui-control-input min-h-0 px-2 py-1 text-xs"
-                    />
-                  </label>
-                </div>
-                <button
-                  type="button"
-                  onClick={queueTask12ScanlogNew}
-                  disabled={Boolean(actionBusy)}
-                  className="ui-btn-secondary w-full disabled:opacity-50"
-                >
-                  {actionBusy === 'scanlog_new'
-                    ? t('machinePage.task12.scanlogNewQueueBusy')
-                    : t('machinePage.task12.scanlogNewQueueCta')}
-                </button>
-              </div>
-              <div className="ui-card-muted space-y-2 p-3">
-                <p className="text-xs font-semibold uppercase tracking-wide text-emerald-300">
-                  {t('machinePage.task12.usersPartialTitle')}
-                </p>
-                <p className="text-sm text-slate-200">{t('machinePage.task12.usersPartialBody')}</p>
-                <div className="grid gap-2 text-xs text-slate-400">
-                  <label className="flex flex-col gap-1">
-                    <span>{t('machinePage.task12.page')}</span>
-                    <input
-                      type="number"
-                      value={usersPartialParams.page}
-                      min={1}
-                      onChange={(event) =>
-                        setUsersPartialParams((prev) => ({
-                          ...prev,
-                          page: Number(event.target.value) || 1,
-                        }))
-                      }
-                      className="ui-control-input min-h-0 px-2 py-1 text-xs"
-                    />
-                  </label>
-                  <label className="flex flex-col gap-1">
-                    <span>{t('machinePage.task12.delayMs')}</span>
-                    <input
-                      type="number"
-                      value={usersPartialParams.delayMs}
-                      min={250}
-                      step={250}
-                      onChange={(event) =>
-                        setUsersPartialParams((prev) => ({
-                          ...prev,
-                          delayMs: Number(event.target.value) || 1000,
-                        }))
-                      }
-                      className="ui-control-input min-h-0 px-2 py-1 text-xs"
-                    />
-                  </label>
-                </div>
-                <button
-                  type="button"
-                  onClick={queueUsersPartial}
-                  disabled={Boolean(actionBusy)}
-                  className="ui-btn-secondary w-full disabled:opacity-50"
-                >
-                  {actionBusy === 'users_partial'
-                    ? t('machinePage.task12.usersPartialQueueBusy')
-                    : t('machinePage.task12.usersPartialQueueCta')}
-                </button>
-                {usersPartialStatus && (
-                  <p className="text-[11px] text-slate-400">{usersPartialStatus}</p>
-                )}
-              </div>
-            </div>
-          </div>
-
-          <div className="ui-card-shell p-4">
-            <h2 className="mb-3 text-sm font-semibold text-white">
-              {t('machinePage.task12.artifactsTitle')}
-            </h2>
-            <div className="grid gap-3 md:grid-cols-2">
-              {artifactEntries.map((entry) => (
-                <div key={entry.alias} className="ui-card-muted space-y-2 p-3">
-                  <p className="text-[11px] uppercase tracking-wider text-slate-400">
-                    {entry.label}
-                  </p>
-                  <p className="text-xs text-slate-500">{entry.note}</p>
-                  {isAdmin ? (
-                    <pre className="max-h-32 overflow-auto rounded bg-slate-950 p-2 text-[11px] text-slate-300">
-                      {formatJson(
-                        entry.metadata || entry.data || t('machinePage.task12.artifacts.empty')
-                      )}
-                    </pre>
-                  ) : (
-                    <p className="rounded border border-slate-700 bg-slate-950/80 p-2 text-[11px] text-slate-400">
-                      {t('machinePage.common.hiddenForNonAdmin')}
-                    </p>
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <div className="ui-card-shell p-4">
-            <div className="ui-control-row">
-              <div className="ui-control-group">
-                <label htmlFor="scanlog-mode" className="ui-control-label">
-                  {t('machinePage.controls.scanlogMode')}
-                </label>
-                <select
-                  id="scanlog-mode"
-                  value={scanlogMode}
-                  onChange={(event) => setScanlogMode(event.target.value)}
-                  className="ui-control-select"
-                >
-                  <option value="new">{t('machinePage.controls.scanlogModeNew')}</option>
-                  <option value="all">{t('machinePage.controls.scanlogModeAll')}</option>
-                </select>
-              </div>
-              <div className="ui-control-group max-w-[12rem]">
-                <label htmlFor="scanlog-max-pages" className="ui-control-label">
-                  {t('machinePage.controls.maxPages')}
-                </label>
-                <input
-                  id="scanlog-max-pages"
-                  type="number"
-                  min={1}
-                  max={100000}
-                  value={scanlogMaxPages}
-                  onChange={(event) => setScanlogMaxPages(Number(event.target.value) || 1)}
-                  className="ui-control-input"
-                />
+                <p className="text-xs text-muted-foreground">{machineHealthSummary}</p>
               </div>
               <button
                 type="button"
-                onClick={() => confirmScanlogAction(scanlogMode)}
-                disabled={Boolean(actionBusy)}
-                className="ui-btn-primary disabled:opacity-50"
+                onClick={() => refreshMachineStatus()}
+                className="ui-btn-secondary !min-h-0 px-3 py-2 text-xs"
               >
-                <DatabaseZap className="h-4 w-4" />{' '}
-                {actionBusy === `scanlog_${scanlogMode}`
-                  ? t('machinePage.controls.queueScanlogBusy')
-                  : scanlogMode === 'all'
-                    ? t('machinePage.controls.queueFullScanlogPull')
-                    : t('machinePage.controls.queueNewScanlogPull')}
+                {t('machinePage.connection.refresh')}
               </button>
             </div>
-            {scanlogMode === 'all' && (
-              <p className="mt-3 text-xs text-amber-300">
-                {t('machinePage.controls.fullScanlogWarning')}
-              </p>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className={`rounded-full border px-3 py-1 text-xs ${machineHealthPillClass}`}>
+                {machineHealthLabel}
+              </span>
+              {machineHealthChecks.map((check) => {
+                const checkClass =
+                  check.status === 'ok'
+                    ? 'text-emerald-300 bg-emerald-500/10 border-emerald-500/30'
+                    : check.status === 'failed'
+                      ? 'text-rose-300 bg-rose-500/10 border-rose-500/30'
+                      : 'text-slate-300 bg-slate-700/30 border-slate-700/40';
+                const checkLabel =
+                  check.key === 'device_info'
+                    ? t('machinePage.connection.signalInfo')
+                    : t('machinePage.connection.signalTime');
+                return (
+                  <span
+                    key={check.key}
+                    className={`rounded-full border px-3 py-1 text-xs ${checkClass}`}
+                  >
+                    {checkLabel}:{' '}
+                    {check.status === 'ok'
+                      ? t('machinePage.connection.statusOk')
+                      : t('machinePage.connection.statusFail')}
+                  </span>
+                );
+              })}
+              <span className="rounded-full border border-slate-700/40 bg-slate-700/30 px-3 py-1 text-xs text-slate-300">
+                {t('machinePage.connection.source', {
+                  source: machineHealth?.source || t('machinePage.connection.unknownSource'),
+                })}
+              </span>
+            </div>
+            <p className="mt-2 text-xs text-muted-foreground">
+              {machineHealth?.checked_at
+                ? t('machinePage.connection.lastChecked', {
+                    time: formatLocalDateTime(machineHealth.checked_at, resolvedLocale),
+                  })
+                : t('machinePage.connection.checking')}
+            </p>
+            {machineHealthError && (
+              <p className="mt-2 text-xs text-amber-400">{machineHealthError}</p>
             )}
           </div>
 
-          <div className="rounded-xl border border-rose-700/40 bg-rose-950/20 p-4">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <p className="flex items-center gap-2 text-sm font-semibold text-rose-200">
-                  <ShieldAlert className="h-4 w-4" /> {t('machinePage.dangerZone.title')}
-                </p>
-                <p className="mt-1 text-xs text-rose-300/90">{t('machinePage.dangerZone.body')}</p>
-              </div>
-              <button
-                type="button"
-                onClick={() => confirmMachineAction('initialize_machine')}
-                disabled={Boolean(actionBusy)}
-                className="rounded-lg border border-rose-500/40 bg-rose-500/20 px-3 py-2 text-xs font-semibold text-rose-200 hover:bg-rose-500/30 disabled:opacity-50"
-              >
-                {actionBusy === 'initialize_machine'
-                  ? t('machinePage.dangerZone.queueing')
-                  : t('machinePage.dangerZone.cta')}
-              </button>
-            </div>
-            <p className="mt-3 text-[11px] text-rose-300/80">
-              {t('machinePage.dangerZone.requiredPhrase')}{' '}
-              <span className="font-semibold">{initConfirmationPhrase}</span>
-            </p>
-          </div>
-
-          <InlineStatusPanel message={error} variant="error" />
-
-          <div className="grid gap-4 md:grid-cols-2">
-            <div className="ui-card-shell p-4">
-              <h2 className="mb-2 text-sm font-semibold text-white">
-                {t('machinePage.results.deviceInfoTitle')}
-              </h2>
-              {isAdmin ? (
-                <pre className="max-h-64 overflow-auto rounded-lg bg-slate-950 p-3 text-xs text-slate-300">
-                  {deviceInfo ? formatJson(deviceInfo) : t('machinePage.results.noDeviceInfo')}
-                </pre>
-              ) : (
-                <p className="rounded-lg border border-slate-700 bg-slate-950 p-3 text-xs text-slate-400">
-                  {t('machinePage.common.hiddenForNonAdmin')}
-                </p>
-              )}
-              <p className="mt-2 text-xs text-slate-500">
-                {tr('machinePage.results.deviceTime', { time: String(deviceTime || '-') })}
-              </p>
-            </div>
-
-            <div className="space-y-4">
+          {isAdmin && (
+            <>
               <div className="ui-card-shell p-4">
-                <h2 className="mb-2 text-sm font-semibold text-white">
-                  {t('machinePage.results.usersPullTitle')}
-                </h2>
-                {isAdmin ? (
-                  <pre className="max-h-40 overflow-auto rounded-lg bg-slate-950 p-3 text-xs text-slate-300">
-                    {userSyncResult
-                      ? formatJson(userSyncResult)
-                      : t('machinePage.results.noUsersPull')}
-                  </pre>
-                ) : (
-                  <p className="rounded-lg border border-slate-700 bg-slate-950 p-3 text-xs text-slate-400">
-                    {t('machinePage.common.hiddenForNonAdmin')}
+                <div className="mb-3 flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-semibold text-foreground">
+                      {t('machinePage.queue.title')}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {isAdmin
+                        ? tr('machinePage.queue.summary', {
+                            active: machineQueueMeta.active,
+                            concurrency: machineQueueMeta.concurrency,
+                            pending: machineQueueMeta.pending,
+                          })
+                        : t('machinePage.queue.hidden')}
+                    </p>
+                  </div>
+                  {isAdmin && (
+                    <button
+                      type="button"
+                      onClick={() => refreshMachineQueue()}
+                      className="ui-btn-secondary !min-h-0 px-3 py-2 text-xs"
+                    >
+                      {t('machinePage.queue.refresh')}
+                    </button>
+                  )}
+                </div>
+                {machineQueueError && <p className="text-xs text-amber-400">{machineQueueError}</p>}
+
+                <div className="grid gap-3 pt-3 md:grid-cols-2 xl:grid-cols-4">
+                  <button
+                    type="button"
+                    onClick={() => confirmMachineAction('info')}
+                    disabled={Boolean(actionBusy)}
+                    className="ui-btn-secondary w-full disabled:opacity-50"
+                  >
+                    <Info className="h-4 w-4" />{' '}
+                    {actionBusy === 'info'
+                      ? t('machinePage.queue.queueing')
+                      : actionLabel('info', resolvedLocale)}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => confirmMachineAction('time')}
+                    disabled={Boolean(actionBusy)}
+                    className="ui-btn-secondary w-full disabled:opacity-50"
+                  >
+                    <Clock3 className="h-4 w-4" />{' '}
+                    {actionBusy === 'time'
+                      ? t('machinePage.queue.queueing')
+                      : actionLabel('time', resolvedLocale)}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => confirmMachineAction('sync_time')}
+                    disabled={Boolean(actionBusy)}
+                    className="ui-btn-secondary w-full disabled:opacity-50"
+                  >
+                    <RefreshCw className="h-4 w-4" />{' '}
+                    {actionBusy === 'sync_time'
+                      ? t('machinePage.queue.queueing')
+                      : actionLabel('sync_time', resolvedLocale)}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => confirmMachineAction('pull_users')}
+                    disabled={Boolean(actionBusy)}
+                    className="ui-btn-secondary w-full disabled:opacity-50"
+                  >
+                    <Users className="h-4 w-4" />{' '}
+                    {actionBusy === 'pull_users'
+                      ? t('machinePage.queue.queueing')
+                      : actionLabel('pull_users', resolvedLocale)}
+                  </button>
+                </div>
+
+                <div className="ui-card-muted mt-4 p-3">
+                  <p className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-teal-300">
+                    <UserPlus className="h-4 w-4" /> {t('machinePage.addUser.menuTitle')}
                   </p>
-                )}
+                  <div className="grid gap-2 md:grid-cols-2">
+                    <input
+                      type="text"
+                      placeholder={t('machinePage.addUser.pinPlaceholder')}
+                      value={addUserPayload.pin}
+                      onChange={(event) =>
+                        setAddUserPayload((prev) => ({ ...prev, pin: event.target.value }))
+                      }
+                      className="ui-control-input"
+                    />
+                    <input
+                      type="text"
+                      placeholder={t('machinePage.addUser.namePlaceholder')}
+                      value={addUserPayload.name}
+                      onChange={(event) =>
+                        setAddUserPayload((prev) => ({ ...prev, name: event.target.value }))
+                      }
+                      className="ui-control-input"
+                    />
+                    <input
+                      type="text"
+                      placeholder={t('machinePage.addUser.passwordPlaceholder')}
+                      value={addUserPayload.password}
+                      onChange={(event) =>
+                        setAddUserPayload((prev) => ({ ...prev, password: event.target.value }))
+                      }
+                      className="ui-control-input"
+                    />
+                    <input
+                      type="text"
+                      placeholder={t('machinePage.addUser.rfidPlaceholder')}
+                      value={addUserPayload.rfid}
+                      onChange={(event) =>
+                        setAddUserPayload((prev) => ({ ...prev, rfid: event.target.value }))
+                      }
+                      className="ui-control-input"
+                    />
+                    <select
+                      value={addUserPayload.privilege}
+                      onChange={(event) =>
+                        setAddUserPayload((prev) => ({
+                          ...prev,
+                          privilege: Number(event.target.value) || 0,
+                        }))
+                      }
+                      className="ui-control-select"
+                    >
+                      <option value={0}>{t('machinePage.addUser.privilegeUser')}</option>
+                      <option value={1}>{t('machinePage.addUser.privilegeAdmin')}</option>
+                    </select>
+                    <button
+                      type="button"
+                      onClick={queueAddUser}
+                      disabled={Boolean(actionBusy)}
+                      className="ui-btn-primary disabled:opacity-50"
+                    >
+                      {actionBusy === 'set_user'
+                        ? t('machinePage.addUser.queueBusy')
+                        : t('machinePage.addUser.queueCta')}
+                    </button>
+                  </div>
+                </div>
               </div>
+
               <div className="ui-card-shell p-4">
-                <h2 className="mb-2 text-sm font-semibold text-white">
-                  {t('machinePage.results.initializeTitle')}
+                <h2 className="mb-3 text-sm font-semibold text-white">
+                  {t('machinePage.task12.actionsTitle')}
                 </h2>
-                {isAdmin ? (
-                  <pre className="max-h-40 overflow-auto rounded-lg bg-slate-950 p-3 text-xs text-slate-300">
-                    {initResult ? formatJson(initResult) : t('machinePage.results.noInitialize')}
-                  </pre>
-                ) : (
-                  <p className="rounded-lg border border-slate-700 bg-slate-950 p-3 text-xs text-slate-400">
-                    {t('machinePage.common.hiddenForNonAdmin')}
-                  </p>
-                )}
-              </div>
-              <div className="ui-card-shell p-4">
-                <h2 className="mb-2 text-sm font-semibold text-white">
-                  {t('machinePage.results.scanlogQueueTitle')}
-                </h2>
-                {isAdmin ? (
-                  <pre className="max-h-40 overflow-auto rounded-lg bg-slate-950 p-3 text-xs text-slate-300">
-                    {scanSyncResult
-                      ? formatJson(scanSyncResult)
-                      : t('machinePage.results.noScanlogQueue')}
-                  </pre>
-                ) : (
-                  <p className="rounded-lg border border-slate-700 bg-slate-950 p-3 text-xs text-slate-400">
-                    {t('machinePage.common.hiddenForNonAdmin')}
-                  </p>
-                )}
-              </div>
-            </div>
-          </div>
-
-          <div className="ui-card-shell p-4">
-            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-              <h2 className="text-sm font-semibold text-foreground">
-                {t('machinePage.jobs.title')}
-              </h2>
-              <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                <label htmlFor="machine-jobs-limit" className="text-muted-foreground">
-                  {t('machinePage.jobs.rows')}
-                </label>
-                <select
-                  id="machine-jobs-limit"
-                  value={machineLimit}
-                  onChange={(event) => {
-                    setMachineLimit(Number(event.target.value) || 30);
-                    setMachinePage(1);
-                  }}
-                  className="ui-control-select !min-h-0 !w-auto px-2 py-1 text-xs"
-                >
-                  {[10, 20, 30, 50, 100].map((size) => (
-                    <option key={size} value={size}>
-                      {size}
-                    </option>
-                  ))}
-                </select>
-                <button
-                  type="button"
-                  onClick={() => setMachinePage((prev) => Math.max(1, prev - 1))}
-                  disabled={machinePage <= 1}
-                  className="ui-btn-secondary !min-h-0 px-2 py-1 text-xs disabled:cursor-not-allowed disabled:opacity-40"
-                >
-                  {t('machinePage.jobs.prev')}
-                </button>
-                <span className="font-mono text-foreground">
-                  {machinePage}/{machinePages}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setMachinePage((prev) => Math.min(machinePages, prev + 1))}
-                  disabled={machinePage >= machinePages}
-                  className="ui-btn-secondary !min-h-0 px-2 py-1 text-xs disabled:cursor-not-allowed disabled:opacity-40"
-                >
-                  {t('machinePage.jobs.next')}
-                </button>
-                <span className="text-muted-foreground">
-                  {t('machinePage.jobs.total')} {machineTotal}
-                </span>
-              </div>
-            </div>
-            <div className="ui-table-shell space-y-2 p-2">
-              {machineRows.length === 0 && (
-                <p className="text-xs text-muted-foreground">{t('machinePage.jobs.empty')}</p>
-              )}
-
-              {machineRows.map((row) => {
-                const status = String(row.status || '').toLowerCase();
-                const statusClass =
-                  {
-                    success: 'text-emerald-300 bg-emerald-500/10 border-emerald-500/30',
-                    running: 'text-sky-300 bg-sky-500/10 border-sky-500/30',
-                    queued: 'text-amber-300 bg-amber-500/10 border-amber-500/30',
-                    failed: 'text-rose-300 bg-rose-500/10 border-rose-500/30',
-                    cancelled: 'text-orange-300 bg-orange-500/10 border-orange-500/30',
-                    cancel_requested: 'text-orange-300 bg-orange-500/10 border-orange-500/30',
-                  }[status] || 'text-slate-300 bg-slate-700/30 border-slate-700/40';
-
-                const isExpanded = Boolean(expandedMachineRows[row.id]);
-                const cancellable = ['queued', 'running', 'cancel_requested'].includes(status);
-
-                return (
-                  <div key={row.id} className="ui-table-row rounded-lg bg-slate-950/40 px-3 py-2">
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <button
-                        type="button"
-                        onClick={() => toggleMachineRowExpand(row.id)}
-                        className="text-left"
-                      >
-                        <p className="text-sm font-semibold text-slate-200">
-                          {tr('machinePage.row.jobTitle', {
-                            id: row.id,
-                            action: actionLabel(row.action, resolvedLocale),
-                          })}
-                        </p>
-                        <p className="text-[11px] text-slate-500">
-                          {tr('machinePage.row.created', { createdAt: row.created_at })}
-                        </p>
-                      </button>
-                      <div className="flex items-center gap-2">
-                        <span
-                          className={`rounded-full border px-2 py-1 text-[10px] ${statusClass}`}
-                        >
-                          {status || t('machinePage.common.unknown')}
-                        </span>
-                        {isAdmin && cancellable && (
-                          <button
-                            type="button"
-                            onClick={() =>
-                              confirmMachineAction('cancel_job', { payload: { job_id: row.id } })
-                            }
-                            className="rounded-lg border border-orange-500/40 bg-orange-500/10 px-2 py-1 text-[10px] text-orange-200"
-                          >
-                            <XCircle className="mr-1 inline-block h-3 w-3" />
-                            {t('machinePage.jobs.cancel')}
-                          </button>
-                        )}
-                      </div>
+                <div className="grid gap-3 md:grid-cols-3">
+                  <div className="ui-card-muted space-y-2 p-3">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-teal-300">
+                      {t('machinePage.task12.devinfoTitle')}
+                    </p>
+                    <p className="text-sm text-slate-200">{t('machinePage.task12.devinfoBody')}</p>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        confirmMachineAction('devinfo', {
+                          title: t('machinePage.task12.devinfoQueueTitle'),
+                          message: t('machinePage.task12.devinfoQueueMessage'),
+                          confirmLabel: t('machinePage.task12.devinfoQueueConfirm'),
+                          payload: { async: true },
+                        })
+                      }
+                      disabled={Boolean(actionBusy)}
+                      className="ui-btn-secondary w-full disabled:opacity-50"
+                    >
+                      {actionBusy === 'devinfo'
+                        ? t('machinePage.task12.devinfoQueueBusy')
+                        : t('machinePage.task12.devinfoQueueCta')}
+                    </button>
+                  </div>
+                  <div className="ui-card-muted space-y-2 p-3">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-cyan-300">
+                      {t('machinePage.task12.scanlogNewTitle')}
+                    </p>
+                    <p className="text-sm text-slate-200">
+                      {t('machinePage.task12.scanlogNewBody')}
+                    </p>
+                    <div className="grid gap-2 text-xs text-slate-400">
+                      <label className="flex flex-col gap-1">
+                        <span>{t('machinePage.task12.from')}</span>
+                        <input
+                          type="date"
+                          value={scanlogNewPayload.from}
+                          onChange={(event) =>
+                            setScanlogNewPayload((prev) => ({ ...prev, from: event.target.value }))
+                          }
+                          className="ui-control-input min-h-0 px-2 py-1 text-xs"
+                        />
+                      </label>
+                      <label className="flex flex-col gap-1">
+                        <span>{t('machinePage.task12.to')}</span>
+                        <input
+                          type="date"
+                          value={scanlogNewPayload.to}
+                          onChange={(event) =>
+                            setScanlogNewPayload((prev) => ({ ...prev, to: event.target.value }))
+                          }
+                          className="ui-control-input min-h-0 px-2 py-1 text-xs"
+                        />
+                      </label>
+                      <label className="flex flex-col gap-1">
+                        <span>{t('machinePage.task12.limit')}</span>
+                        <input
+                          type="number"
+                          value={scanlogNewPayload.limit}
+                          min={1}
+                          max={2000}
+                          onChange={(event) =>
+                            setScanlogNewPayload((prev) => ({
+                              ...prev,
+                              limit: Number(event.target.value) || 100,
+                            }))
+                          }
+                          className="ui-control-input min-h-0 px-2 py-1 text-xs"
+                        />
+                      </label>
                     </div>
-                    {isAdmin && isExpanded && (
-                      <pre className="mt-2 max-h-52 overflow-auto rounded-md bg-slate-950 p-2 text-xs text-slate-300">
-                        {formatJson(row)}
-                      </pre>
+                    <button
+                      type="button"
+                      onClick={queueTask12ScanlogNew}
+                      disabled={Boolean(actionBusy)}
+                      className="ui-btn-secondary w-full disabled:opacity-50"
+                    >
+                      {actionBusy === 'scanlog_new'
+                        ? t('machinePage.task12.scanlogNewQueueBusy')
+                        : t('machinePage.task12.scanlogNewQueueCta')}
+                    </button>
+                  </div>
+                  <div className="ui-card-muted space-y-2 p-3">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-emerald-300">
+                      {t('machinePage.task12.usersPartialTitle')}
+                    </p>
+                    <p className="text-sm text-slate-200">
+                      {t('machinePage.task12.usersPartialBody')}
+                    </p>
+                    <div className="grid gap-2 text-xs text-slate-400">
+                      <label className="flex flex-col gap-1">
+                        <span>{t('machinePage.task12.page')}</span>
+                        <input
+                          type="number"
+                          value={usersPartialParams.page}
+                          min={1}
+                          onChange={(event) =>
+                            setUsersPartialParams((prev) => ({
+                              ...prev,
+                              page: Number(event.target.value) || 1,
+                            }))
+                          }
+                          className="ui-control-input min-h-0 px-2 py-1 text-xs"
+                        />
+                      </label>
+                      <label className="flex flex-col gap-1">
+                        <span>{t('machinePage.task12.delayMs')}</span>
+                        <input
+                          type="number"
+                          value={usersPartialParams.delayMs}
+                          min={250}
+                          step={250}
+                          onChange={(event) =>
+                            setUsersPartialParams((prev) => ({
+                              ...prev,
+                              delayMs: Number(event.target.value) || 1000,
+                            }))
+                          }
+                          className="ui-control-input min-h-0 px-2 py-1 text-xs"
+                        />
+                      </label>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={queueUsersPartial}
+                      disabled={Boolean(actionBusy)}
+                      className="ui-btn-secondary w-full disabled:opacity-50"
+                    >
+                      {actionBusy === 'users_partial'
+                        ? t('machinePage.task12.usersPartialQueueBusy')
+                        : t('machinePage.task12.usersPartialQueueCta')}
+                    </button>
+                    {usersPartialStatus && (
+                      <p className="text-[11px] text-slate-400">{usersPartialStatus}</p>
                     )}
                   </div>
-                );
-              })}
-            </div>
-          </div>
+                </div>
+              </div>
+
+              <div className="ui-card-shell p-4">
+                <h2 className="mb-3 text-sm font-semibold text-white">
+                  {t('machinePage.task12.artifactsTitle')}
+                </h2>
+                <div className="grid gap-3 md:grid-cols-2">
+                  {artifactEntries.map((entry) => (
+                    <div key={entry.alias} className="ui-card-muted space-y-2 p-3">
+                      <p className="text-[11px] uppercase tracking-wider text-slate-400">
+                        {entry.label}
+                      </p>
+                      <p className="text-xs text-slate-500">{entry.note}</p>
+                      {isAdmin ? (
+                        <pre className="max-h-32 overflow-auto rounded bg-slate-950 p-2 text-[11px] text-slate-300">
+                          {formatJson(
+                            entry.metadata || entry.data || t('machinePage.task12.artifacts.empty')
+                          )}
+                        </pre>
+                      ) : (
+                        <p className="rounded border border-slate-700 bg-slate-950/80 p-2 text-[11px] text-slate-400">
+                          {t('machinePage.common.hiddenForNonAdmin')}
+                        </p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="ui-card-shell p-4">
+                <div className="ui-control-row">
+                  <div className="ui-control-group">
+                    <label htmlFor="scanlog-mode" className="ui-control-label">
+                      {t('machinePage.controls.scanlogMode')}
+                    </label>
+                    <select
+                      id="scanlog-mode"
+                      value={scanlogMode}
+                      onChange={(event) => setScanlogMode(event.target.value)}
+                      className="ui-control-select"
+                    >
+                      <option value="new">{t('machinePage.controls.scanlogModeNew')}</option>
+                      <option value="all">{t('machinePage.controls.scanlogModeAll')}</option>
+                    </select>
+                  </div>
+                  <div className="ui-control-group max-w-[12rem]">
+                    <label htmlFor="scanlog-max-pages" className="ui-control-label">
+                      {t('machinePage.controls.maxPages')}
+                    </label>
+                    <input
+                      id="scanlog-max-pages"
+                      type="number"
+                      min={1}
+                      max={100000}
+                      value={scanlogMaxPages}
+                      onChange={(event) => setScanlogMaxPages(Number(event.target.value) || 1)}
+                      className="ui-control-input"
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => confirmScanlogAction(scanlogMode)}
+                    disabled={Boolean(actionBusy)}
+                    className="ui-btn-primary disabled:opacity-50"
+                  >
+                    <DatabaseZap className="h-4 w-4" />{' '}
+                    {actionBusy === `scanlog_${scanlogMode}`
+                      ? t('machinePage.controls.queueScanlogBusy')
+                      : scanlogMode === 'all'
+                        ? t('machinePage.controls.queueFullScanlogPull')
+                        : t('machinePage.controls.queueNewScanlogPull')}
+                  </button>
+                </div>
+                {scanlogMode === 'all' && (
+                  <p className="mt-3 text-xs text-amber-300">
+                    {t('machinePage.controls.fullScanlogWarning')}
+                  </p>
+                )}
+              </div>
+
+              <div className="rounded-xl border border-rose-700/40 bg-rose-950/20 p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="flex items-center gap-2 text-sm font-semibold text-rose-200">
+                      <ShieldAlert className="h-4 w-4" /> {t('machinePage.dangerZone.title')}
+                    </p>
+                    <p className="mt-1 text-xs text-rose-300/90">
+                      {t('machinePage.dangerZone.body')}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => confirmMachineAction('initialize_machine')}
+                    disabled={Boolean(actionBusy)}
+                    className="rounded-lg border border-rose-500/40 bg-rose-500/20 px-3 py-2 text-xs font-semibold text-rose-200 hover:bg-rose-500/30 disabled:opacity-50"
+                  >
+                    {actionBusy === 'initialize_machine'
+                      ? t('machinePage.dangerZone.queueing')
+                      : t('machinePage.dangerZone.cta')}
+                  </button>
+                </div>
+                <p className="mt-3 text-[11px] text-rose-300/80">
+                  {t('machinePage.dangerZone.requiredPhrase')}{' '}
+                  <span className="font-semibold">{initConfirmationPhrase}</span>
+                </p>
+              </div>
+
+              <InlineStatusPanel message={error} variant="error" />
+
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="ui-card-shell p-4">
+                  <h2 className="mb-2 text-sm font-semibold text-white">
+                    {t('machinePage.results.deviceInfoTitle')}
+                  </h2>
+                  {isAdmin ? (
+                    <pre className="max-h-64 overflow-auto rounded-lg bg-slate-950 p-3 text-xs text-slate-300">
+                      {deviceInfo ? formatJson(deviceInfo) : t('machinePage.results.noDeviceInfo')}
+                    </pre>
+                  ) : (
+                    <p className="rounded-lg border border-slate-700 bg-slate-950 p-3 text-xs text-slate-400">
+                      {t('machinePage.common.hiddenForNonAdmin')}
+                    </p>
+                  )}
+                  <p className="mt-2 text-xs text-slate-500">
+                    {tr('machinePage.results.deviceTime', { time: String(deviceTime || '-') })}
+                  </p>
+                </div>
+
+                <div className="space-y-4">
+                  <div className="ui-card-shell p-4">
+                    <h2 className="mb-2 text-sm font-semibold text-white">
+                      {t('machinePage.results.usersPullTitle')}
+                    </h2>
+                    {isAdmin ? (
+                      <pre className="max-h-40 overflow-auto rounded-lg bg-slate-950 p-3 text-xs text-slate-300">
+                        {userSyncResult
+                          ? formatJson(userSyncResult)
+                          : t('machinePage.results.noUsersPull')}
+                      </pre>
+                    ) : (
+                      <p className="rounded-lg border border-slate-700 bg-slate-950 p-3 text-xs text-slate-400">
+                        {t('machinePage.common.hiddenForNonAdmin')}
+                      </p>
+                    )}
+                  </div>
+                  <div className="ui-card-shell p-4">
+                    <h2 className="mb-2 text-sm font-semibold text-white">
+                      {t('machinePage.results.initializeTitle')}
+                    </h2>
+                    {isAdmin ? (
+                      <pre className="max-h-40 overflow-auto rounded-lg bg-slate-950 p-3 text-xs text-slate-300">
+                        {initResult
+                          ? formatJson(initResult)
+                          : t('machinePage.results.noInitialize')}
+                      </pre>
+                    ) : (
+                      <p className="rounded-lg border border-slate-700 bg-slate-950 p-3 text-xs text-slate-400">
+                        {t('machinePage.common.hiddenForNonAdmin')}
+                      </p>
+                    )}
+                  </div>
+                  <div className="ui-card-shell p-4">
+                    <h2 className="mb-2 text-sm font-semibold text-white">
+                      {t('machinePage.results.scanlogQueueTitle')}
+                    </h2>
+                    {isAdmin ? (
+                      <pre className="max-h-40 overflow-auto rounded-lg bg-slate-950 p-3 text-xs text-slate-300">
+                        {scanSyncResult
+                          ? formatJson(scanSyncResult)
+                          : t('machinePage.results.noScanlogQueue')}
+                      </pre>
+                    ) : (
+                      <p className="rounded-lg border border-slate-700 bg-slate-950 p-3 text-xs text-slate-400">
+                        {t('machinePage.common.hiddenForNonAdmin')}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <div className="ui-card-shell p-4">
+                <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                  <h2 className="text-sm font-semibold text-foreground">
+                    {t('machinePage.jobs.title')}
+                  </h2>
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <label htmlFor="machine-jobs-limit" className="text-muted-foreground">
+                      {t('machinePage.jobs.rows')}
+                    </label>
+                    <select
+                      id="machine-jobs-limit"
+                      value={machineLimit}
+                      onChange={(event) => {
+                        setMachineLimit(Number(event.target.value) || 30);
+                        setMachinePage(1);
+                      }}
+                      className="ui-control-select !min-h-0 !w-auto px-2 py-1 text-xs"
+                    >
+                      {[10, 20, 30, 50, 100].map((size) => (
+                        <option key={size} value={size}>
+                          {size}
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      type="button"
+                      onClick={() => setMachinePage((prev) => Math.max(1, prev - 1))}
+                      disabled={machinePage <= 1}
+                      className="ui-btn-secondary !min-h-0 px-2 py-1 text-xs disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      {t('machinePage.jobs.prev')}
+                    </button>
+                    <span className="font-mono text-foreground">
+                      {machinePage}/{machinePages}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setMachinePage((prev) => Math.min(machinePages, prev + 1))}
+                      disabled={machinePage >= machinePages}
+                      className="ui-btn-secondary !min-h-0 px-2 py-1 text-xs disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      {t('machinePage.jobs.next')}
+                    </button>
+                    <span className="text-muted-foreground">
+                      {t('machinePage.jobs.total')} {machineTotal}
+                    </span>
+                  </div>
+                </div>
+                <div className="ui-table-shell space-y-2 p-2">
+                  {machineRows.length === 0 && (
+                    <p className="text-xs text-muted-foreground">{t('machinePage.jobs.empty')}</p>
+                  )}
+
+                  {machineRows.map((row) => {
+                    const status = String(row.status || '').toLowerCase();
+                    const statusClass =
+                      {
+                        success: 'text-emerald-300 bg-emerald-500/10 border-emerald-500/30',
+                        running: 'text-sky-300 bg-sky-500/10 border-sky-500/30',
+                        queued: 'text-amber-300 bg-amber-500/10 border-amber-500/30',
+                        failed: 'text-rose-300 bg-rose-500/10 border-rose-500/30',
+                        cancelled: 'text-orange-300 bg-orange-500/10 border-orange-500/30',
+                        cancel_requested: 'text-orange-300 bg-orange-500/10 border-orange-500/30',
+                      }[status] || 'text-slate-300 bg-slate-700/30 border-slate-700/40';
+
+                    const isExpanded = Boolean(expandedMachineRows[row.id]);
+                    const cancellable = ['queued', 'running', 'cancel_requested'].includes(status);
+
+                    return (
+                      <div
+                        key={row.id}
+                        className="ui-table-row rounded-lg bg-slate-950/40 px-3 py-2"
+                      >
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <button
+                            type="button"
+                            onClick={() => toggleMachineRowExpand(row.id)}
+                            className="text-left"
+                          >
+                            <p className="text-sm font-semibold text-slate-200">
+                              {tr('machinePage.row.jobTitle', {
+                                id: row.id,
+                                action: actionLabel(row.action, resolvedLocale),
+                              })}
+                            </p>
+                            <p className="text-[11px] text-slate-500">
+                              {tr('machinePage.row.created', { createdAt: row.created_at })}
+                            </p>
+                          </button>
+                          <div className="flex items-center gap-2">
+                            <span
+                              className={`rounded-full border px-2 py-1 text-[10px] ${statusClass}`}
+                            >
+                              {status || t('machinePage.common.unknown')}
+                            </span>
+                            {isAdmin && cancellable && (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  confirmMachineAction('cancel_job', {
+                                    payload: { job_id: row.id },
+                                  })
+                                }
+                                className="rounded-lg border border-orange-500/40 bg-orange-500/10 px-2 py-1 text-[10px] text-orange-200"
+                              >
+                                <XCircle className="mr-1 inline-block h-3 w-3" />
+                                {t('machinePage.jobs.cancel')}
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                        {isAdmin && isExpanded && (
+                          <pre className="mt-2 max-h-52 overflow-auto rounded-md bg-slate-950 p-2 text-xs text-slate-300">
+                            {formatJson(row)}
+                          </pre>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </>
+          )}
         </div>
       </div>
 

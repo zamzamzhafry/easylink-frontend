@@ -36,6 +36,20 @@ This folder is the handoff context for future contributors and AI agents.
 - [`agent-context/session-handoff-2026-04-19-relocate-export-scope.md`](./agent-context/session-handoff-2026-04-19-relocate-export-scope.md)
   - Follow-up handoff for relocating quick-summary export scope controls to export actions area
   - Clarifies API behavior and UX intent
+- [`agent-context/session-handoff-2026-04-19-machine-role-elevation.md`](./agent-context/session-handoff-2026-04-19-machine-role-elevation.md)
+  - Explains canonical role elevation from legacy auth flags and NIP-based role loading
+- [`agent-context/session-handoff-2026-04-19-employee-visibility-matrix.md`](./agent-context/session-handoff-2026-04-19-employee-visibility-matrix.md)
+  - Employee-side sidebar and route visibility matrix for attendance/performance flows
+- [`agent-context/session-handoff-2026-04-19-machine-connection-checker.md`](./agent-context/session-handoff-2026-04-19-machine-connection-checker.md)
+  - Role-aware machine checker behavior, polling cadence, and result rendering rules
+- [`agent-context/session-handoff-2026-04-19-attendance-performance-backlog.md`](./agent-context/session-handoff-2026-04-19-attendance-performance-backlog.md)
+  - Pending planning backlog distilled from the attendance/performance thread
+
+Read more:
+
+- Machine auth/elevation: [`session-handoff-2026-04-19-machine-role-elevation.md`](./agent-context/session-handoff-2026-04-19-machine-role-elevation.md)
+- Visibility map: [`session-handoff-2026-04-19-employee-visibility-matrix.md`](./agent-context/session-handoff-2026-04-19-employee-visibility-matrix.md)
+- Connection checker: [`session-handoff-2026-04-19-machine-connection-checker.md`](./agent-context/session-handoff-2026-04-19-machine-connection-checker.md)
 
 ## Existing Migration/Refactor Docs
 
