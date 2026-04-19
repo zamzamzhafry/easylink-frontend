@@ -30,6 +30,8 @@ It captures the open items that remain after the current attendance/performance 
 - Make the attendance/performance export story consistent with the current compact-date summary direction.
 - Preserve the same date-range semantics across screen, CSV, Excel, and print flows.
 - Keep export-scope controls clearly tied to export actions, not the data table itself.
+- Keep export date headers compact as `DD + day name` only.
+- Do not include holiday detail text in export cells/headers (to avoid excessive vertical space).
 
 ### 5. Verify the performance/dashboard experience
 
