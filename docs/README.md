@@ -9,6 +9,8 @@ This folder is the handoff context for future contributors and AI agents.
   - How request flow works (UI -> API -> DB/SDK)
   - Auth and authorization model
   - Environment configuration notes
+- [`app-current-state-graph.md`](./app-current-state-graph.md)
+  - Mermaid graph map of current UI routes, API topology, auth, data flows, machine/scanlog, ops recovery, and release gates
 - [`agent-restrictions.md`](./agent-restrictions.md)
   - Working rules and safety constraints for future agents
   - Code quality and migration guardrails
@@ -30,6 +32,12 @@ This folder is the handoff context for future contributors and AI agents.
 - [`api/machine-sdk-env-cleanup.md`](./api/machine-sdk-env-cleanup.md)
   - SDK-first env map (active vs legacy-looking vars)
   - Safe cleanup notes before removing direct-device fallback vars
+- [`research/demo-easylinksdk-schema-research.md`](./research/demo-easylinksdk-schema-research.md)
+  - Working research note built from the demo SQL dump and clean structure export
+  - Groups tables by domain, maps current app usage, and tracks keep/drop candidates
+- [`research/sdk-server-bridge-blueprint.md`](./research/sdk-server-bridge-blueprint.md)
+  - Server-machine blueprint for PHP-first SDK pulls, loose internal bridge settings, and Task Scheduler job mapping
+  - Includes the exact endpoint family observed in `E:\Project\sdk` and an Express fallback path
 - [`agent-context/session-handoff-2026-04-19.md`](./agent-context/session-handoff-2026-04-19.md)
   - Compact handoff summary of schedule/attendance export + quick-summary refactor session
   - Includes verification status and bulk Excel benchmark snapshot
@@ -44,6 +52,22 @@ This folder is the handoff context for future contributors and AI agents.
   - Role-aware machine checker behavior, polling cadence, and result rendering rules
 - [`agent-context/session-handoff-2026-04-19-attendance-performance-backlog.md`](./agent-context/session-handoff-2026-04-19-attendance-performance-backlog.md)
   - Pending planning backlog distilled from the attendance/performance thread
+- [`agent-context/next-session-master-board.md`](./agent-context/next-session-master-board.md)
+  - Canonical next-session status matrix and execution gates
+
+## Release Ops Docs
+
+- [`release/prod-deploy-windows.md`](./release/prod-deploy-windows.md)
+  - Windows production deploy, smoke checks, rollback, and UAT-hold defaults
+- [`release/prod-deploy-linux.md`](./release/prod-deploy-linux.md)
+  - Linux production deploy, service/process commands, smoke checks, rollback
+- [`release/env-contract.md`](./release/env-contract.md)
+  - Required env variables, security rules, and canonical/fallback key contract
+- [`release/uat-hold-policy.md`](./release/uat-hold-policy.md)
+  - Allowed/disallowed changes and rollback triggers while UAT is ongoing
+- [`release/server-machine-task-scheduler-setup.md`](./release/server-machine-task-scheduler-setup.md)
+  - Server-only runbook for creating the fixed recovery task and the recurring SDK pull jobs
+  - Aligns the dashboard ops button with Windows Task Scheduler on the production host
 
 Read more:
 

@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, EyeOff, Filter, ShieldCheck, UserRoundSearch } from 'lucide-react';
+import { useRouter } from 'next/navigation';
 import {
   TableEmptyRow,
   TableHeadRow,
@@ -12,6 +13,7 @@ import {
 import { useToast } from '@/components/ui/toast-provider';
 import { isoDate, startOfRange } from '@/lib/attendance-helpers';
 import { requestJson } from '@/lib/request-json';
+import useAuthSession from '@/hooks/use-auth-session';
 
 const HEADERS = [
   { key: 'date', label: 'Date' },
@@ -74,7 +76,8 @@ function statusLabel(value) {
 
 export default function AttendanceReviewPage() {
   const { warning, success } = useToast();
-  const [currentUser, setCurrentUser] = useState(null);
+  const router = useRouter();
+  const { user: currentUser, loading: authLoading } = useAuthSession();
   const [groups, setGroups] = useState([]);
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -90,23 +93,11 @@ export default function AttendanceReviewPage() {
   const isAdmin = Boolean(currentUser?.is_admin);
 
   useEffect(() => {
-    fetch('/api/auth/me')
-      .then((r) => r.json())
-      .then((d) => {
-        if (d?.ok) {
-          setCurrentUser(d.user);
-          if (!d.user?.is_admin && Array.isArray(d.user?.groups)) {
-            setGroups(
-              d.user.groups.map((group) => ({
-                id: Number(group.group_id),
-                nama_group: group.nama_group || `Group ${group.group_id}`,
-              }))
-            );
-          }
-        }
-      })
-      .catch(() => {});
-  }, []);
+    if (authLoading) return;
+    if (currentUser && !currentUser.is_admin) {
+      router.replace('/attendance');
+    }
+  }, [authLoading, currentUser, router]);
 
   const loadGroups = useCallback(async () => {
     if (!isAdmin) return;

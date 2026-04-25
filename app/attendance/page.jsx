@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Download, FileSpreadsheet, Printer } from 'lucide-react';
+import { Download, FileSpreadsheet, Printer, BarChart3 } from 'lucide-react';
 import { useAppLocale } from '@/components/app-shell';
 import AttendanceFilters from '@/components/attendance/attendance-filters';
 import AttendanceTable from '@/components/attendance/attendance-table';
@@ -29,9 +29,18 @@ import {
 } from '@/lib/quick-summaries-export';
 import { requestJson } from '@/lib/request-json';
 import { getUIText } from '@/lib/localization/ui-texts';
+import { SvgPieChart, SvgBarChart } from '@/components/ui/charts';
+import { PAGE_SIZE_OPTIONS } from '@/lib/constants';
+import useAuthSession from '@/hooks/use-auth-session';
+import {
+  canAccessAttendanceReviewQueue,
+  canAccessRawAttendance,
+  canManageAttendanceNotes,
+  getAttendanceScope,
+} from '@/lib/authz/authorization-adapter';
 
-const ADMIN_TABS = ['summary', 'quick_summaries', 'raw', 'dashboard'];
-const MEMBER_TABS = ['summary', 'quick_summaries', 'dashboard'];
+const ADMIN_TABS = ['dashboard', 'summary', 'quick_summaries', 'raw'];
+const MEMBER_TABS = ['summary', 'quick_summaries'];
 
 const toSafeNumber = (value) => {
   const parsed = Number(value);
@@ -176,8 +185,8 @@ export default function AttendancePage() {
   const { locale } = useAppLocale();
   const resolvedLocale = locale === 'id' ? 'id' : 'en';
   const t = useCallback((path) => getUIText(path, resolvedLocale), [resolvedLocale]);
-  const [currentUser, setCurrentUser] = useState(null);
-  const [activeTab, setActiveTab] = useState('summary');
+  const { user: currentUser } = useAuthSession();
+  const [activeTab, setActiveTab] = useState('dashboard');
   const [from, setFrom] = useState(startOfRange('week'));
   const [to, setTo] = useState(isoDate());
   const [groupId, setGroupId] = useState('');
@@ -189,6 +198,10 @@ export default function AttendancePage() {
     rows: [],
   });
   const [quickSummariesLoading, setQuickSummariesLoading] = useState(false);
+  const [reportData, setReportData] = useState(null);
+  const [reportLoading, setReportLoading] = useState(false);
+  const [reportError, setReportError] = useState('');
+  const [drilldownState, setDrilldownState] = useState({ type: null, filter: null });
   const [quickSummariesError, setQuickSummariesError] = useState('');
   const [holidayMap, setHolidayMap] = useState({});
   const [quickSummaryExportScope, setQuickSummaryExportScope] = useState('current');
@@ -213,19 +226,12 @@ export default function AttendancePage() {
   const [rowsPerPage, setRowsPerPage] = useState(20);
   const displayLocale = resolvedLocale === 'id' ? 'id-ID' : 'en-US';
 
-  // Fetch user role on mount
-  useEffect(() => {
-    fetch('/api/auth/me')
-      .then((r) => r.json())
-      .then((d) => {
-        if (d?.ok) setCurrentUser(d.user);
-      })
-      .catch(() => {});
-  }, []);
-
-  const isAdmin = Boolean(currentUser?.is_admin);
-  const isLeader = Boolean(currentUser?.is_leader);
-  const canEditNotes = isAdmin || isLeader;
+  const attendanceScope = getAttendanceScope(currentUser);
+  const isAdmin = canAccessRawAttendance(currentUser);
+  const isLeader = attendanceScope === 'leader';
+  const isEmployee = attendanceScope === 'employee';
+  const canEditNotes = canManageAttendanceNotes(currentUser);
+  const canAccessReviewQueue = canAccessAttendanceReviewQueue(currentUser);
   const TABS = useMemo(() => {
     const keys = isAdmin ? ADMIN_TABS : MEMBER_TABS;
     return keys.map((key) => ({ key, label: t(`attendancePage.tabs.${key}`) }));
@@ -388,6 +394,10 @@ export default function AttendancePage() {
 
   useEffect(() => {
     if (!isAdmin && activeTab === 'raw') setActiveTab('summary');
+  }, [isAdmin, activeTab]);
+
+  useEffect(() => {
+    if (!isAdmin && activeTab === 'dashboard') setActiveTab('summary');
   }, [isAdmin, activeTab]);
 
   useEffect(() => {
@@ -910,13 +920,7 @@ export default function AttendancePage() {
         const headerHtml = columns
           .map((column, index) => {
             const columnClass = columnClassName(index);
-            const holidayName = columnMetas[index]?.holiday?.name || '';
-            const holidayLabel = holidayName
-              ? `<div class="holiday-note">${escapeHtml(holidayName)}</div>`
-              : '';
-            return `<th class="${columnClass}" title="${escapeHtml(holidayName)}">${escapeHtml(
-              column.label
-            )}${holidayLabel}</th>`;
+            return `<th class="${columnClass}">${escapeHtml(column.label)}</th>`;
           })
           .join('');
 
@@ -956,7 +960,6 @@ export default function AttendancePage() {
           .sunday-col { background: #fff1f2; color: #9f1239; }
           .friday-col { background: #ecfdf5; color: #065f46; }
           .today-col { background: #ecfeff; color: #155e75; }
-          .holiday-note { margin-top: 2px; font-size: 8px; line-height: 1.2; font-weight: 500; }
         </style></head><body>
           <h1>${escapeHtml(printTitle)}</h1>
           <p class="meta">${escapeHtml(`${t('attendancePage.print.dateRangeLabel')}: ${compactDateWithDay(quickData.from, displayLocale)} - ${compactDateWithDay(quickData.to, displayLocale)}`)}</p>
@@ -1043,7 +1046,7 @@ export default function AttendancePage() {
           }}
           className="ui-control-select !w-auto min-h-0 py-1 pl-2 pr-8 text-xs"
         >
-          {[10, 20, 30, 50, 100].map((size) => (
+          {PAGE_SIZE_OPTIONS.map((size) => (
             <option key={size} value={size}>
               {size}
             </option>
@@ -1133,7 +1136,7 @@ export default function AttendancePage() {
           <p className="ui-readable-muted mt-1">{t('attendancePage.header.description')}</p>
         </div>
         <div className="flex flex-wrap gap-2">
-          {isAdmin && (
+          {canAccessReviewQueue && (
             <Link
               href="/attendance/review"
               className="ui-btn-secondary border-amber-500/30 bg-amber-500/10 text-amber-300 hover:bg-amber-500/20"
@@ -1234,7 +1237,39 @@ export default function AttendancePage() {
         }}
       />
 
-      {!isAdmin && (
+      {isLeader && (
+        <section className="ui-card-shell p-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="text-[11px] font-mono uppercase tracking-wider text-sky-400">
+                Schedule Planning
+              </p>
+              <h2 className="mt-1 text-sm font-semibold text-foreground">
+                Manage current and upcoming month schedules
+              </h2>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Leader scope includes planning and schedule management for current + upcoming month.
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Link
+                href="/schedule"
+                className="ui-btn-secondary border-sky-500/30 bg-sky-500/10 text-sky-300 hover:bg-sky-500/20"
+              >
+                Current Month Plan
+              </Link>
+              <Link
+                href="/schedule?month=next"
+                className="ui-btn-secondary border-violet-500/30 bg-violet-500/10 text-violet-300 hover:bg-violet-500/20"
+              >
+                Upcoming Month Plan
+              </Link>
+            </div>
+          </div>
+        </section>
+      )}
+
+      {(isLeader || isEmployee) && (
         <div className="grid gap-4 lg:grid-cols-2">
           <section className="ui-card-shell p-4">
             <p className="text-[11px] font-mono uppercase tracking-wider text-teal-400">
@@ -1383,6 +1418,7 @@ export default function AttendancePage() {
             rows={pagedSummaryRows}
             holidayMap={holidayMap}
             onEdit={canEditNotes ? setEditing : null}
+            showReviewDetails={isAdmin}
           />
           {renderPager(summaryPage, setSummaryPage, summaryMeta)}
         </div>

@@ -134,9 +134,9 @@ function buildSeries(rows) {
   };
 }
 
-function formatDrilldownRow(row) {
+function formatDrilldownRow(row, isAdmin) {
   const groupId = row.group_id == null ? null : Number(row.group_id);
-  return {
+  const drilldownRow = {
     employee_id: row.karyawan_id == null ? null : Number(row.karyawan_id),
     employee_name: row.nama,
     pin: row.pin,
@@ -152,27 +152,37 @@ function formatDrilldownRow(row) {
     flags: Array.isArray(row.flags) ? row.flags : [],
     scan_count: Number(row.scan_count ?? 0),
   };
+
+  if (!isAdmin) {
+    delete drilldownRow.flags;
+  }
+
+  return drilldownRow;
 }
 
-function buildDrilldownPayload(rows) {
+function buildDrilldownPayload(rows, isAdmin, page = 1, limit = DRILLDOWN_LIMIT) {
   const total = rows.length;
-  const limited = rows.slice(0, DRILLDOWN_LIMIT);
+  const startIndex = (page - 1) * limit;
+  const endIndex = startIndex + limit;
+  const paginated = rows.slice(startIndex, endIndex);
   return {
-    rows: limited.map(formatDrilldownRow),
-    limit: DRILLDOWN_LIMIT,
+    rows: paginated.map(row => formatDrilldownRow(row, isAdmin)),
+    limit: limit,
+    page: page,
     total,
-    truncated: total > DRILLDOWN_LIMIT,
+    totalPages: Math.ceil(total / limit),
+    truncated: total > endIndex,
   };
 }
 
-function reportCsv(rows) {
+function reportCsv(rows, isAdmin) {
   const headers = [
     'Employee',
     'PIN',
     'Group',
     'Scan Date',
     'Status',
-    'Flags',
+    ...(isAdmin ? ['Flags'] : []),
     'Shift',
     'Scheduled In',
     'Scheduled Out',
@@ -183,13 +193,13 @@ function reportCsv(rows) {
 
   const lines = rows.map((row) => {
     const flagString = Array.isArray(row.flags) ? row.flags.join(';') : '';
-    return [
+    const data = [
       row.nama,
       row.pin,
       row.nama_group || 'Ungrouped',
       row.scan_date,
       row.status,
-      flagString,
+      ...(isAdmin ? [flagString] : []),
       row.nama_shift || '',
       row.jam_masuk || '',
       row.jam_keluar || '',
@@ -197,6 +207,7 @@ function reportCsv(rows) {
       row.keluar || '',
       row.scan_count ?? 0,
     ];
+    return data;
   });
 
   return [headers, ...lines].map((line) => line.map(csvEscape).join(',')).join('\n');
@@ -216,6 +227,10 @@ export async function GET(req) {
   const groupParam = searchParams.get('group_id');
   const employeeParam = searchParams.get('employee_id');
   const wantsDownload = searchParams.get('download') === '1';
+  const page = Math.max(1, Number.parseInt(searchParams.get('page') || '1', 10));
+  const limit = Math.min(1000, Math.max(1, Number.parseInt(searchParams.get('limit') || String(DRILLDOWN_LIMIT), 10)));
+  const drilldownStatus = searchParams.get('drilldown_status') || null;
+  const drilldownGroup = searchParams.get('drilldown_group') || null;
 
   const parsedGroupId = Number.parseInt(groupParam ?? '', 10);
   const parsedEmployeeId = Number.parseInt(employeeParam ?? '', 10);
@@ -237,7 +252,7 @@ export async function GET(req) {
 
   if (!auth.is_admin && Array.isArray(allowedGroupIds) && allowedGroupIds.length === 0) {
     if (wantsDownload) {
-      return new NextResponse(reportCsv([]), {
+      return new NextResponse(reportCsv([], auth.is_admin), {
         headers: {
           'Content-Type': 'text/csv; charset=utf-8',
           'Content-Disposition': `attachment; filename="report_${from}_${to}.csv"`,
@@ -248,10 +263,10 @@ export async function GET(req) {
       ok: true,
       filters,
       series: buildSeries([]),
-      drilldown: buildDrilldownPayload([]),
+      drilldown: buildDrilldownPayload([], auth.is_admin, page, limit),
       metadata: {
         totalRecords: 0,
-        drilldownLimit: DRILLDOWN_LIMIT,
+        drilldownLimit: limit,
       },
     });
   }
@@ -322,7 +337,7 @@ export async function GET(req) {
   });
 
   if (wantsDownload) {
-    return new NextResponse(reportCsv(sortedRows), {
+    return new NextResponse(reportCsv(sortedRows, auth.is_admin), {
       headers: {
         'Content-Type': 'text/csv; charset=utf-8',
         'Content-Disposition': `attachment; filename="report_${from}_${to}.csv"`,
@@ -331,7 +346,19 @@ export async function GET(req) {
   }
 
   const series = buildSeries(sortedRows);
-  const drilldown = buildDrilldownPayload(sortedRows);
+  
+  let filteredForDrilldown = sortedRows;
+  if (drilldownStatus) {
+    filteredForDrilldown = filteredForDrilldown.filter(row => categorizeRow(row) === drilldownStatus);
+  }
+  if (drilldownGroup) {
+      filteredForDrilldown = filteredForDrilldown.filter(row => {
+          const groupId = row.group_id == null ? 'group-ungrouped' : `group-${row.group_id}`;
+          return groupId === drilldownGroup || row.nama_group === drilldownGroup;
+      });
+  }
+
+  const drilldown = buildDrilldownPayload(filteredForDrilldown, auth.is_admin, page, limit);
 
   return NextResponse.json({
     ok: true,
@@ -340,7 +367,8 @@ export async function GET(req) {
     drilldown,
     metadata: {
       totalRecords: sortedRows.length,
-      drilldownLimit: DRILLDOWN_LIMIT,
+      drilldownLimit: limit,
+      drilldownTotal: drilldown.total
     },
   });
 }

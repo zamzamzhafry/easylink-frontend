@@ -9,7 +9,7 @@ import {
   unauthorizedResponse,
 } from '@/lib/auth-session';
 import {
-  canAccessAttendance,
+  canAccessAttendanceReviewQueue,
   canAccessRawAttendance,
   getAttendanceGroupIds,
 } from '@/lib/authz/authorization-adapter';
@@ -137,7 +137,9 @@ export async function GET(req) {
   const auth = await getAuthContextFromCookies();
   if (!auth) return unauthorizedResponse();
 
-  if (!canAccessAttendance(auth)) return forbiddenResponse('No attendance review access.');
+  if (!canAccessAttendanceReviewQueue(auth)) {
+    return forbiddenResponse('Attendance review queue is admin only.');
+  }
 
   const canFilterDeleted = await hasKaryawanColumn('isDeleted');
   const hasHiddenTable = await hasTable('tb_scanlog_hidden');

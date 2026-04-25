@@ -1,0 +1,120 @@
+# Production Deploy Runbook (Windows)
+
+Last updated: 2026-04-19
+
+## Scope
+
+Host-based Node.js deployment for EasyLink frontend/API on Windows.
+This runbook assumes UAT is active and compatibility-first flags remain enabled.
+
+## 1) Preflight
+
+Run from project root in PowerShell:
+
+```powershell
+npm ci
+npm run typecheck
+npm run build
+```
+
+Verify production hardening before deploy:
+
+1. `AUTH_SECRET` is set to a strong value.
+2. `ALLOW_INSECURE_COOKIES` is unset or `false`.
+3. `NODE_TLS_REJECT_UNAUTHORIZED` is unset or `1`.
+4. `EASYLINK_DEFAULT_USER_PASSWORD` is set and not `1234`.
+5. DB backup completed and restore path validated.
+
+Pre-deploy schema drift checks:
+
+```sql
+SELECT COLUMN_NAME
+FROM information_schema.COLUMNS
+WHERE TABLE_SCHEMA = DATABASE()
+  AND TABLE_NAME = 'tb_user_group_access'
+  AND COLUMN_NAME = 'is_leader';
+
+SELECT COLUMN_NAME
+FROM information_schema.COLUMNS
+WHERE TABLE_SCHEMA = DATABASE()
+  AND TABLE_NAME = 'tb_attendance_note'
+  AND COLUMN_NAME IN ('manual_hours', 'is_manual_approved');
+```
+
+If missing, apply corresponding migrations before continuing.
+
+## 2) Environment Setup (UAT Hold Defaults)
+
+Set compatibility-first rollout flags:
+
+```powershell
+$env:EASYLINK_POLICY_SOURCE_MODE='legacy'
+$env:EASYLINK_DATA_SOURCE_CUTOVER_MODE='legacy_only'
+$env:EASYLINK_MACHINE_PARITY_EXPOSURE_MODE='off'
+$env:EASYLINK_REPORTING_INTERACTION_MODE='legacy'
+```
+
+Set required runtime env values (`AUTH_SECRET`, `DB_*`, `EASYLINK_DEVICE_SN`, SDK connectivity envs).
+Use `docs/release/env-contract.md` as the authoritative matrix.
+
+Ensure migration/runtime DB targets are aligned before schema operations:
+
+```powershell
+$env:DB_NAME='your_prod_db'
+$env:EASYLINK_DB_NAME='your_prod_db'
+```
+
+## 3) Deploy
+
+Recommended process manager: PM2.
+
+```powershell
+npm ci
+npm run build
+pm2 delete easylink-frontend
+pm2 start npm --name easylink-frontend -- start
+pm2 save
+```
+
+If PM2 is not used, restart the service/process manager used by your environment.
+
+## 4) Post-Deploy Smoke
+
+Run basic endpoint checks:
+
+```powershell
+curl.exe -sS http://127.0.0.1:3000/api/auth/me
+curl.exe -sS http://127.0.0.1:3000/api/report?from=2026-03-01^&to=2026-03-31
+curl.exe -sS http://127.0.0.1:3000/api/attendance?from=2026-03-01^&to=2026-03-31
+curl.exe -sS http://127.0.0.1:3000/api/scanlog/sync
+```
+
+Verify:
+
+1. Auth login/logout flow works.
+2. Attendance/report pages load for admin and non-admin.
+3. Machine queue status endpoint responds for admin.
+4. Print/PDF previews render without holiday name text in compact cells/headers.
+
+## 5) Rollback
+
+Immediate rollback path:
+
+1. Reset flags to compatibility defaults (same values as section 2).
+2. Restart app process.
+3. If required, run schema rollback orchestrator:
+
+```powershell
+npm run migration:v3 -- --mode rollback --execute
+```
+
+4. Re-run smoke tests and freeze rollout until parity is restored.
+
+## 6) UAT Hold Notes
+
+During UAT hold:
+
+1. Do not enable `canonical_read` or other aggressive cutover modes in production.
+2. Do not drop legacy tables/columns.
+3. Keep release changes limited to stability, docs, and non-breaking fixes.
+4. Keep production as a single active app instance when relying on in-process queue workers (`/api/machine`, `/api/scanlog/sync`).

@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import SearchInput from '@/components/ui/search-input';
 import { requestJson } from '@/lib/request-json';
+import { PAGE_SIZE_OPTIONS } from '@/lib/constants';
 import { useToast } from '@/components/ui/toast-provider';
 import ModalShell from '@/components/ui/modal-shell';
 import {
@@ -593,7 +594,7 @@ export default function UsersPage() {
             }}
             className="rounded border border-slate-300 bg-white px-2 py-1 text-slate-700 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200"
           >
-            {[10, 20, 30, 50, 100].map((size) => (
+            {PAGE_SIZE_OPTIONS.map((size) => (
               <option key={size} value={size}>
                 {size}
               </option>

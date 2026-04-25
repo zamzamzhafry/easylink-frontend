@@ -91,11 +91,18 @@ export default function ReportPage() {
   const [report, setReport] = useState({
     filters: null,
     series: { pie: [], bar: { categories: [], series: [] } },
-    drilldown: { rows: [], limit: 0, total: 0, truncated: false },
-    metadata: { totalRecords: 0 },
+    drilldown: { rows: [], limit: 0, page: 1, total: 0, totalPages: 0, truncated: false },
+    metadata: { totalRecords: 0, drilldownTotal: 0 },
   });
   const [loading, setLoading] = useState(false);
   const [apiError, setApiError] = useState(null);
+  const [drilldownState, setDrilldownState] = useState({
+    status: null,
+    group: null,
+    page: 1,
+    limit: 10,
+  });
+  const [config, setConfig] = useState(null);
 
   const t = useCallback((path) => getUIText(path, resolvedLocale), [resolvedLocale]);
 
@@ -133,13 +140,31 @@ export default function ReportPage() {
     setLoading(true);
     setApiError(null);
     try {
-      const query = new URLSearchParams({ from: filters.from, to: filters.to });
+      const query = new URLSearchParams({ 
+        from: filters.from, 
+        to: filters.to,
+        page: drilldownState.page,
+        limit: drilldownState.limit
+      });
       if (filters.group_id) query.set('group_id', filters.group_id);
       if (filters.employee_id) query.set('employee_id', filters.employee_id);
+      if (drilldownState.status) query.set('drilldown_status', drilldownState.status);
+      if (drilldownState.group) query.set('drilldown_group', drilldownState.group);
 
-      const response = await fetch(`/api/report?${query.toString()}`);
+      const [response, configResponse] = await Promise.all([
+        fetch(`/api/report?${query.toString()}`),
+        fetch('/api/config')
+      ]);
+
       const text = await response.text();
       const payload = parseJsonSafely(text);
+
+      const configText = await configResponse.text();
+      const configPayload = parseJsonSafely(configText);
+
+      if (configPayload?.ok) {
+        setConfig(configPayload.config);
+      }
 
       if (!response.ok) {
         const message =
@@ -172,10 +197,12 @@ export default function ReportPage() {
         drilldown: {
           rows: Array.isArray(payload?.drilldown?.rows) ? payload.drilldown.rows : [],
           limit: toNumber(payload?.drilldown?.limit),
-          total: toNumber(payload?.drilldown?.total ?? payload?.metadata?.totalRecords),
+          page: toNumber(payload?.drilldown?.page),
+          total: toNumber(payload?.drilldown?.total),
+          totalPages: toNumber(payload?.drilldown?.totalPages),
           truncated: Boolean(payload?.drilldown?.truncated),
         },
-        metadata: payload?.metadata || { totalRecords: 0 },
+        metadata: payload?.metadata || { totalRecords: 0, drilldownTotal: 0 },
       });
     } catch (error) {
       const message = error?.message || localizedFetchFailed;
@@ -184,7 +211,7 @@ export default function ReportPage() {
     } finally {
       setLoading(false);
     }
-  }, [filters.employee_id, filters.from, filters.group_id, filters.to, resolvedLocale, warning]);
+  }, [filters.employee_id, filters.from, filters.group_id, filters.to, resolvedLocale, warning, drilldownState.status, drilldownState.group, drilldownState.page, drilldownState.limit]);
 
   useEffect(() => {
     loadReport();
@@ -203,10 +230,65 @@ export default function ReportPage() {
       const degrees = (toNumber(item.value) / pieTotal) * 360;
       const start = cursor;
       cursor += degrees;
-      return `${item.color} ${start}deg ${cursor}deg`;
+      return {
+        ...item,
+        start,
+        degrees,
+        colorStr: `${item.color} ${start}deg ${cursor}deg`
+      };
     });
-    return `conic-gradient(${slices.join(', ')})`;
-  }, [pieSeries, pieTotal]);
+
+    const isHoveredOrSelected = (key) => drilldownState.status === key;
+    
+    // Create an SVG-based pie chart for click events instead of conic-gradient
+    return slices;
+  }, [pieSeries, pieTotal, drilldownState.status]);
+
+  const renderSvgPie = () => {
+    if (!pieTotal) {
+      return (
+        <svg viewBox="0 0 100 100" className="h-full w-full -rotate-90 transform">
+          <circle cx="50" cy="50" r="48" fill="transparent" stroke="#1f2937" strokeWidth="4" />
+        </svg>
+      );
+    }
+
+    return (
+      <svg viewBox="0 0 100 100" className="h-full w-full -rotate-90 transform drop-shadow-md">
+        {pieGradient.map((slice) => {
+          if (slice.value === 0) return null;
+          
+          const isSelected = drilldownState.status === slice.key;
+          const isFaded = drilldownState.status && drilldownState.status !== slice.key;
+          
+          // Math for SVG arcs
+          const radius = isSelected ? 50 : 48; // Pop out selected
+          const strokeWidth = isSelected ? 50 : 48;
+          const circumference = 2 * Math.PI * (radius / 2);
+          const dasharray = `${(slice.degrees / 360) * circumference} ${circumference}`;
+          const offset = -((slice.start / 360) * circumference);
+
+          return (
+            <circle
+              key={slice.key}
+              cx="50"
+              cy="50"
+              r={radius / 2}
+              fill="transparent"
+              stroke={slice.color}
+              strokeWidth={strokeWidth}
+              strokeDasharray={dasharray}
+              strokeDashoffset={offset}
+              className={`cursor-pointer transition-all duration-300 hover:opacity-90 ${
+                isFaded ? 'opacity-30 grayscale' : 'opacity-100'
+              }`}
+              onClick={() => handlePieClick(slice.key)}
+            />
+          );
+        })}
+      </svg>
+    );
+  };
 
   const barPayload = useMemo(() => buildBarSeries(report?.series?.bar), [report]);
 
@@ -234,6 +316,28 @@ export default function ReportPage() {
     if (filters.employee_id) query.set('employee_id', filters.employee_id);
     window.location.href = `/api/report?${query.toString()}`;
   };
+
+  const handlePieClick = useCallback((statusKey) => {
+    setDrilldownState((prev) => {
+      const newStatus = prev.status === statusKey ? null : statusKey;
+      return { ...prev, status: newStatus, group: null, page: 1 };
+    });
+  }, []);
+
+  const handleBarClick = useCallback((groupName) => {
+    setDrilldownState((prev) => {
+      const newGroup = prev.group === groupName ? null : groupName;
+      return { ...prev, group: newGroup, status: null, page: 1 };
+    });
+  }, []);
+
+  const clearDrilldown = useCallback(() => {
+    setDrilldownState((prev) => ({ ...prev, status: null, group: null, page: 1 }));
+  }, []);
+
+  const handlePageChange = useCallback((newPage) => {
+    setDrilldownState((prev) => ({ ...prev, page: newPage }));
+  }, []);
 
   const statusToneClass =
     apiError?.type === 'forbidden'
@@ -357,12 +461,12 @@ export default function ReportPage() {
           </div>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-[180px,1fr] sm:items-center">
             <div
-              className="mx-auto h-40 w-40 rounded-full border border-border"
-              style={{ backgroundImage: pieGradient }}
+              className="relative mx-auto h-40 w-40"
               aria-label={t('reportPage.charts.pie.title')}
               role="img"
             >
-              <div className="m-auto mt-8 flex h-24 w-24 items-center justify-center rounded-full border border-border bg-background text-center">
+              {renderSvgPie()}
+              <div className="pointer-events-none absolute inset-0 m-auto mt-8 flex h-24 w-24 items-center justify-center rounded-full border border-border bg-background text-center">
                 <div>
                   <p className="text-[10px] uppercase tracking-widest text-muted-foreground">
                     {t('reportPage.charts.pie.rowsLabel')}
@@ -398,40 +502,65 @@ export default function ReportPage() {
         </div>
 
         <div className="ui-card-shell p-4">
-          <div className="mb-4 flex items-center gap-2">
-            <BarChart3 className="h-4 w-4 text-cyan-300" />
-            <h2 className="text-sm font-semibold text-foreground">
-              {t('reportPage.charts.bar.title')}
-            </h2>
+          <div className="mb-4 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <BarChart3 className="h-4 w-4 text-cyan-300" />
+              <h2 className="text-sm font-semibold text-foreground">
+                {t('reportPage.charts.bar.title')}
+              </h2>
+            </div>
+            {config?.scheduling?.monthly_target_hours > 0 && (
+              <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground border border-border px-2 py-0.5 rounded">
+                <span className="h-2 w-2 rounded-full bg-cyan-500/50" />
+                Target: {config.scheduling.monthly_target_hours}h
+                <span className="opacity-60">(global config)</span>
+              </div>
+            )}
           </div>
           <div className="space-y-3">
-            {barRows.length === 0 ? (
-              <p className="text-xs text-muted-foreground">
-                {t('reportPage.charts.bar.emptyState')}
-              </p>
-            ) : (
-              barRows.map((row) => (
-                <div key={row.category} className="space-y-1.5">
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="text-foreground">{row.category}</span>
-                    <span className="font-mono text-muted-foreground">{row.total}</span>
-                  </div>
-                  <div className="flex h-2.5 overflow-hidden rounded bg-muted">
-                    {row.points.map((point) => (
-                      <div
-                        key={`${row.category}-${point.name}`}
-                        className="h-full"
-                        style={{
-                          width: row.total ? `${(point.value / row.total) * 100}%` : '0%',
-                          backgroundColor: point.color,
-                        }}
-                        title={`${point.name}: ${point.value}`}
-                      />
-                    ))}
-                  </div>
-                </div>
-              ))
-            )}
+              {barRows.length === 0 ? (
+                <p className="text-xs text-muted-foreground">
+                  {t('reportPage.charts.bar.emptyState')}
+                </p>
+              ) : (
+                barRows.map((row) => {
+                  const isSelected = drilldownState.group === row.category;
+                  const isFaded = drilldownState.group && drilldownState.group !== row.category;
+                  
+                  return (
+                    <div 
+                      key={row.category} 
+                      className={`space-y-1.5 cursor-pointer rounded p-1.5 transition-colors hover:bg-muted/50 ${isSelected ? 'bg-muted/50 ring-1 ring-border' : ''} ${isFaded ? 'opacity-40 grayscale' : 'opacity-100'}`}
+                      onClick={() => handleBarClick(row.category)}
+                    >
+                      <div className="flex items-center justify-between text-xs">
+                        <span className={`text-foreground ${isSelected ? 'font-semibold' : ''}`}>{row.category}</span>
+                        <span className="font-mono text-muted-foreground">{row.total}</span>
+                      </div>
+                    <div className="flex h-2.5 overflow-hidden rounded bg-muted relative">
+                      {config?.scheduling?.monthly_target_hours > 0 && row.total > 0 && (
+                        <div 
+                           className="absolute top-0 bottom-0 z-10 border-l border-cyan-500/50"
+                           style={{ left: `${Math.min(100, (config.scheduling.monthly_target_hours / row.total) * 100)}%` }}
+                           title={`Target: ${config.scheduling.monthly_target_hours}h`}
+                        />
+                      )}
+                      {row.points.map((point) => (
+                          <div
+                            key={`${row.category}-${point.name}`}
+                            className="h-full transition-all duration-300 hover:brightness-110"
+                            style={{
+                              width: row.total ? `${(point.value / row.total) * 100}%` : '0%',
+                              backgroundColor: point.color,
+                            }}
+                            title={`${point.name}: ${point.value}`}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })
+              )}
           </div>
           {barPayload.series.length > 0 && (
             <div className="mt-4 flex flex-wrap gap-2 border-t border-border pt-3 text-xs">
@@ -450,17 +579,29 @@ export default function ReportPage() {
       </div>
 
       <div className="ui-table-shell">
-        <div className="border-b border-border px-4 py-3">
-          <h2 className="text-sm font-semibold text-foreground">
-            {t('reportPage.drilldown.heading')}
-          </h2>
-          <p className="mt-1 text-xs text-muted-foreground">
-            {drilldownShowingLabel}
-            {report?.drilldown?.total
-              ? ` ${t('reportPage.drilldown.ofLabel')} ${report.drilldown.total}`
-              : ''}
-            {report?.drilldown?.truncated ? ` ${drilldownTruncatedSuffix}` : ''}.
-          </p>
+        <div className="border-b border-border px-4 py-3 flex items-center justify-between">
+          <div>
+            <h2 className="text-sm font-semibold text-foreground">
+              {t('reportPage.drilldown.heading')}
+              {drilldownState.status && ` - Status: ${getStatusLabel(drilldownState.status, t)}`}
+              {drilldownState.group && ` - Group: ${drilldownState.group}`}
+            </h2>
+            <p className="mt-1 text-xs text-muted-foreground">
+              {drilldownShowingLabel}
+              {report?.drilldown?.total
+                ? ` ${t('reportPage.drilldown.ofLabel')} ${report.drilldown.total}`
+                : ''}
+              {report?.drilldown?.truncated ? ` ${drilldownTruncatedSuffix}` : ''}.
+            </p>
+          </div>
+          {(drilldownState.status || drilldownState.group) && (
+            <button 
+              onClick={clearDrilldown}
+              className="text-xs font-medium text-amber-500 hover:text-amber-400"
+            >
+              Clear Filter
+            </button>
+          )}
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -475,12 +616,20 @@ export default function ReportPage() {
                 <th className="ui-table-head-cell px-4 py-2">
                   {t('reportPage.table.columns.group')}
                 </th>
-                <th className="ui-table-head-cell px-4 py-2">
-                  {t('reportPage.table.columns.status')}
-                </th>
-                <th className="ui-table-head-cell px-4 py-2">
-                  {t('reportPage.table.columns.flags')}
-                </th>
+                {drillRows.some(r => r.flags !== undefined) ? (
+                  <>
+                    <th className="ui-table-head-cell px-4 py-2">
+                      {t('reportPage.table.columns.status')}
+                    </th>
+                    <th className="ui-table-head-cell px-4 py-2">
+                      {t('reportPage.table.columns.flags')}
+                    </th>
+                  </>
+                ) : (
+                  <th className="ui-table-head-cell px-4 py-2">
+                    {t('reportPage.table.columns.status')}
+                  </th>
+                )}
                 <th className="ui-table-head-cell px-4 py-2">
                   {t('reportPage.table.columns.schedule')}
                 </th>
@@ -495,13 +644,13 @@ export default function ReportPage() {
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={8} className="ui-table-cell-muted px-4 py-8 text-center text-xs">
+                  <td colSpan={drillRows.some(r => r.flags !== undefined) ? 8 : 7} className="ui-table-cell-muted px-4 py-8 text-center text-xs">
                     {t('reportPage.drilldown.loading')}
                   </td>
                 </tr>
               ) : drillRows.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="ui-table-cell-muted px-4 py-8 text-center text-xs">
+                  <td colSpan={drillRows.some(r => r.flags !== undefined) ? 8 : 7} className="ui-table-cell-muted px-4 py-8 text-center text-xs">
                     {t('reportPage.drilldown.emptyState')}
                   </td>
                 </tr>
@@ -524,9 +673,11 @@ export default function ReportPage() {
                       {row.group_name || 'Ungrouped'}
                     </td>
                     <td className="ui-table-cell px-4 py-3 text-xs">{row.status || '-'}</td>
-                    <td className="ui-table-cell-muted px-4 py-3 text-xs">
-                      {Array.isArray(row.flags) && row.flags.length ? row.flags.join(', ') : '-'}
-                    </td>
+                    {row.flags !== undefined && (
+                      <td className="ui-table-cell-muted px-4 py-3 text-xs">
+                        {Array.isArray(row.flags) && row.flags.length ? row.flags.join(', ') : '-'}
+                      </td>
+                    )}
                     <td className="ui-table-cell-muted px-4 py-3 font-mono text-xs">
                       {(row.scheduled_in || '--:--') + ' → ' + (row.scheduled_out || '--:--')}
                     </td>
@@ -542,7 +693,40 @@ export default function ReportPage() {
             </tbody>
           </table>
         </div>
+        {report?.drilldown?.totalPages > 1 && (
+          <div className="flex items-center justify-between border-t border-border px-4 py-3 text-xs">
+            <span className="text-muted-foreground">
+              Page {report.drilldown.page} of {report.drilldown.totalPages}
+            </span>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => handlePageChange(Math.max(1, report.drilldown.page - 1))}
+                disabled={report.drilldown.page === 1}
+                className="ui-btn-secondary px-2 py-1 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Previous
+              </button>
+              <button
+                onClick={() => handlePageChange(Math.min(report.drilldown.totalPages, report.drilldown.page + 1))}
+                disabled={report.drilldown.page === report.drilldown.totalPages}
+                className="ui-btn-secondary px-2 py-1 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Next
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
+}
+
+function getStatusLabel(status, t) {
+  const map = {
+    on_time: t('reportPage.charts.pie.onTime') || 'On Time',
+    late: t('reportPage.charts.pie.late') || 'Late',
+    early_leave: t('reportPage.charts.pie.earlyLeave') || 'Early Leave',
+    anomaly: t('reportPage.charts.pie.anomaly') || 'Anomaly',
+  };
+  return map[status] || status;
 }

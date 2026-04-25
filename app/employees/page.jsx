@@ -7,6 +7,7 @@ import EditEmployeeModal from '@/components/employees/edit-employee-modal';
 import EmployeesTable from '@/components/employees/employees-table';
 import { useToast } from '@/components/ui/toast-provider';
 import { requestJson } from '@/lib/request-json';
+import { PAGE_SIZE_OPTIONS } from '@/lib/constants';
 
 export default function EmployeesPage() {
   const { success, warning } = useToast();
@@ -246,7 +247,7 @@ export default function EmployeesPage() {
             onChange={(event) => setRowsPerPage(Number(event.target.value))}
             className="rounded border border-slate-700 bg-slate-950 px-2 py-1 text-slate-200"
           >
-            {[10, 15, 20, 30, 50].map((size) => (
+            {PAGE_SIZE_OPTIONS.filter((size) => size <= 50).map((size) => (
               <option key={size} value={size}>
                 {size}
               </option>

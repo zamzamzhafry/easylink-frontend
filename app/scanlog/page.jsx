@@ -475,7 +475,7 @@ export default function ScanlogPage() {
         {syncMode === 'all' && (
           <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-100">
             Full-range download may take several minutes and keeps the Windows SDK busy. Use this
-            mode only when absolutely necessary; prefer the default "New" mode for incremental
+            mode only when absolutely necessary; prefer the default &quot;New&quot; mode for incremental
             syncs.
           </div>
         )}

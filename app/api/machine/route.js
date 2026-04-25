@@ -42,6 +42,16 @@ function nowIso() {
   return new Date().toISOString();
 }
 
+function isSdkConfigured() {
+  const hasSn = Boolean(String(process.env.EASYLINK_DEVICE_SN || '').trim());
+  const hasWsdk =
+    Boolean(String(process.env.EASYLINK_WSDK_BASE_URL || '').trim()) ||
+    Boolean(String(process.env.EASYLINK_WSDK_IP || '').trim()) ||
+    Boolean(String(process.env.EASYLINK_LAN_HOST || '').trim()) ||
+    Boolean(String(process.env.EASYLINK_API_HOST || '').trim());
+  return hasSn && hasWsdk;
+}
+
 function requiredInitPhrase() {
   const sn = String(process.env.EASYLINK_DEVICE_SN || '').trim();
   return sn ? `INITIALIZE MACHINE ${sn}` : 'INITIALIZE MACHINE';
@@ -263,7 +273,7 @@ async function runMachineAction(action, payload = {}) {
     }
 
     const password = String(
-      payload?.password || process.env.EASYLINK_DEFAULT_USER_PASSWORD || '1234'
+      payload?.password || process.env.EASYLINK_DEFAULT_USER_PASSWORD || ''
     ).trim();
     const rfid = String(payload?.rfid || '').trim();
     const privilege = toBoundedInt(payload?.privilege, 0, { min: 0, max: 9 });
@@ -540,6 +550,17 @@ export async function POST(req) {
   }
 
   const asyncMode = body?.async !== false;
+
+  if (!isSdkConfigured()) {
+    const notConfiguredError = {
+      ok: false,
+      action,
+      error: 'SDK not configured: set EASYLINK_DEVICE_SN and EASYLINK_WSDK_IP (or EASYLINK_WSDK_BASE_URL) in your environment.',
+      not_configured: true,
+      init_confirmation_phrase: requiredInitPhrase(),
+    };
+    return NextResponse.json(notConfiguredError, { status: 503 });
+  }
 
   if (!asyncMode) {
     try {

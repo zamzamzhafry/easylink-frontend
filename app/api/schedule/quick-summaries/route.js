@@ -4,12 +4,13 @@ import { NextResponse } from 'next/server';
 import pool from '@/lib/db';
 import { hasKaryawanColumn } from '@/lib/karyawan-schema';
 import {
-  forbiddenResponse,
-  getAllowedGroupIds,
   getAuthContextFromCookies,
-  isAllowedGroup,
   unauthorizedResponse,
 } from '@/lib/auth-session';
+import {
+  canAccessAttendance,
+  getAttendanceGroupIds,
+} from '@/lib/authz/authorization-adapter';
 
 function invalid(message) {
   return NextResponse.json({ ok: false, error: message }, { status: 400 });
@@ -40,12 +41,14 @@ function buildDateRange(from, to) {
 async function ensureScheduleView() {
   const auth = await getAuthContextFromCookies();
   if (!auth) return { error: unauthorizedResponse('Login required.') };
-  if (!auth.is_admin && !auth.can_schedule) {
-    return { error: forbiddenResponse('You do not have schedule permission.') };
+  if (!canAccessAttendance(auth)) {
+    return {
+      error: NextResponse.json({ ok: false, error: 'You do not have schedule permission.' }, { status: 403 }),
+    };
   }
   return {
     auth,
-    allowedGroupIds: getAllowedGroupIds(auth, 'schedule'),
+    allowedGroupIds: getAttendanceGroupIds(auth),
   };
 }
 
@@ -64,8 +67,11 @@ export async function GET(req) {
   if (!from || !to) return invalid('from and to are required.');
   if (from > to) return invalid('from must be earlier than or equal to to.');
 
-  if (!auth.is_admin && Number.isInteger(groupId) && !isAllowedGroup(auth, groupId, 'schedule')) {
-    return forbiddenResponse('This group is not approved for your schedule access.');
+  if (!auth.is_admin && Number.isInteger(groupId) && !allowedGroupIds?.includes(groupId)) {
+    return NextResponse.json(
+      { ok: false, error: 'This group is not approved for your schedule access.' },
+      { status: 403 }
+    );
   }
 
   if (!auth.is_admin && allowedGroupIds && allowedGroupIds.length === 0) {

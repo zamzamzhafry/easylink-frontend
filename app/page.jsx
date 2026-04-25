@@ -4,6 +4,7 @@ import { Clock, Fingerprint, Monitor, UserCheck, Users, UserX } from 'lucide-rea
 import pool from '@/lib/db';
 import { hasKaryawanColumn } from '@/lib/karyawan-schema';
 import { getAuthContextFromCookies } from '@/lib/auth-session';
+import DashboardOpsPanel from '@/components/dashboard-ops-panel';
 
 async function getStats({ limit, page, auth }) {
   const today = new Date().toISOString().slice(0, 10);
@@ -182,7 +183,7 @@ function pageLink(page, limit) {
 export default async function Dashboard({ searchParams }) {
   const auth = await getAuthContextFromCookies();
   if (auth && !auth.is_admin) {
-    redirect('/attendance/review');
+    redirect('/attendance');
   }
   const limit = normalizeLimit(searchParams?.limit);
   const page = normalizePage(searchParams?.page);
@@ -327,6 +328,8 @@ export default async function Dashboard({ searchParams }) {
           </div>
         );
       })()}
+
+      {isAdmin && <DashboardOpsPanel />}
 
       <div className="overflow-hidden rounded-xl border border-slate-800 bg-slate-900">
         <div className="flex items-center gap-2 border-b border-slate-800 px-5 py-3">

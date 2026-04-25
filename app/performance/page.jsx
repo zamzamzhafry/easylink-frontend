@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { Download, LineChart } from 'lucide-react';
 import { useToast } from '@/components/ui/toast-provider';
 import { requestJson } from '@/lib/request-json';
+import { PAGE_SIZE_OPTIONS } from '@/lib/constants';
 
 function isoDate(value = new Date()) {
   return new Date(value).toISOString().slice(0, 10);
@@ -409,18 +410,18 @@ export default function PerformancePage() {
           <h2 className="text-sm font-semibold text-white">Employee Performance Table</h2>
           <div className="flex items-center gap-2 text-xs text-slate-400">
             <label htmlFor="performance-rows">Rows</label>
-            <select
-              id="performance-rows"
-              value={summaryLimit}
-              onChange={(event) => setSummaryLimit(Number(event.target.value))}
-              className="rounded border border-slate-700 bg-slate-950 px-2 py-1 text-slate-200"
-            >
-              {[10, 15, 20, 30, 50].map((size) => (
-                <option key={size} value={size}>
-                  {size}
-                </option>
-              ))}
-            </select>
+           <select
+             id="performance-rows"
+             value={summaryLimit}
+             onChange={(event) => setSummaryLimit(Number(event.target.value))}
+             className="rounded border border-slate-700 bg-slate-950 px-2 py-1 text-slate-200"
+           >
+             {PAGE_SIZE_OPTIONS.filter((size) => size <= 50).map((size) => (
+               <option key={size} value={size}>
+                 {size}
+               </option>
+             ))}
+           </select>
           </div>
         </div>
         <div className="overflow-x-auto">

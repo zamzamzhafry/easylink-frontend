@@ -18,13 +18,13 @@
     --secondary: 217 33% 17%;
     --secondary-foreground: 210 40% 96%;
     --muted: 217 33% 17%;
-    --muted-foreground: 215 20% 65%;
+    --muted-foreground: 215 20% 85%;
     --accent: 174 72% 40%;
     --accent-foreground: 222 47% 5%;
     --destructive: 0 84% 60%;
     --destructive-foreground: 0 0% 98%;
-    --border: 217 33% 17%;
-    --input: 217 33% 17%;
+    --border: 217 33% 25%;
+    --input: 217 33% 25%;
     --ring: 174 72% 40%;
     --radius: 0.5rem;
   }
@@ -89,11 +89,11 @@
 
 /* Theme system: dark/light with green-orange tones */
 html[data-theme='light'] {
-  --background: 144 25% 97%;
-  --foreground: 220 16% 15%;
-  --card: 140 22% 98%;
+  --background: 210 20% 98%;
+  --foreground: 222 47% 11%;
+  --card: 0 0% 100%;
   --card-foreground: 220 16% 15%;
-  --popover: 140 22% 98%;
+  --popover: 0 0% 100%;
   --popover-foreground: 220 16% 15%;
   --primary: 158 67% 35%;
   --primary-foreground: 0 0% 100%;
@@ -166,7 +166,7 @@ html[data-theme='light'] .text-slate-300 {
 }
 html[data-theme='light'] .text-slate-400,
 html[data-theme='light'] .text-slate-500 {
-  color: rgb(100 116 139) !important;
+  color: rgb(71 85 105) !important;
 }
 
 html[data-theme='light'] .data-row:hover td {
@@ -493,6 +493,61 @@ html[data-theme='light'] .toast-close:hover {
     box-shadow: -10px 0 32px rgb(15 23 42 / 0.06);
   }
 
+  .panel-card {
+    /* biome-ignore lint/suspicious/noUnknownAtRules: Tailwind directives are valid in PostCSS pipeline */
+    @apply ui-card-shell;
+  }
+
+  .table-shell {
+    /* biome-ignore lint/suspicious/noUnknownAtRules: Tailwind directives are valid in PostCSS pipeline */
+    @apply ui-table-shell;
+  }
+
+  .table-head-cell {
+    /* biome-ignore lint/suspicious/noUnknownAtRules: Tailwind directives are valid in PostCSS pipeline */
+    @apply ui-table-head-cell;
+  }
+
+  .table-cell {
+    /* biome-ignore lint/suspicious/noUnknownAtRules: Tailwind directives are valid in PostCSS pipeline */
+    @apply ui-table-cell;
+  }
+
+  .table-cell-muted {
+    /* biome-ignore lint/suspicious/noUnknownAtRules: Tailwind directives are valid in PostCSS pipeline */
+    @apply ui-table-cell-muted;
+  }
+
+  .control-input {
+    /* biome-ignore lint/suspicious/noUnknownAtRules: Tailwind directives are valid in PostCSS pipeline */
+    @apply ui-control-input;
+  }
+
+  .control-select {
+    /* biome-ignore lint/suspicious/noUnknownAtRules: Tailwind directives are valid in PostCSS pipeline */
+    @apply ui-control-select;
+  }
+
+  .pill-button {
+    /* biome-ignore lint/suspicious/noUnknownAtRules: Tailwind directives are valid in PostCSS pipeline */
+    @apply inline-flex items-center justify-center gap-2 rounded-full px-4 py-2 text-sm font-medium transition-colors;
+  }
+
+  .btn-action {
+    /* biome-ignore lint/suspicious/noUnknownAtRules: Tailwind directives are valid in PostCSS pipeline */
+    @apply ui-btn-primary;
+  }
+
+  .btn-outline {
+    /* biome-ignore lint/suspicious/noUnknownAtRules: Tailwind directives are valid in PostCSS pipeline */
+    @apply ui-btn-secondary;
+  }
+
+  .btn-danger {
+    /* biome-ignore lint/suspicious/noUnknownAtRules: Tailwind directives are valid in PostCSS pipeline */
+    @apply inline-flex items-center justify-center gap-2 rounded-md bg-destructive text-destructive-foreground hover:bg-destructive/90 px-4 py-2 text-sm font-medium transition-colors shadow-sm;
+  }
+
   /* Reusable semantic primitives for reporting/attendance/machine pages */
   .ui-page-shell {
     border: 1px solid hsl(var(--border) / 0.82);
@@ -536,7 +591,7 @@ html[data-theme='light'] .toast-close:hover {
   }
 
   .ui-control-label {
-    font-size: 0.75rem;
+    font-size: 0.8125rem;
     font-weight: 600;
     letter-spacing: 0.02em;
     color: hsl(var(--muted-foreground));
@@ -669,7 +724,7 @@ html[data-theme='light'] .toast-close:hover {
   }
 
   .ui-table-head-cell {
-    font-size: 0.74rem;
+    font-size: 0.8125rem;
     font-weight: 700;
     letter-spacing: 0.04em;
     text-transform: uppercase;
@@ -761,6 +816,77 @@ html[data-theme='light'] .toast-close:hover {
     transform: translateY(0) scale(1);
   }
 }
+
+/* ─── Semantic component classes (TASK-18) ─────────────────────────────── */
+@layer components {
+  /* Layout */
+  .panel-card {
+    @apply rounded-lg border border-slate-700/50 bg-slate-900/60 p-4;
+  }
+  html[data-theme='light'] .panel-card {
+    @apply border-slate-200 bg-white/80;
+  }
+
+  /* Table shell */
+  .table-shell {
+    @apply w-full overflow-x-auto rounded-lg border border-slate-700/50;
+  }
+  html[data-theme='light'] .table-shell {
+    @apply border-slate-200;
+  }
+
+  /* Table head cell */
+  .table-head-cell {
+    @apply px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-slate-400 whitespace-nowrap;
+  }
+  html[data-theme='light'] .table-head-cell {
+    @apply text-slate-600;
+  }
+
+  /* Table body cell */
+  .table-cell {
+    @apply px-3 py-2 text-sm text-slate-300 whitespace-nowrap;
+  }
+  html[data-theme='light'] .table-cell {
+    @apply text-slate-700;
+  }
+
+  /* Form controls */
+  .control-input {
+    @apply rounded-md border border-slate-600 bg-slate-800 px-3 py-1.5 text-sm text-slate-200 placeholder-slate-500 focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500;
+  }
+  html[data-theme='light'] .control-input {
+    @apply border-slate-300 bg-white text-slate-800 placeholder-slate-400 focus:border-teal-600 focus:ring-teal-600;
+  }
+
+  .control-select {
+    @apply rounded-md border border-slate-600 bg-slate-800 px-3 py-1.5 text-sm text-slate-200 focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500;
+  }
+  html[data-theme='light'] .control-select {
+    @apply border-slate-300 bg-white text-slate-800 focus:border-teal-600 focus:ring-teal-600;
+  }
+
+  /* Buttons */
+  .pill-button {
+    @apply inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium transition-colors;
+  }
+
+  .btn-action {
+    @apply inline-flex items-center gap-1.5 rounded-md bg-teal-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-teal-500 disabled:opacity-50 transition-colors;
+  }
+
+  .btn-outline {
+    @apply inline-flex items-center gap-1.5 rounded-md border border-slate-600 px-3 py-1.5 text-sm font-medium text-slate-300 hover:border-slate-400 hover:text-slate-100 disabled:opacity-50 transition-colors;
+  }
+  html[data-theme='light'] .btn-outline {
+    @apply border-slate-300 text-slate-700 hover:border-slate-500 hover:text-slate-900;
+  }
+
+  .btn-danger {
+    @apply inline-flex items-center gap-1.5 rounded-md bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-500 disabled:opacity-50 transition-colors;
+  }
+}
+/* ─────────────────────────────────────────────────────────────────────────── */
 
 @keyframes bell-gentle-ring {
   0%,

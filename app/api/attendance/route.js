@@ -11,6 +11,7 @@ import {
 import {
   canAccessAttendance,
   canManageAttendanceNotes,
+  canAccessRawAttendance,
   getAttendanceGroupIds,
 } from '@/lib/authz/authorization-adapter';
 
@@ -195,11 +196,13 @@ export async function GET(req) {
     const {
       note_manual_hours: rawManualHours = null,
       note_manual_approved: rawManualApproved = null,
+      note_status: noteStatus = null,
+      note_catatan: noteCatatan = null,
       ...rowBase
     } = row;
     const manualHours = Number(rawManualHours || 0);
     const manualApproved = Boolean(Number(rawManualApproved || 0));
-    let status = rowBase.note_status || 'normal';
+    let status = noteStatus || 'normal';
     const flags = [];
 
     const scheduledInMinutes = toMinutes(rowBase.jam_masuk);
@@ -234,7 +237,7 @@ export async function GET(req) {
     }
 
     const hasReview = Boolean(
-      rowBase.note_status || (rowBase.note_catatan && String(rowBase.note_catatan).trim())
+      noteStatus || (noteCatatan && String(noteCatatan).trim())
     );
     const reviewedStatus = hasReview
       ? 'reviewed'
@@ -246,8 +249,6 @@ export async function GET(req) {
       ...rowBase,
       computed_status: status,
       flags,
-      reviewed_status: reviewedStatus,
-      has_review: hasReview ? 1 : 0,
       durasi_menit: durationMinutes,
       durasi_label: durationMinutes
         ? `${Math.floor(durationMinutes / 60)}j ${durationMinutes % 60}m`
@@ -255,6 +256,10 @@ export async function GET(req) {
     };
 
     if (exposeReviewControls) {
+      entry.note_status = noteStatus;
+      entry.note_catatan = noteCatatan;
+      entry.reviewed_status = reviewedStatus;
+      entry.has_review = hasReview ? 1 : 0;
       entry.note_manual_hours = manualHours || null;
       entry.note_manual_approved = manualApproved ? 1 : 0;
       entry.review_controls = {
@@ -322,8 +327,8 @@ export async function GET(req) {
 export async function POST(req) {
   const auth = await getAuthContextFromCookies();
   if (!auth) return unauthorizedResponse();
-  if (!canManageAttendanceNotes(auth)) {
-    return forbiddenResponse('Only admins and group leaders can add notes.');
+  if (!canManageAttendanceNotes(auth) || !canAccessRawAttendance(auth)) {
+    return forbiddenResponse('Only admins can add notes.');
   }
   const { pin, tanggal, status, catatan, manual_hours, manual_approved } = await req.json();
   const hasManualHours = await hasAttendanceNoteColumn('manual_hours');

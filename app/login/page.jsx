@@ -9,7 +9,7 @@ import { requestJson } from '@/lib/request-json';
 export default function LoginPage() {
   const router = useRouter();
   const { warning, success } = useToast();
-  const [nip, setNip] = useState('');
+  const [loginId, setLoginId] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [nextPath, setNextPath] = useState('/');
@@ -37,8 +37,8 @@ export default function LoginPage() {
 
   const login = async (event) => {
     event.preventDefault();
-    if (!nip.trim()) {
-      warning('NIP is required.', 'Login failed');
+    if (!loginId.trim()) {
+      warning('Login ID is required.', 'Login failed');
       return;
     }
 
@@ -47,7 +47,7 @@ export default function LoginPage() {
       await requestJson('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ nip: nip.trim(), password }),
+        body: JSON.stringify({ login_id: loginId.trim(), password }),
       });
       success('Login success.', 'Authenticated');
       router.replace(nextPath);
@@ -67,21 +67,21 @@ export default function LoginPage() {
             <Fingerprint className="h-6 w-6" />
           </div>
           <h1 className="text-2xl font-bold text-foreground">EasyLink Login</h1>
-          <p className="mt-1 text-sm text-muted-foreground">Use your employee NIP and password.</p>
+          <p className="mt-1 text-sm text-muted-foreground">Use your account login ID and password.</p>
         </div>
 
         <form onSubmit={login} className="space-y-4">
           <div>
-            <label htmlFor="login-nip" className="auth-label mb-1 block text-xs">
-              NIP
+            <label htmlFor="login-id" className="auth-label mb-1 block text-xs">
+              Login ID
             </label>
             <div className="relative">
               <UserCircle2 className="auth-input-icon pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2" />
               <input
-                value={nip}
-                onChange={(event) => setNip(event.target.value)}
-                placeholder="Enter NIP"
-                id="login-nip"
+                value={loginId}
+                onChange={(event) => setLoginId(event.target.value)}
+                placeholder="Enter login ID"
+                id="login-id"
                 className="auth-input w-full rounded-lg border py-2.5 pl-10 pr-3 text-sm transition-colors focus:outline-none"
               />
             </div>
@@ -97,7 +97,7 @@ export default function LoginPage() {
                 type="password"
                 value={password}
                 onChange={(event) => setPassword(event.target.value)}
-                placeholder="Device password"
+                placeholder="Account password"
                 id="login-password"
                 className="auth-input w-full rounded-lg border py-2.5 pl-10 pr-3 text-sm transition-colors focus:outline-none"
               />

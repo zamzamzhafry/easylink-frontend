@@ -1,6 +1,7 @@
 import type { AuthContext } from '@/lib/auth-session';
 
 export type NavAuthRequirement = 'all' | 'member' | 'schedule' | 'dashboard' | 'admin';
+export type AttendanceScope = 'admin' | 'leader' | 'employee' | 'none';
 
 export function canSeeNavItem(auth: AuthContext | null, requirement: NavAuthRequirement): boolean {
   if (!auth) return requirement === 'all';
@@ -24,12 +25,24 @@ export function canAccessAttendance(auth: AuthContext | null): boolean {
   );
 }
 
+export function getAttendanceScope(auth: AuthContext | null): AttendanceScope {
+  if (!auth) return 'none';
+  if (auth.is_admin) return 'admin';
+  if (auth.can_schedule || auth.is_leader) return 'leader';
+  if (auth.can_dashboard || auth.canonical_roles.includes('employee')) return 'employee';
+  return 'none';
+}
+
 export function canManageAttendanceNotes(auth: AuthContext | null): boolean {
-  return Boolean(auth && (auth.is_admin || auth.is_leader));
+  return Boolean(auth && auth.is_admin);
 }
 
 export function canAccessRawAttendance(auth: AuthContext | null): boolean {
   return Boolean(auth && auth.is_admin);
+}
+
+export function canAccessAttendanceReviewQueue(auth: AuthContext | null): boolean {
+  return canAccessRawAttendance(auth);
 }
 
 export function getAttendanceGroupIds(auth: AuthContext | null): number[] | null {

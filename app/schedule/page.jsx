@@ -19,6 +19,8 @@ import ScheduleGrid from '@/components/schedule/schedule-grid';
 import ShiftLegend from '@/components/schedule/shift-legend';
 import { useToast } from '@/components/ui/toast-provider';
 import { requestJson } from '@/lib/request-json';
+import { PAGE_SIZE_OPTIONS } from '@/lib/constants';
+import useAuthSession from '@/hooks/use-auth-session';
 import {
   addDays,
   compactDateDayLabel,
@@ -82,6 +84,7 @@ function uniqueByEmployeeId(employees) {
 
 export default function SchedulePage() {
   const { success, warning } = useToast();
+  const { user: currentUser } = useAuthSession();
   const [activeTab, setActiveTab] = useState('plan');
   const [monthOf, setMonthOf] = useState(() => monthStart(new Date()));
   const [groupTab, setGroupTab] = useState('all');
@@ -107,7 +110,6 @@ export default function SchedulePage() {
   const [applyingImport, setApplyingImport] = useState(false);
   const [zoomPercent, setZoomPercent] = useState(100);
   const [editMode, setEditMode] = useState(false);
-  const [currentUser, setCurrentUser] = useState(null);
   const [holidayMap, setHolidayMap] = useState({});
   const [groupFilterOpen, setGroupFilterOpen] = useState(true);
   const [employeePage, setEmployeePage] = useState(1);
@@ -214,15 +216,6 @@ export default function SchedulePage() {
   }, [activeTab, loadQuickSummaries]);
 
   // Fetch current user to gate edit button
-  useEffect(() => {
-    fetch('/api/auth/me')
-      .then((r) => r.json())
-      .then((d) => {
-        if (d?.ok) setCurrentUser(d.user);
-      })
-      .catch(() => {});
-  }, []);
-
   const canEdit = currentUser?.is_admin || currentUser?.is_leader;
 
   useEffect(() => {
@@ -902,7 +895,7 @@ export default function SchedulePage() {
                 }}
                 className="rounded border border-slate-700 bg-slate-950 px-2 py-1 text-slate-200"
               >
-                {[10, 15, 20, 30, 50].map((size) => (
+                {PAGE_SIZE_OPTIONS.filter((size) => size <= 50).map((size) => (
                   <option key={size} value={size}>
                     {size}
                   </option>

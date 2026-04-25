@@ -1,11 +1,19 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import pool from '@/lib/db';
-import { createAuthContextByNip, setAuthCookie, verifyPlainPassword } from '@/lib/auth-session';
+import {
+  createAuthContextByLoginId,
+  createAuthContextByNip,
+  findAuthAccountByLoginId,
+  setAuthCookie,
+  updateAuthAccountLastLogin,
+  verifyPlainPassword,
+} from '@/lib/auth-session';
 
 const loginSchema = z.object({
-  nip: z.string().min(1, 'NIP is required').max(50),
-  password: z.string().min(1, 'Password is required')
+  login_id: z.string().min(1, 'Login ID is required').max(80).optional(),
+  nip: z.string().min(1, 'Login ID is required').max(80).optional(),
+  password: z.string().min(1, 'Password is required'),
 });
 
 export async function POST(request) {
@@ -20,53 +28,99 @@ export async function POST(request) {
       );
     }
 
-    const { nip, password } = result.data;
+    const loginId = String(result.data.login_id || result.data.nip || '').trim();
+    const { password } = result.data;
+    if (!loginId) {
+      return NextResponse.json({ ok: false, error: 'Login ID is required' }, { status: 400 });
+    }
+
     const connection = await pool.getConnection();
 
     try {
-      // Use the new tb_karyawan_auth table
-      const [users] = await connection.query(`
-        SELECT auth.*, k.nama 
+      const standaloneAccount = await findAuthAccountByLoginId(loginId, connection);
+      if (standaloneAccount) {
+        if (!verifyPlainPassword(standaloneAccount.password_hash, password)) {
+          return NextResponse.json({ ok: false, error: 'Invalid credentials' }, { status: 401 });
+        }
+
+        await updateAuthAccountLastLogin(Number(standaloneAccount.id), connection);
+        const authContext = await createAuthContextByLoginId(loginId, connection);
+
+        if (!authContext) {
+          return NextResponse.json(
+            { ok: false, error: 'Failed to create account session context' },
+            { status: 500 }
+          );
+        }
+
+        const response = NextResponse.json({
+          ok: true,
+          user: {
+            account_id: authContext.account_id,
+            login_id: authContext.login_id,
+            role_key: authContext.role_key,
+            nama: authContext.nama,
+            is_admin: authContext.is_admin,
+            is_hr: Boolean(authContext.is_hr),
+            is_leader: authContext.is_leader,
+            groups: authContext.groups,
+          },
+        });
+
+        setAuthCookie(response, loginId, { subjectType: 'account' });
+        return response;
+      }
+
+      const [users] = await connection.query(
+        `
+        SELECT auth.*, k.nama
         FROM tb_karyawan_auth auth
         JOIN tb_karyawan k ON auth.karyawan_id = k.id
         WHERE auth.nip = ? AND auth.is_active = 1
-      `, [nip]);
+      `,
+        [loginId]
+      );
 
-      if (users.length === 0) {
-        return NextResponse.json({ ok: false, error: 'Invalid credentials or inactive account' }, { status: 401 });
+      if (!Array.isArray(users) || users.length === 0) {
+        return NextResponse.json(
+          { ok: false, error: 'Invalid credentials or inactive account' },
+          { status: 401 }
+        );
       }
 
       const user = users[0];
 
-      // Assuming verifyPlainPassword works, or bcrypt/argon2
       if (!verifyPlainPassword(user.password_hash, password)) {
         return NextResponse.json({ ok: false, error: 'Invalid credentials' }, { status: 401 });
       }
 
-      // Update last login
-      await connection.query('UPDATE tb_karyawan_auth SET last_login_at = NOW() WHERE karyawan_id = ?', [user.karyawan_id]);
+      await connection.query('UPDATE tb_karyawan_auth SET last_login_at = NOW() WHERE karyawan_id = ?', [
+        user.karyawan_id,
+      ]);
 
-      // Create session payload using NIP
-      const authContext = await createAuthContextByNip(nip, connection);
+      const authContext = await createAuthContextByNip(loginId, connection);
 
       if (!authContext) {
-         return NextResponse.json({ ok: false, error: 'Failed to create session context' }, { status: 500 });
+        return NextResponse.json(
+          { ok: false, error: 'Failed to create session context' },
+          { status: 500 }
+        );
       }
 
       const response = NextResponse.json({
         ok: true,
         user: {
+          login_id: loginId,
           nip: authContext.nip,
           nama: authContext.nama,
           is_admin: authContext.is_admin,
-          is_leader: authContext.is_leader
-        }
+          is_hr: Boolean(authContext.is_hr),
+          is_leader: authContext.is_leader,
+        },
       });
 
-      // Set cookie
-      await setAuthCookie(response, nip);
+      setAuthCookie(response, loginId, { subjectType: 'employee_nip' });
       return response;
-
     } finally {
       connection.release();
     }

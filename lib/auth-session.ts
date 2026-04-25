@@ -9,6 +9,16 @@ import {
 
 const SESSION_COOKIE = 'easylink_session';
 const SESSION_TTL_SECONDS = 60 * 60 * 12; // 12h
+const SECRET = (() => {
+  if (process.env.AUTH_SECRET) return process.env.AUTH_SECRET;
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error('AUTH_SECRET env var is required in production');
+  }
+  console.warn('[auth-session] AUTH_SECRET not set — using insecure dev-only fallback');
+  return 'dev-only-insecure-fallback';
+})();
+const AUTH_ACCOUNT_TABLE = 'auth_accounts';
+const AUTH_ACCOUNT_SCOPE_TABLE = 'auth_account_group_scope';
 
 function parseEnabledFlag(raw: string | null | undefined, defaultEnabled = true) {
   if (raw == null) return defaultEnabled;
@@ -24,7 +34,6 @@ const LEGACY_SESSION_PAYLOAD_COMPAT_ENABLED = parseEnabledFlag(
   process.env.EASYLINK_ENABLE_LEGACY_SESSION_PAYLOAD_COMPAT,
   true
 );
-const SECRET = process.env.AUTH_SECRET || 'dev-only-change-this-secret';
 
 type SessionPayload = {
   subject: string;
@@ -46,6 +55,24 @@ type GroupAccessRow = {
   is_leader: number | string | null;
 };
 
+type AccountGroupScopeRow = {
+  group_id: number | string;
+  nama_group: string | null;
+};
+
+export type AuthAccountRole = 'admin' | 'hr' | 'scheduler' | 'viewer';
+export type AuthSubjectType = 'account' | 'employee_nip' | 'legacy_pin';
+
+type AuthAccountRow = {
+  id: number | string;
+  login_id: string;
+  display_name: string | null;
+  password_hash: string | null;
+  role_key: string;
+  is_active: number | string | null;
+  last_login_at?: string | null;
+};
+
 export type GroupAccess = {
   group_id: number;
   nama_group: string | null;
@@ -65,6 +92,10 @@ export type AuthContext = {
   is_hr?: boolean;
   nip?: string;
   karyawan_id?: number;
+  account_id?: number;
+  login_id?: string;
+  role_key?: AuthAccountRole | string;
+  subject_type?: AuthSubjectType;
   groups: GroupAccess[];
   canonical_roles: CanonicalEmployeeRole[];
 };
@@ -87,6 +118,60 @@ export const LEGACY_AUTH_ADMIN_PRIVILEGE_MIN = 4;
 const legacyRoleLabelToCanonicalRoleMap: Record<string, CanonicalEmployeeRole> = {
   ...LEGACY_EMPLOYEE_ROLE_TO_CANONICAL_ROLE,
 };
+
+const GLOBAL_ACCOUNT_ROLES = new Set<AuthAccountRole>(['admin', 'hr']);
+
+const ACCOUNT_ROLE_COMPAT = {
+  admin: {
+    privilege: 4,
+    is_admin: true,
+    is_hr: false,
+    is_leader: true,
+    can_schedule: true,
+    can_dashboard: true,
+    canonical_roles: ['admin'] as CanonicalEmployeeRole[],
+  },
+  hr: {
+    privilege: 3,
+    is_admin: false,
+    is_hr: true,
+    is_leader: false,
+    can_schedule: true,
+    can_dashboard: true,
+    canonical_roles: ['group_leader'] as CanonicalEmployeeRole[],
+  },
+  scheduler: {
+    privilege: 2,
+    is_admin: false,
+    is_hr: false,
+    is_leader: true,
+    can_schedule: true,
+    can_dashboard: true,
+    canonical_roles: ['group_leader'] as CanonicalEmployeeRole[],
+  },
+  viewer: {
+    privilege: 1,
+    is_admin: false,
+    is_hr: false,
+    is_leader: false,
+    can_schedule: true,
+    can_dashboard: true,
+    canonical_roles: ['employee'] as CanonicalEmployeeRole[],
+  },
+} as const;
+
+export function normalizeAuthAccountRole(value: string | null | undefined): AuthAccountRole | null {
+  const normalized = String(value ?? '')
+    .trim()
+    .toLowerCase();
+
+  if (normalized === 'admin') return 'admin';
+  if (normalized === 'hr') return 'hr';
+  if (normalized === 'scheduler') return 'scheduler';
+  if (normalized === 'viewer') return 'viewer';
+
+  return null;
+}
 
 export function mapLegacyRoleLabelToCanonicalRole(
   roleLabel: string | null | undefined
@@ -219,7 +304,148 @@ async function hasTable(tableName: string) {
   return exists;
 }
 
-// NEW: Auth Restructure based on NIP
+function normalizeBoolean(raw: number | string | null | undefined) {
+  return Number(raw ?? 0) === 1;
+}
+
+function buildScopedGroupAccess(
+  rows: readonly AccountGroupScopeRow[],
+  roleKey: AuthAccountRole
+): GroupAccess[] {
+  const compat = ACCOUNT_ROLE_COMPAT[roleKey];
+  return rows.map((row) => ({
+    group_id: Number(row.group_id),
+    nama_group: row.nama_group || null,
+    can_schedule: compat.can_schedule,
+    can_dashboard: compat.can_dashboard,
+    is_leader: compat.is_leader,
+  }));
+}
+
+export async function findAuthAccountByLoginId(
+  loginId: string,
+  connectionParam: any = null
+): Promise<AuthAccountRow | null> {
+  const normalizedLoginId = String(loginId ?? '').trim();
+  if (!normalizedLoginId) return null;
+
+  if (!(await hasTable(AUTH_ACCOUNT_TABLE))) {
+    return null;
+  }
+
+  let connection = connectionParam;
+  let shouldRelease = false;
+
+  try {
+    if (!connection) {
+      connection = await pool.getConnection();
+      shouldRelease = true;
+    }
+
+    const [rows] = await connection.query(
+      `SELECT id, login_id, display_name, password_hash, role_key, is_active, last_login_at
+       FROM ${AUTH_ACCOUNT_TABLE}
+       WHERE login_id = ?
+       LIMIT 1`,
+      [normalizedLoginId]
+    );
+
+    const account = Array.isArray(rows) ? (rows[0] as AuthAccountRow | undefined) : undefined;
+    if (!account) return null;
+    if (!normalizeBoolean(account.is_active ?? 0)) return null;
+
+    return account;
+  } finally {
+    if (shouldRelease && connection) connection.release();
+  }
+}
+
+export async function createAuthContextByLoginId(
+  loginId: string,
+  connectionParam: any = null
+): Promise<AuthContext | null> {
+  let connection = connectionParam;
+  let shouldRelease = false;
+
+  try {
+    const account = await findAuthAccountByLoginId(loginId, connectionParam);
+    if (!account) return null;
+
+    if (!connection) {
+      connection = await pool.getConnection();
+      shouldRelease = true;
+    }
+
+    const roleKey = normalizeAuthAccountRole(account.role_key);
+    if (!roleKey) return null;
+
+    let groups: GroupAccess[] = [];
+    if (!GLOBAL_ACCOUNT_ROLES.has(roleKey) && (await hasTable(AUTH_ACCOUNT_SCOPE_TABLE))) {
+      const [groupRowsRaw] = await connection.query(
+        `SELECT s.group_id, g.nama_group
+         FROM ${AUTH_ACCOUNT_SCOPE_TABLE} s
+         LEFT JOIN tb_group g ON g.id = s.group_id
+         WHERE s.account_id = ?
+         ORDER BY g.nama_group ASC, s.group_id ASC`,
+        [account.id]
+      );
+      const groupRows = Array.isArray(groupRowsRaw)
+        ? (groupRowsRaw as AccountGroupScopeRow[])
+        : [];
+      groups = buildScopedGroupAccess(groupRows, roleKey);
+    }
+
+    const compat = ACCOUNT_ROLE_COMPAT[roleKey];
+    return {
+      account_id: Number(account.id),
+      login_id: account.login_id,
+      role_key: roleKey,
+      subject_type: 'account',
+      pin: account.login_id,
+      nama: account.display_name || account.login_id,
+      privilege: compat.privilege,
+      is_admin: compat.is_admin,
+      is_hr: compat.is_hr,
+      is_leader: compat.is_leader,
+      can_schedule: compat.can_schedule,
+      can_dashboard: compat.can_dashboard,
+      groups,
+      canonical_roles: compat.canonical_roles,
+    };
+  } catch (error) {
+    console.error('Error in createAuthContextByLoginId:', error);
+    return null;
+  } finally {
+    if (shouldRelease && connection) connection.release();
+  }
+}
+
+export async function updateAuthAccountLastLogin(
+  accountId: number,
+  connectionParam: any = null
+): Promise<void> {
+  if (!Number.isInteger(accountId) || !(await hasTable(AUTH_ACCOUNT_TABLE))) {
+    return;
+  }
+
+  let connection = connectionParam;
+  let shouldRelease = false;
+
+  try {
+    if (!connection) {
+      connection = await pool.getConnection();
+      shouldRelease = true;
+    }
+
+    await connection.query(`UPDATE ${AUTH_ACCOUNT_TABLE} SET last_login_at = NOW() WHERE id = ?`, [
+      accountId,
+    ]);
+  } finally {
+    if (shouldRelease && connection) connection.release();
+  }
+}
+
+// Legacy employee-bound auth path
 export async function createAuthContextByNip(
   nip: string,
   connectionParam: any = null
@@ -238,65 +464,63 @@ export async function createAuthContextByNip(
       [nip]
     );
 
-    if (users.length === 0) return null;
-    const user = users[0];
+    if (!Array.isArray(users) || users.length === 0) return null;
+    const user = users[0] as any;
 
-    // Fetch roles
     const [roles] = await connection.query(
       'SELECT role_key, group_id FROM tb_karyawan_roles WHERE karyawan_id = ?',
       [user.karyawan_id]
     );
-    const is_admin = roles.some((r: any) => r.role_key === 'admin');
-    const is_leader = roles.some((r: any) => r.role_key === 'group_leader');
-    const is_hr = roles.some((r: any) => r.role_key === 'hr');
+    const roleRows = Array.isArray(roles) ? (roles as any[]) : [];
+    const is_admin = roleRows.some((r) => r.role_key === 'admin');
+    const is_leader = roleRows.some((r) => ['group_leader', 'scheduler'].includes(r.role_key));
+    const is_hr = roleRows.some((r) => r.role_key === 'hr');
 
     const legacyFlagSnapshot: LegacyAuthFlagSnapshot = {
       privilege: is_admin ? 4 : 1,
       is_admin,
       is_leader,
       is_hr,
-      can_schedule: is_admin || is_leader,
-      can_dashboard: is_admin || is_leader,
+      can_schedule: is_admin || is_hr || is_leader,
+      can_dashboard: is_admin || is_hr || is_leader,
     };
     const canonical_roles = getCanonicalRolesFromLegacyAuth(
       legacyFlagSnapshot,
-      (roles as any[]).map((r) => r.role_key)
+      roleRows.map((r) => r.role_key)
     );
 
-    // Fetch groups if leader
-    let groups: any[] = [];
-    if (is_leader) {
-      const groupIds = roles
-        .filter((r: any) => r.role_key === 'group_leader' && r.group_id)
-        .map((r: any) => r.group_id);
-      if (groupIds.length > 0) {
+    let groups: GroupAccess[] = [];
+    if (!is_admin && !is_hr) {
+      const scopedGroupIds = roleRows
+        .filter((r) => ['group_leader', 'scheduler', 'viewer'].includes(r.role_key) && r.group_id)
+        .map((r) => Number(r.group_id));
+
+      if (scopedGroupIds.length > 0) {
         const [groupRows] = await connection.query(
           'SELECT id as group_id, nama_group FROM tb_group WHERE id IN (?)',
-          [groupIds]
+          [scopedGroupIds]
         );
-        groups = (groupRows as any[]).map((g: any) => ({
-          group_id: g.group_id,
-          nama_group: g.nama_group,
-          can_schedule: 1,
-          can_dashboard: 1,
-          is_leader: true,
-        }));
+        const roleKey = roleRows.some((r) => ['group_leader', 'scheduler'].includes(r.role_key))
+          ? 'scheduler'
+          : 'viewer';
+        groups = buildScopedGroupAccess((groupRows as AccountGroupScopeRow[]) ?? [], roleKey);
       }
     }
 
     return {
       nip: user.nip,
       pin: user.pin || user.nip,
-      karyawan_id: user.karyawan_id,
+      karyawan_id: Number(user.karyawan_id),
       nama: user.nama,
-      privilege: is_admin ? 4 : 1, // Legacy shim
+      privilege: is_admin ? 4 : 1,
       is_admin,
       is_leader,
       is_hr,
-      can_schedule: is_admin || is_leader,
-      can_dashboard: is_admin || is_leader,
+      can_schedule: is_admin || is_hr || is_leader,
+      can_dashboard: is_admin || is_hr || is_leader,
       groups,
       canonical_roles,
+      subject_type: 'employee_nip',
     };
   } catch (error) {
     console.error('Error in createAuthContextByNip:', error);
@@ -340,9 +564,9 @@ export async function createAuthContextByPin(pin: string): Promise<AuthContext |
     groups = rows.map((row) => ({
       group_id: Number(row.group_id),
       nama_group: row.nama_group || null,
-      can_schedule: Number(row.can_schedule ?? 0) === 1,
-      can_dashboard: Number(row.can_dashboard ?? 0) === 1,
-      is_leader: Number(row.is_leader ?? 0) === 1,
+      can_schedule: normalizeBoolean(row.can_schedule),
+      can_dashboard: normalizeBoolean(row.can_dashboard),
+      is_leader: normalizeBoolean(row.is_leader),
     }));
   }
 
@@ -369,6 +593,7 @@ export async function createAuthContextByPin(pin: string): Promise<AuthContext |
     is_leader: leaderAccess,
     groups,
     canonical_roles,
+    subject_type: 'legacy_pin',
   };
 }
 
@@ -377,20 +602,32 @@ export async function getAuthContextFromCookies(): Promise<AuthContext | null> {
   const payload = decodeSession(token);
   if (!payload) return null;
 
-  // Try NIP-based auth first
+  if (payload.subject.startsWith('account:')) {
+    return createAuthContextByLoginId(payload.subject.slice('account:'.length));
+  }
+
+  const accountContext = await createAuthContextByLoginId(payload.subject);
+  if (accountContext) return accountContext;
+
   const nipContext = await createAuthContextByNip(payload.subject);
   if (nipContext) return nipContext;
 
   if (!LEGACY_PIN_FALLBACK_ENABLED) return null;
-
-  // Fallback to legacy PIN-based auth
   return createAuthContextByPin(payload.subject);
 }
 
-export function setAuthCookie(response: NextResponse, pin: string) {
+export function setAuthCookie(
+  response: NextResponse,
+  subject: string,
+  options: { subjectType?: AuthSubjectType } = {}
+) {
   const exp = Math.floor(Date.now() / 1000) + SESSION_TTL_SECONDS;
+  const subjectType = options.subjectType ?? 'account';
+  const encodedSubject =
+    subjectType === 'account' ? `account:${String(subject ?? '').trim()}` : String(subject ?? '');
+
   const token = encodeSession({
-    subject: pin,
+    subject: encodedSubject,
     exp,
     payload_format: 'canonical',
   });
@@ -429,7 +666,7 @@ export function isAllowedGroup(
   groupId: number,
   capability: 'schedule' | 'dashboard' | 'leader'
 ) {
-  if (auth.is_admin) return true;
+  if (auth.is_admin || auth.is_hr) return true;
   const group = auth.groups.find((item) => Number(item.group_id) === Number(groupId));
   if (!group) return false;
   if (capability === 'leader') return group.is_leader;
@@ -440,7 +677,7 @@ export function getAllowedGroupIds(
   auth: AuthContext,
   capability: 'schedule' | 'dashboard' | 'leader'
 ) {
-  if (auth.is_admin) return null;
+  if (auth.is_admin || auth.is_hr) return null;
   return auth.groups
     .filter((group) => {
       if (capability === 'leader') return group.is_leader;

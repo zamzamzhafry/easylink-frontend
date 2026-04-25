@@ -31,7 +31,7 @@ export default function AttendanceFilters({
   };
 
   return (
-    <div className="ui-card-shell ui-control-row items-center p-4">
+    <div className="panel-card ui-control-row items-center p-4">
       <CalendarDays className="h-4 w-4 shrink-0 text-primary" />
       <div className="flex items-center gap-2">
         <label htmlFor="attendance-from" className="ui-control-label">
@@ -42,7 +42,7 @@ export default function AttendanceFilters({
           type="date"
           value={from}
           onChange={(event) => onFromChange(event.target.value)}
-          className="ui-control-input min-h-0 w-auto py-1.5 font-mono text-sm"
+          className="control-input min-h-0 w-auto py-1.5 font-mono text-sm"
         />
         <label htmlFor="attendance-to" className="ui-control-label">
           {t('attendancePage.filters.to')}
@@ -52,7 +52,7 @@ export default function AttendanceFilters({
           type="date"
           value={to}
           onChange={(event) => onToChange(event.target.value)}
-          className="ui-control-input min-h-0 w-auto py-1.5 font-mono text-sm"
+          className="control-input min-h-0 w-auto py-1.5 font-mono text-sm"
         />
       </div>
       <div className="flex items-center gap-2">
@@ -63,7 +63,7 @@ export default function AttendanceFilters({
           id="attendance-group"
           value={groupId ?? ''}
           onChange={(event) => onGroupChange?.(event.target.value)}
-          className="ui-control-select min-h-0 w-auto py-1.5 pl-3 pr-8 text-sm"
+          className="control-select min-h-0 w-auto py-1.5 pl-3 pr-8 text-sm"
         >
           <option value="">{t('attendancePage.filters.allGroups')}</option>
           {groups.map((group) => (
@@ -81,7 +81,7 @@ export default function AttendanceFilters({
           id="attendance-employee"
           value={employeeId ?? ''}
           onChange={(event) => onEmployeeChange?.(event.target.value)}
-          className="ui-control-select min-h-0 max-w-[220px] py-1.5 pl-3 pr-8 text-sm"
+          className="control-select min-h-0 max-w-[220px] py-1.5 pl-3 pr-8 text-sm"
         >
           <option value="">{t('attendancePage.filters.allEmployees')}</option>
           {employees.map((employee) => (
@@ -106,7 +106,7 @@ export default function AttendanceFilters({
             key={range.key}
             type="button"
             onClick={() => onSetRange(range.key)}
-            className="ui-btn-secondary min-h-0 px-3 py-1.5 text-xs"
+            className="btn-outline min-h-0 px-3 py-1.5 text-xs"
           >
             {presetLabel(range.key, range.label)}
           </button>

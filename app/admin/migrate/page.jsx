@@ -1,6 +1,6 @@
 "use client";
 import { useState } from 'react';
-import { requestJson } from '@/lib/utils'; // Assuming this exists or fetch wrapper
+import { requestJson } from '@/lib/request-json';
 
 export default function MigrateScanlogPage() {
   const [loading, setLoading] = useState(false);

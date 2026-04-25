@@ -14,7 +14,13 @@ import { getUIText } from '@/lib/localization/ui-texts';
 import { compactDateDayLabel } from '@/lib/schedule-helpers';
 import { shiftClassName } from '@/lib/shift-helpers';
 
-export default function AttendanceTable({ loading, rows, onEdit, holidayMap = {} }) {
+export default function AttendanceTable({
+  loading,
+  rows,
+  onEdit,
+  holidayMap = {},
+  showReviewDetails = true,
+}) {
   const { locale } = useAppLocale();
   const resolvedLocale = locale === 'id' ? 'id' : 'en';
   const t = (path) => getUIText(path, resolvedLocale);
@@ -27,10 +33,15 @@ export default function AttendanceTable({ loading, rows, onEdit, holidayMap = {}
     { key: 'out', label: t('attendancePage.table.out') },
     { key: 'duration', label: t('attendancePage.table.duration') },
     { key: 'status', label: t('attendancePage.table.status') },
-    { key: 'review', label: t('attendancePage.table.review') },
-    { key: 'note', label: t('attendancePage.table.note') },
-    { key: 'action', label: '' },
+    ...(showReviewDetails
+      ? [
+          { key: 'review', label: t('attendancePage.table.review') },
+          { key: 'note', label: t('attendancePage.table.note') },
+          { key: 'action', label: '' },
+        ]
+      : []),
   ];
+  const colSpan = tableHeaders.length;
 
   const normalizeDateKey = (value) => {
     if (!value) return '';
@@ -53,16 +64,16 @@ export default function AttendanceTable({ loading, rows, onEdit, holidayMap = {}
   };
 
   return (
-    <TableShell>
+    <div className="table-shell">
       <table className="w-full text-sm text-foreground">
         <thead>
-          <TableHeadRow headers={tableHeaders} />
+          <TableHeadRow headers={tableHeaders} className="table-head-cell" />
         </thead>
         <tbody className="divide-y divide-border/70">
           {loading ? (
-            <TableLoadingRow colSpan={11} label={t('attendancePage.table.loading')} />
+            <TableLoadingRow colSpan={colSpan} label={t('attendancePage.table.loading')} />
           ) : rows.length === 0 ? (
-            <TableEmptyRow colSpan={11} label={t('attendancePage.table.noRecords')} />
+            <TableEmptyRow colSpan={colSpan} label={t('attendancePage.table.noRecords')} />
           ) : (
             rows.map((row) => {
               const status = STATUS_MAP[row.computed_status] ?? STATUS_MAP.lainnya;
@@ -93,7 +104,7 @@ export default function AttendanceTable({ loading, rows, onEdit, holidayMap = {}
                   key={`${row.pin}-${row.scan_date}`}
                   className={`data-row ui-table-row ${isAnomaly ? 'bg-amber-500/10' : ''}`}
                 >
-                  <td className={`ui-table-cell-muted px-4 py-3 ${dateToneClass}`}>
+                  <td className={`table-cell-muted px-4 py-3 ${dateToneClass}`}>
                     {dateInfo ? (
                       <div
                         className="leading-tight"
@@ -111,7 +122,7 @@ export default function AttendanceTable({ loading, rows, onEdit, holidayMap = {}
                       <span className="font-mono text-xs">-</span>
                     )}
                   </td>
-                  <td className="ui-table-cell px-4 py-3 font-medium">
+                  <td className="table-cell px-4 py-3 font-medium">
                     {row.karyawan_id ? (
                       <Link
                         href={`/employees/${row.karyawan_id}`}
@@ -123,8 +134,8 @@ export default function AttendanceTable({ loading, rows, onEdit, holidayMap = {}
                       <span className="text-foreground">{row.nama}</span>
                     )}
                   </td>
-                  <td className="ui-table-cell-muted px-4 py-3 text-xs">{row.nama_group || '-'}</td>
-                  <td className="ui-table-cell px-4 py-3">
+                  <td className="table-cell-muted px-4 py-3 text-xs">{row.nama_group || '-'}</td>
+                  <td className="table-cell px-4 py-3">
                     {row.nama_shift ? (
                       <span
                         className={`inline-flex rounded border px-2 py-0.5 text-xs font-medium ${shiftClassName(
@@ -137,7 +148,7 @@ export default function AttendanceTable({ loading, rows, onEdit, holidayMap = {}
                       <span className="text-xs text-muted-foreground">-</span>
                     )}
                   </td>
-                  <td className="ui-table-cell px-4 py-3">
+                  <td className="table-cell px-4 py-3">
                     <div className="flex items-center gap-1.5">
                       <Clock className="h-3 w-3 text-teal-500" />
                       <span className="font-mono text-xs text-teal-600 dark:text-teal-300">
@@ -156,7 +167,7 @@ export default function AttendanceTable({ loading, rows, onEdit, holidayMap = {}
                       </div>
                     )}
                   </td>
-                  <td className="ui-table-cell px-4 py-3">
+                  <td className="table-cell px-4 py-3">
                     <div className="flex items-center gap-1.5">
                       <span className="font-mono text-xs text-foreground">{row.keluar ?? '-'}</span>
                       {row.flags?.includes('pulang_awal') && (
@@ -172,10 +183,10 @@ export default function AttendanceTable({ loading, rows, onEdit, holidayMap = {}
                       </div>
                     )}
                   </td>
-                  <td className="ui-table-cell-muted px-4 py-3 font-mono text-xs">
+                  <td className="table-cell-muted px-4 py-3 font-mono text-xs">
                     {row.durasi_label}
                   </td>
-                  <td className="ui-table-cell px-4 py-3">
+                  <td className="table-cell px-4 py-3">
                     <span
                       className={`inline-flex items-center gap-1 rounded border px-2 py-0.5 text-xs font-medium ${status.cls}`}
                     >
@@ -187,47 +198,51 @@ export default function AttendanceTable({ loading, rows, onEdit, holidayMap = {}
                       {status.label}
                     </span>
                   </td>
-                  <td className="ui-table-cell px-4 py-3">
-                    {row.reviewed_status === 'reviewed' ? (
-                      <span className="inline-flex rounded border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-xs text-emerald-700 dark:text-emerald-300">
-                        {t('attendancePage.table.reviewed')}
-                      </span>
-                    ) : row.reviewed_status === 'pending' ? (
-                      <span className="inline-flex rounded border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-xs text-amber-700 dark:text-amber-300">
-                        {t('attendancePage.table.pending')}
-                      </span>
-                    ) : (
-                      <span className="inline-flex rounded border border-border bg-muted/40 px-2 py-0.5 text-xs text-muted-foreground">
-                        {t('attendancePage.table.notRequired')}
-                      </span>
-                    )}
-                  </td>
-                  <td className="ui-table-cell max-w-[200px] px-4 py-3">
-                    {row.note_catatan ? (
-                      <span className="block truncate text-xs text-muted-foreground">
-                        {row.note_catatan}
-                      </span>
-                    ) : (
-                      <span className="text-xs italic text-muted-foreground">-</span>
-                    )}
-                  </td>
-                  <td className="ui-table-cell px-4 py-3">
-                    {onEdit && (
-                      <button
-                        type="button"
-                        onClick={() => onEdit(row)}
-                        className="ui-btn-secondary min-h-0 px-2.5 py-1.5 text-xs"
-                      >
-                        <Pencil className="h-3 w-3" /> {t('attendancePage.table.noteAction')}
-                      </button>
-                    )}
-                  </td>
+                  {showReviewDetails && (
+                    <>
+                      <td className="table-cell px-4 py-3">
+                        {row.reviewed_status === 'reviewed' ? (
+                          <span className="inline-flex rounded border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-xs text-emerald-700 dark:text-emerald-300">
+                            {t('attendancePage.table.reviewed')}
+                          </span>
+                        ) : row.reviewed_status === 'pending' ? (
+                          <span className="inline-flex rounded border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-xs text-amber-700 dark:text-amber-300">
+                            {t('attendancePage.table.pending')}
+                          </span>
+                        ) : (
+                          <span className="inline-flex rounded border border-border bg-muted/40 px-2 py-0.5 text-xs text-muted-foreground">
+                            {t('attendancePage.table.notRequired')}
+                          </span>
+                        )}
+                      </td>
+                      <td className="table-cell max-w-[200px] px-4 py-3">
+                        {row.note_catatan ? (
+                          <span className="block truncate text-xs text-muted-foreground">
+                            {row.note_catatan}
+                          </span>
+                        ) : (
+                          <span className="text-xs italic text-muted-foreground">-</span>
+                        )}
+                      </td>
+                      <td className="table-cell px-4 py-3">
+                        {onEdit && (
+                          <button
+                            type="button"
+                            onClick={() => onEdit(row)}
+                            className="btn-outline min-h-0 px-2.5 py-1.5 text-xs"
+                          >
+                            <Pencil className="h-3 w-3" /> {t('attendancePage.table.noteAction')}
+                          </button>
+                        )}
+                      </td>
+                    </>
+                  )}
                 </tr>
               );
             })
           )}
         </tbody>
       </table>
-    </TableShell>
+    </div>
   );
 }

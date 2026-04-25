@@ -334,9 +334,9 @@ export default function EmployeeProfilePage() {
 
   // ── Derived ───────────────────────────────────────────────────────────────────
   const employee = data?.employee;
-  const schedule = data?.schedule ?? [];
-  const scanlogs = data?.scanlogs ?? [];
-  const shiftStats = data?.shiftStats ?? [];
+  const schedule = useMemo(() => data?.schedule ?? [], [data?.schedule]);
+  const scanlogs = useMemo(() => data?.scanlogs ?? [], [data?.scanlogs]);
+  const shiftStats = useMemo(() => data?.shiftStats ?? [], [data?.shiftStats]);
 
   const totalScheduled = shiftStats.reduce((s, d) => s + d.total, 0);
 

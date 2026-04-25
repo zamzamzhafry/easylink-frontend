@@ -72,7 +72,7 @@ export default function Sidebar({
             href: '/attendance/review',
             label: t('sidebar.items.attendanceReview'),
             icon: CalendarClock,
-            auth: 'member',
+            auth: 'admin',
           },
           {
             href: '/performance',
@@ -103,6 +103,16 @@ export default function Sidebar({
     master: true,
   });
   const [showSettings, setShowSettings] = useState(false);
+  const roleLabel = useMemo(() => {
+    if (!currentUser) return null;
+    if (currentUser.is_admin) return t('sidebar.roles.admin');
+    if (currentUser.is_hr) return 'HR';
+    if (currentUser.role_key === 'scheduler' || currentUser.is_leader) {
+      return t('sidebar.roles.groupLeader');
+    }
+    if (currentUser.role_key === 'viewer') return 'Viewer';
+    return t('sidebar.roles.member');
+  }, [currentUser, t]);
 
   const visibleSections = useMemo(() => {
     return navSections
@@ -340,13 +350,17 @@ export default function Sidebar({
                 <>
                   <ShieldCheck className="h-3 w-3" /> {t('sidebar.roles.admin')}
                 </>
+              ) : currentUser.is_hr ? (
+                <>
+                  <ShieldCheck className="h-3 w-3 text-sky-400" /> HR
+                </>
               ) : currentUser.is_leader ? (
                 <>
                   <Crown className="h-3 w-3 text-amber-400" /> {t('sidebar.roles.groupLeader')}
                 </>
               ) : (
                 <>
-                  <ShieldCheck className="h-3 w-3" /> {t('sidebar.roles.member')}
+                  <ShieldCheck className="h-3 w-3" /> {roleLabel}
                 </>
               )}
             </div>

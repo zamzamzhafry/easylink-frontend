@@ -17,6 +17,7 @@ import ModalShell from '@/components/ui/modal-shell';
 import InlineStatusPanel from '@/components/ui/inline-status-panel';
 import { getUIText } from '@/lib/localization/ui-texts';
 import { requestJson } from '@/lib/request-json';
+import { PAGE_SIZE_OPTIONS } from '@/lib/constants';
 
 async function parseApiResponse(res) {
   const text = await res.text();
@@ -110,7 +111,7 @@ export default function MachinePage() {
   const [addUserPayload, setAddUserPayload] = useState({
     pin: '',
     name: '',
-    password: '1234',
+    password: '',
     rfid: '',
     privilege: 0,
   });
@@ -253,6 +254,7 @@ export default function MachinePage() {
         source: String(data?.source || ''),
         checked_at: String(data?.checked_at || ''),
         checks: Array.isArray(data?.checks) ? data.checks : [],
+        not_configured: Boolean(data?.not_configured),
       });
       return data;
     } catch (err) {
@@ -603,7 +605,7 @@ export default function MachinePage() {
       payload: {
         pin,
         name,
-        password: addUserPayload.password || '1234',
+        password: addUserPayload.password,
         rfid: addUserPayload.rfid.trim(),
         privilege: Number(addUserPayload.privilege || 0),
       },
@@ -694,28 +696,32 @@ export default function MachinePage() {
   }, []);
 
   const machineHealthPillClass =
-    {
-      online: 'text-emerald-300 bg-emerald-500/10 border-emerald-500/30',
-      degraded: 'text-amber-300 bg-amber-500/10 border-amber-500/30',
-      offline: 'text-rose-300 bg-rose-500/10 border-rose-500/30',
-      checking: 'text-slate-300 bg-slate-700/30 border-slate-700/40',
-    }[machineHealthStatus] || 'text-slate-300 bg-slate-700/30 border-slate-700/40';
+    machineHealth?.not_configured
+      ? 'text-slate-400 bg-slate-700/20 border-slate-700/30'
+      : ({
+          online: 'text-emerald-300 bg-emerald-500/10 border-emerald-500/30',
+          degraded: 'text-amber-300 bg-amber-500/10 border-amber-500/30',
+          offline: 'text-rose-300 bg-rose-500/10 border-rose-500/30',
+          checking: 'text-slate-300 bg-slate-700/30 border-slate-700/40',
+        }[machineHealthStatus] || 'text-slate-300 bg-slate-700/30 border-slate-700/40');
 
-  const machineHealthSummary =
-    {
-      online: t('machinePage.connection.summaryOnline'),
-      degraded: t('machinePage.connection.summaryDegraded'),
-      offline: t('machinePage.connection.summaryOffline'),
-      checking: t('machinePage.connection.checking'),
-    }[machineHealthStatus] || t('machinePage.connection.checking');
+  const machineHealthSummary = machineHealth?.not_configured
+    ? t('machinePage.connection.notConfigured')
+    : ({
+        online: t('machinePage.connection.summaryOnline'),
+        degraded: t('machinePage.connection.summaryDegraded'),
+        offline: t('machinePage.connection.summaryOffline'),
+        checking: t('machinePage.connection.checking'),
+      }[machineHealthStatus] || t('machinePage.connection.checking'));
 
-  const machineHealthLabel =
-    {
-      online: t('machinePage.connection.statusOnline'),
-      degraded: t('machinePage.connection.statusDegraded'),
-      offline: t('machinePage.connection.statusOffline'),
-      checking: t('machinePage.connection.statusChecking'),
-    }[machineHealthStatus] || t('machinePage.connection.statusChecking');
+  const machineHealthLabel = machineHealth?.not_configured
+    ? t('machinePage.connection.statusNotConfigured')
+    : ({
+        online: t('machinePage.connection.statusOnline'),
+        degraded: t('machinePage.connection.statusDegraded'),
+        offline: t('machinePage.connection.statusOffline'),
+        checking: t('machinePage.connection.statusChecking'),
+      }[machineHealthStatus] || t('machinePage.connection.statusChecking'));
 
   return (
     <>
@@ -1272,21 +1278,21 @@ export default function MachinePage() {
                     <label htmlFor="machine-jobs-limit" className="text-muted-foreground">
                       {t('machinePage.jobs.rows')}
                     </label>
-                    <select
-                      id="machine-jobs-limit"
-                      value={machineLimit}
-                      onChange={(event) => {
-                        setMachineLimit(Number(event.target.value) || 30);
-                        setMachinePage(1);
-                      }}
-                      className="ui-control-select !min-h-0 !w-auto px-2 py-1 text-xs"
-                    >
-                      {[10, 20, 30, 50, 100].map((size) => (
-                        <option key={size} value={size}>
-                          {size}
-                        </option>
-                      ))}
-                    </select>
+          <select
+            id="machine-jobs-limit"
+            value={machineLimit}
+            onChange={(event) => {
+              setMachineLimit(Number(event.target.value) || 30);
+              setMachinePage(1);
+            }}
+            className="ui-control-select !min-h-0 !w-auto px-2 py-1 text-xs"
+          >
+            {PAGE_SIZE_OPTIONS.map((size) => (
+              <option key={size} value={size}>
+                {size}
+              </option>
+            ))}
+          </select>
                     <button
                       type="button"
                       onClick={() => setMachinePage((prev) => Math.max(1, prev - 1))}

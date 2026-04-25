@@ -36,10 +36,10 @@ export default function EmployeesTable({ loading, rows, onEdit, onDelete }) {
   };
 
   return (
-    <TableShell>
+    <div className="table-shell">
       <table className="w-full text-sm text-foreground">
         <thead>
-          <TableHeadRow headers={TABLE_HEADERS} />
+          <TableHeadRow headers={TABLE_HEADERS} className="table-head-cell" />
         </thead>
         <tbody className="divide-y divide-border/70">
           {loading ? (
@@ -56,8 +56,8 @@ export default function EmployeesTable({ loading, rows, onEdit, onDelete }) {
 
               return (
                 <tr key={employee.id} className="data-row ui-table-row">
-                  <td className="ui-table-cell-muted px-4 py-3 font-mono text-xs">{employee.id}</td>
-                  <td className="ui-table-cell px-4 py-3">
+                  <td className="table-cell-muted px-4 py-3 font-mono text-xs">{employee.id}</td>
+                  <td className="table-cell px-4 py-3">
                     {hasName ? (
                       <span className="text-foreground">{employee.nama_karyawan}</span>
                     ) : (
@@ -66,7 +66,7 @@ export default function EmployeesTable({ loading, rows, onEdit, onDelete }) {
                       </span>
                     )}
                   </td>
-                  <td className="ui-table-cell px-4 py-3">
+                  <td className="table-cell px-4 py-3">
                     <div className="flex flex-wrap items-center gap-2 text-xs">
                       <span className="rounded-md border border-border bg-muted px-2 py-1 font-mono text-foreground">
                         PIN {employee.pin || '-'}
@@ -80,13 +80,13 @@ export default function EmployeesTable({ loading, rows, onEdit, onDelete }) {
                       </span>
                     </div>
                   </td>
-                  <td className="ui-table-cell-muted px-4 py-3 font-mono text-xs">
+                  <td className="table-cell-muted px-4 py-3 font-mono text-xs">
                     {employee.nip || '-'}
                   </td>
-                  <td className="ui-table-cell-muted whitespace-nowrap px-4 py-3 text-xs">
+                  <td className="table-cell-muted whitespace-nowrap px-4 py-3 text-xs">
                     {contract || <span className="text-muted-foreground">-</span>}
                   </td>
-                  <td className="ui-table-cell px-4 py-3">
+                  <td className="table-cell px-4 py-3">
                     {hasName ? (
                       <span className="inline-flex items-center gap-1 text-xs text-emerald-600 dark:text-emerald-300">
                         <CheckCircle2 className="h-3 w-3" /> {t('employeesTable.linked')}
@@ -97,7 +97,7 @@ export default function EmployeesTable({ loading, rows, onEdit, onDelete }) {
                       </span>
                     )}
                   </td>
-                  <td className="ui-table-cell px-4 py-3">
+                  <td className="table-cell px-4 py-3">
                     {isActiveDuty ? (
                       <span className="ui-status-badge ui-status-badge-success rounded-full px-2 py-1 text-xs">
                         {t('employeesTable.active')}
@@ -108,12 +108,12 @@ export default function EmployeesTable({ loading, rows, onEdit, onDelete }) {
                       </span>
                     )}
                   </td>
-                  <td className="ui-table-cell px-4 py-3">
+                  <td className="table-cell px-4 py-3">
                     <div className="flex items-center gap-2">
                       <button
                         type="button"
                         onClick={() => onEdit(employee)}
-                        className="ui-btn-secondary min-h-0 px-3 py-1.5 text-xs"
+                        className="btn-outline min-h-0 px-3 py-1.5 text-xs"
                       >
                         <Pencil className="h-3 w-3" /> {t('employeesTable.actions.edit')}
                       </button>
@@ -132,6 +132,6 @@ export default function EmployeesTable({ loading, rows, onEdit, onDelete }) {
           )}
         </tbody>
       </table>
-    </TableShell>
+    </div>
   );
 }
