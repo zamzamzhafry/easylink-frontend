@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useState } from 'react';
 import Link from 'next/link';
 import { ChevronLeft, ChevronRight, DatabaseZap, Download, RefreshCw } from 'lucide-react';
 import InlineStatusPanel from '@/components/ui/inline-status-panel';
@@ -29,16 +29,6 @@ function daysAgo(n) {
   const d = new Date();
   d.setDate(d.getDate() - n);
   return toIso(d);
-}
-
-async function parseApiResponse(res) {
-  const text = await res.text();
-  if (!text) return {};
-  try {
-    return JSON.parse(text);
-  } catch {
-    return { raw: text };
-  }
 }
 
 // ─── quick presets ─────────────────────────────────────────────────────────────
@@ -121,11 +111,6 @@ export default function ScanlogPage() {
   const [reloadToken, setReloadToken] = useState(0);
 
   const [downloading, setDownloading] = useState(false);
-  const [syncing, setSyncing] = useState(false);
-  const [syncMode, setSyncMode] = useState('new');
-  const [syncMaxPages, setSyncMaxPages] = useState(3);
-  const [activeBatchId, setActiveBatchId] = useState(null);
-  const [queueError, setQueueError] = useState('');
 
   const toast = useToast();
 
@@ -231,162 +216,6 @@ export default function ScanlogPage() {
     }
   };
 
-  const refreshQueue = useCallback(async (batchId) => {
-    if (!batchId) return null;
-    try {
-      setQueueError('');
-      const res = await fetch(`/api/scanlog/sync?batch_id=${batchId}`);
-      const data = await parseApiResponse(res);
-      if (!res.ok || !data?.ok) {
-        throw new Error(data?.error || data?.raw || `Queue status failed (${res.status})`);
-      }
-      return data?.row || null;
-    } catch (err) {
-      setQueueError(err.message || 'Failed to refresh queue status');
-      return null;
-    }
-  }, []);
-
-  const handleBatchState = useCallback(
-    (row) => {
-      if (!row) return;
-      const status = String(row.status || '').toLowerCase();
-      if (status === 'success') {
-        toast.success(
-          `Batch #${row.id} completed. Pulled ${row.pulled_count || 0}, inserted ${row.inserted_count || 0}.`
-        );
-        setActiveBatchId(null);
-        setSource('safe');
-        setAppliedFilters((prev) => ({
-          ...prev,
-          source: 'safe',
-        }));
-        setReloadToken((value) => value + 1);
-        setPage(1);
-      } else if (status === 'failed') {
-        toast.error(`Batch #${row.id} failed: ${row.error_message || 'Unknown error'}`);
-        setActiveBatchId(null);
-      }
-    },
-    [setPage, toast]
-  );
-
-  useEffect(() => {
-    if (!activeBatchId) {
-      setQueueError('');
-      return;
-    }
-
-    let closed = false;
-    const stream = new EventSource('/api/scanlog/stream?limit=12&interval_ms=4000');
-
-    const onQueue = (event) => {
-      try {
-        const payload = JSON.parse(String(event.data || '{}'));
-        setQueueError('');
-        const rows = Array.isArray(payload?.rows) ? payload.rows : [];
-        const matched = rows.find((row) => Number(row?.id || 0) === Number(activeBatchId));
-        if (matched) {
-          handleBatchState(matched);
-        }
-      } catch {
-        // ignore malformed payload
-      }
-    };
-
-    const onOpen = () => {
-      setQueueError('');
-    };
-
-    const onError = () => {
-      if (closed) return;
-      if (typeof document !== 'undefined' && document.visibilityState !== 'visible') {
-        return;
-      }
-      if (typeof EventSource !== 'undefined' && stream.readyState === EventSource.OPEN) {
-        return;
-      }
-      if (typeof navigator !== 'undefined' && navigator.onLine === false) {
-        setQueueError('Offline. Waiting for network before reconnecting queue stream...');
-        return;
-      }
-      setQueueError('Realtime queue stream reconnecting...');
-    };
-
-    stream.addEventListener('open', onOpen);
-    stream.addEventListener('queue', onQueue);
-    stream.addEventListener('error', onError);
-
-    return () => {
-      closed = true;
-      stream.removeEventListener('open', onOpen);
-      stream.removeEventListener('queue', onQueue);
-      stream.removeEventListener('error', onError);
-      stream.close();
-    };
-  }, [activeBatchId, handleBatchState]);
-
-  useEffect(() => {
-    if (!activeBatchId) return;
-
-    let cancelled = false;
-    const syncState = async () => {
-      const row = await refreshQueue(activeBatchId);
-      if (!cancelled) {
-        handleBatchState(row);
-      }
-    };
-
-    void syncState();
-    return () => {
-      cancelled = true;
-    };
-  }, [activeBatchId, handleBatchState, refreshQueue]);
-
-  const syncFromMachine = async () => {
-    setSyncing(true);
-    setQueueError('');
-
-    try {
-      const res = await fetch('/api/scanlog/sync', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          from,
-          to,
-          source: 'windows-sdk',
-          mode: syncMode,
-          limit: Math.min(limit, 1000),
-          page: 1,
-          max_pages: syncMaxPages,
-          async: true,
-        }),
-      });
-
-      const data = await parseApiResponse(res);
-      if (!res.ok || !data?.ok) {
-        throw new Error(data?.error || data?.raw || `Sync failed (${res.status})`);
-      }
-
-      const batchId = Number(data?.batch_id || 0);
-      if (!batchId) {
-        throw new Error('Batch id missing from server response');
-      }
-
-      setActiveBatchId(batchId);
-      const firstState = await refreshQueue(batchId);
-      handleBatchState(firstState);
-
-      toast.success(
-        `Sync job #${batchId} accepted (${data?.status || 'running'}). Queue: active ${data?.queue?.active || 0}, pending ${data?.queue?.pending || 0}.`
-      );
-    } catch (err) {
-      toast.error(err.message || 'Failed to sync from machine');
-    } finally {
-      setSyncing(false);
-    }
-  };
-
   // ─── render ───────────────────────────────────────────────────────────────────
   return (
     <div className="space-y-5 p-6">
@@ -411,43 +240,6 @@ export default function ScanlogPage() {
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            <label className="flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-900 px-2 py-2 text-[11px] text-slate-400">
-              Mode
-              <select
-                value={syncMode}
-                onChange={(event) => setSyncMode(event.target.value)}
-                className="rounded border border-slate-700 bg-slate-800 px-2 py-1 text-xs text-white"
-                disabled={syncing}
-              >
-                <option value="new">New only (recommended)</option>
-                <option value="all">All range (heavy)</option>
-              </select>
-            </label>
-
-            <label className="flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-900 px-2 py-2 text-[11px] text-slate-400">
-              Max pages
-              <select
-                value={syncMaxPages}
-                onChange={(event) => setSyncMaxPages(Number(event.target.value))}
-                className="rounded border border-slate-700 bg-slate-800 px-2 py-1 text-xs text-white"
-                disabled={syncing}
-              >
-                {[1, 2, 3, 5, 10].map((value) => (
-                  <option key={value} value={value}>
-                    {value}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <button
-              type="button"
-              onClick={syncFromMachine}
-              disabled={syncing}
-              className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs font-semibold text-emerald-300 hover:bg-emerald-500/20 disabled:opacity-50"
-            >
-              {syncing ? 'Syncing…' : 'Fetch From Machine'}
-            </button>
             <button
               type="button"
               onClick={() => {
@@ -471,14 +263,6 @@ export default function ScanlogPage() {
             </button>
           </div>
         </div>
-
-        {syncMode === 'all' && (
-          <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-100">
-            Full-range download may take several minutes and keeps the Windows SDK busy. Use this
-            mode only when absolutely necessary; prefer the default &quot;New&quot; mode for incremental
-            syncs.
-          </div>
-        )}
 
         <div className="flex flex-wrap gap-2 rounded-xl border border-slate-800 bg-slate-900 p-3 text-xs">
           <Link
@@ -644,8 +428,6 @@ export default function ScanlogPage() {
           actionLabel="Retry"
           onAction={retry}
         />
-
-        <InlineStatusPanel message={queueError} variant="warning" />
 
         {/* Table */}
         <TableShell>

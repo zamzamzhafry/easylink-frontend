@@ -1,9 +1,9 @@
 import { cn } from '@/lib/utils';
 
-export function TableShell({ children, className, innerClassName }) {
+export function TableShell({ children, className, innerClassName, bodyRef }) {
   return (
     <div className={cn('table-shell', className)}>
-      <div className={cn('overflow-x-auto', innerClassName)}>{children}</div>
+      <div ref={bodyRef} className={cn('overflow-x-auto', innerClassName)}>{children}</div>
     </div>
   );
 }
@@ -11,9 +11,9 @@ export function TableShell({ children, className, innerClassName }) {
 export function TableHeadRow({ headers }) {
   return (
     <tr className="ui-table-head text-left">
-      {headers.map(({ key, label, className }) => (
+      {headers.map(({ key, label, className, truncate }) => (
         <th key={key} className={cn('table-head-cell whitespace-nowrap px-4 py-3', className)}>
-          {label}
+          {truncate ? <span className="block max-w-[200px] truncate">{label}</span> : label}
         </th>
       ))}
     </tr>

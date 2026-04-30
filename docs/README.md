@@ -11,6 +11,9 @@ This folder is the handoff context for future contributors and AI agents.
   - Environment configuration notes
 - [`app-current-state-graph.md`](./app-current-state-graph.md)
   - Mermaid graph map of current UI routes, API topology, auth, data flows, machine/scanlog, ops recovery, and release gates
+- [`graphify-app-direction.md`](./graphify-app-direction.md)
+  - Graphify-backed reading of the `app/` surface
+  - Explains the likely product and architecture direction in plain English
 - [`agent-restrictions.md`](./agent-restrictions.md)
   - Working rules and safety constraints for future agents
   - Code quality and migration guardrails

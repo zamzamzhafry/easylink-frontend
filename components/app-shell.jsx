@@ -278,8 +278,7 @@ export default function AppShell({ children }) {
         <main
           className={cn(
             'app-shell-main min-h-screen p-6 transition-all duration-200',
-            collapsed ? 'ml-20' : 'ml-60',
-            showRightSidebar && 'xl:mr-80'
+            collapsed ? 'ml-20' : 'ml-60'
           )}
         >
           {children}

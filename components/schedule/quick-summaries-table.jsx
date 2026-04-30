@@ -122,7 +122,8 @@ export default function QuickSummariesTable({
                   <td className="sticky left-0 z-10 border-r border-border/60 bg-background/90 px-4 py-2 backdrop-blur">
                     <Link
                       href={`/employees/${employee.id}`}
-                      className="text-sm font-medium text-foreground transition-colors hover:text-primary"
+                      className="block max-w-[200px] truncate text-sm font-medium text-foreground transition-colors hover:text-primary"
+                      title={employee.nama}
                     >
                       {employee.nama}
                     </Link>

@@ -5,9 +5,21 @@ import pool from '@/lib/db';
 import { hasKaryawanColumn } from '@/lib/karyawan-schema';
 import { getAuthContextFromCookies } from '@/lib/auth-session';
 import DashboardOpsPanel from '@/components/dashboard-ops-panel';
+import { DashboardCharts } from '@/components/dashboard/DashboardCharts';
+import { DashboardNeedsReview } from '@/components/dashboard/DashboardNeedsReview';
 
-async function getStats({ limit, page, auth }) {
-  const today = new Date().toISOString().slice(0, 10);
+function toMinutes(value) {
+  if (!value || typeof value !== 'string') return null;
+  const [hours, minutes] = value.split(':').map(Number);
+  if (Number.isNaN(hours) || Number.isNaN(minutes)) return null;
+  return hours * 60 + minutes;
+}
+
+async function getStats({ auth }) {
+  const now = new Date();
+  const today = now.toISOString().slice(0, 10);
+  const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+  const threeDaysAgo = new Date(now.getTime() - 3 * 24 * 60 * 60 * 1000);
   const canFilterDeleted = await hasKaryawanColumn('isDeleted');
 
   const isAdmin = Boolean(auth?.is_admin);
@@ -103,94 +115,145 @@ async function getStats({ limit, page, auth }) {
     )
     .catch(() => [[{ late_count: 0 }]]);
 
-  const recentScope = buildScopeClause('eg', 'sl.pin');
-  const [[{ total_recent }]] = await pool
-    .query(
-      `SELECT COUNT(*) AS total_recent
-       FROM tb_scanlog sl
-       LEFT JOIN tb_karyawan k ON k.pin = sl.pin ${canFilterDeleted ? 'AND k.isDeleted = 0' : ''}
-       LEFT JOIN tb_employee_group eg ON eg.karyawan_id = k.id
-       WHERE 1=1 ${recentScope.clause}`,
-      recentScope.params
-    )
-    .catch(() => [[{ total_recent: 0 }]]);
-  const totalPages = Math.max(1, Math.ceil(Number(total_recent) / limit));
-  const currentPage = Math.min(page, totalPages);
-  const offset = (currentPage - 1) * limit;
+  const [[{ devices }]] = await pool.query('SELECT COUNT(*) AS devices FROM tb_device').catch(() => [[{ devices: 0 }]]);
 
-  const [recent] = await pool
-    .query(
-      `SELECT sl.pin,
-              k.id AS karyawan_id,
-              DATE(sl.scan_date) AS scan_date,
-              TIME(sl.scan_date) AS scan_time,
-              sl.verifymode,
-              COALESCE(k.nama, u.nama, sl.pin) AS nama
-       FROM tb_scanlog sl
-       LEFT JOIN tb_karyawan k ON k.pin = sl.pin ${canFilterDeleted ? 'AND k.isDeleted = 0' : ''}
-       LEFT JOIN tb_employee_group eg ON eg.karyawan_id = k.id
-       LEFT JOIN tb_user u ON u.pin = sl.pin
-       WHERE 1=1 ${recentScope.clause}
-       ORDER BY sl.scan_date DESC
-       LIMIT ? OFFSET ?`,
-      [...recentScope.params, limit, offset]
-    )
-    .catch(() => [[]]);
+  const trendFrom = sevenDaysAgo.toISOString().slice(0, 10);
+  
+  const trendHadirScope = buildScopeClause('eg', 'sl.pin');
+  const [trendRows] = await pool.query(`
+    SELECT DATE(sl.scan_date) as date, COUNT(DISTINCT sl.pin) as hadir
+    FROM tb_scanlog sl
+    LEFT JOIN tb_karyawan k ON k.pin = sl.pin ${canFilterDeleted ? 'AND k.isDeleted = 0' : ''}
+    LEFT JOIN tb_employee_group eg ON eg.karyawan_id = k.id
+    WHERE DATE(sl.scan_date) >= ? AND DATE(sl.scan_date) <= ?
+      ${trendHadirScope.clause}
+    GROUP BY DATE(sl.scan_date)
+    ORDER BY DATE(sl.scan_date) ASC
+  `, [trendFrom, today, ...trendHadirScope.params]).catch(() => [[]]);
 
-  const [[{ devices }]] = await pool.query('SELECT COUNT(*) AS devices FROM tb_device');
+  const reviewFrom = threeDaysAgo.toISOString().slice(0, 10);
+  
+  const reviewScope = buildScopeClause('eg', 'k.pin');
+  const [reviewQueryRows] = await pool.query(`
+    SELECT 
+      sc.tanggal as scan_date,
+      k.id as karyawan_id,
+      k.pin,
+      COALESCE(k.nama, u.nama, k.pin) as nama,
+      st.jam_masuk,
+      st.jam_keluar,
+      st.needs_scan,
+      an.status as note_status,
+      an.catatan as note_catatan,
+      MIN(TIME(sl.scan_date)) AS masuk,
+      MAX(TIME(sl.scan_date)) AS keluar
+    FROM tb_schedule sc
+    JOIN tb_karyawan k ON k.id = sc.karyawan_id ${canFilterDeleted ? 'AND k.isDeleted = 0' : ''}
+    JOIN tb_shift_type st ON st.id = sc.shift_id
+    LEFT JOIN tb_user u ON u.pin = k.pin
+    LEFT JOIN tb_employee_group eg ON eg.karyawan_id = k.id
+    LEFT JOIN tb_attendance_note an ON an.pin = k.pin AND an.tanggal = sc.tanggal
+    LEFT JOIN tb_scanlog sl ON sl.pin = k.pin AND DATE(sl.scan_date) = sc.tanggal
+    WHERE sc.tanggal >= ? AND sc.tanggal <= ?
+      AND st.needs_scan = 1
+      AND an.status IS NULL
+      ${reviewScope.clause}
+    GROUP BY sc.id, sc.tanggal, k.id, k.pin, u.nama, st.jam_masuk, st.jam_keluar, st.needs_scan, an.status, an.catatan
+    ORDER BY sc.tanggal DESC, k.nama ASC
+  `, [reviewFrom, today, ...reviewScope.params]).catch(() => [[]]);
+
+  const needsReview = [];
+  const lateMinutesThreshold = 15;
+  
+  for (const row of reviewQueryRows) {
+    if (needsReview.length >= 10) break;
+    
+    if (row.note_status || row.note_catatan) continue;
+    
+    const scheduledInMinutes = toMinutes(row.jam_masuk);
+    const actualInMinutes = toMinutes(row.masuk);
+    const scheduledOutMinutes = toMinutes(row.jam_keluar);
+    const actualOutMinutes = toMinutes(row.keluar);
+    
+    let anomaly_type = null;
+    let anomaly_label = null;
+
+    if (row.needs_scan && actualInMinutes === null) {
+      if (row.scan_date < today || (row.scan_date === today && scheduledInMinutes !== null && toMinutes(new Date().toLocaleTimeString('en-US', {hour12: false})) > scheduledInMinutes + lateMinutesThreshold)) {
+         anomaly_type = 'tidak_hadir';
+         anomaly_label = 'Tidak Hadir';
+      }
+    } else if (scheduledInMinutes !== null && actualInMinutes !== null && (actualInMinutes - scheduledInMinutes > lateMinutesThreshold)) {
+      anomaly_type = 'terlambat';
+      anomaly_label = 'Terlambat';
+    } else if (scheduledOutMinutes !== null && actualOutMinutes !== null && (scheduledOutMinutes - actualOutMinutes > lateMinutesThreshold)) {
+      anomaly_type = 'pulang_awal';
+      anomaly_label = 'Pulang Awal';
+    }
+    
+    if (anomaly_type) {
+      needsReview.push({
+        karyawan_id: row.karyawan_id,
+        nama: row.nama,
+        scan_date: new Date(row.scan_date).toISOString().slice(0, 10),
+        anomaly_type,
+        anomaly_label
+      });
+    }
+  }
+
+  const dHadir = Number(hadir);
+  const dJadwal = Number(jadwal_hari);
+  const dLate = Number(late_count);
+  const dAbsent = Math.max(0, dJadwal - dHadir);
+  const dOnTime = Math.max(0, dHadir - dLate);
+  
+  const pieData = [
+    { label: 'Tepat Waktu', value: dOnTime, color: '#10b981' },
+    { label: 'Terlambat', value: dLate, color: '#f59e0b' },
+    { label: 'Tidak Hadir', value: dAbsent, color: '#f43f5e' },
+  ].filter(d => d.value > 0);
+
+  const dateMap = new Map();
+  let currentDate = new Date(sevenDaysAgo);
+  const end = new Date(today);
+  while (currentDate <= end) {
+    dateMap.set(currentDate.toISOString().slice(0, 10), {
+      date: currentDate.toISOString().slice(0, 10),
+      value: 0,
+      color: '#10b981'
+    });
+    currentDate.setDate(currentDate.getDate() + 1);
+  }
+  
+  for (const row of trendRows) {
+    const d = new Date(row.date).toISOString().slice(0, 10);
+    if (dateMap.has(d)) {
+      dateMap.get(d).value = Number(row.hadir);
+    }
+  }
+  const barData = Array.from(dateMap.values());
 
   return {
     total: Number(total),
-    hadir: Number(hadir),
-    jadwal_hari: Number(jadwal_hari),
-    late: Number(late_count),
-    recent: Array.isArray(recent) ? recent : [],
-    recentTotal: Number(total_recent),
-    recentPage: currentPage,
-    recentTotalPages: totalPages,
+    hadir: dHadir,
+    jadwal_hari: dJadwal,
+    late: dLate,
     devices: Number(devices),
+    pieData,
+    barData,
+    needsReview
   };
 }
 
-const verifyLabel = (value) => {
-  const map = {
-    1: 'Fingerprint',
-    20: 'Face Recognition',
-    30: 'Vein Scan',
-    4: 'Face',
-    15: 'Palm',
-    2: 'Card',
-  };
-  return map[value] ?? `Mode ${value}`;
-};
 
-function normalizeLimit(value) {
-  const parsed = Number.parseInt(value, 10);
-  if ([50, 100, 200].includes(parsed)) return parsed;
-  return 50;
-}
 
-function normalizePage(value) {
-  const parsed = Number.parseInt(value, 10);
-  if (Number.isInteger(parsed) && parsed > 0) return parsed;
-  return 1;
-}
-
-function pageLink(page, limit) {
-  return `/?page=${page}&limit=${limit}`;
-}
-
-export default async function Dashboard({ searchParams }) {
+export default async function Dashboard() {
   const auth = await getAuthContextFromCookies();
   if (auth && !auth.is_admin) {
     redirect('/attendance');
   }
-  const limit = normalizeLimit(searchParams?.limit);
-  const page = normalizePage(searchParams?.page);
-  const stats = await getStats({ limit, page, auth });
-  const absent = Math.max(0, stats.jadwal_hari - stats.hadir);
-  const totalPages = stats.recentTotalPages;
-  const safePage = stats.recentPage;
+  const stats = await getStats({ auth });
 
   // Auth — used to filter dashboard buttons
   const isAdmin = Boolean(auth?.is_admin);
@@ -218,7 +281,7 @@ export default async function Dashboard({ searchParams }) {
     },
     canAttendance && {
       label: 'Tidak Hadir',
-      value: absent,
+      value: stats.pieData.find((d) => d.label === 'Tidak Hadir')?.value ?? 0,
       icon: UserX,
       color: 'text-rose-400',
       bg: 'bg-rose-400/10',
@@ -243,204 +306,98 @@ export default async function Dashboard({ searchParams }) {
   ].filter(Boolean);
 
   return (
-    <div className="max-w-6xl space-y-8">
-      <div>
-        <p className="mb-1 text-xs font-mono uppercase tracking-widest text-teal-400">
-          {new Date().toLocaleDateString('id-ID', {
-            weekday: 'long',
-            year: 'numeric',
-            month: 'long',
-            day: 'numeric',
-          })}
-        </p>
-        <h1 className="text-3xl font-bold text-white">Dashboard Absensi</h1>
-        <p className="mt-1 text-sm text-slate-400">EasyLink biometric attendance system overview</p>
+    <div className="max-w-6xl space-y-6">
+      <div className="flex items-baseline justify-between gap-4">
+        <div>
+          <h1 className="text-xl font-bold text-white">Dashboard Absensi</h1>
+          <p className="mt-0.5 text-xs text-slate-500">
+            {new Date().toLocaleDateString('id-ID', {
+              weekday: 'long',
+              year: 'numeric',
+              month: 'long',
+              day: 'numeric',
+            })}
+          </p>
+        </div>
+        <div className="flex shrink-0 flex-wrap items-center gap-2">
+          {canAttendance && (
+            <Link
+              href="/attendance"
+              className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs font-medium text-slate-300 transition-colors hover:border-teal-500/50 hover:text-teal-300"
+            >
+              Attendance
+            </Link>
+          )}
+          {canSchedule && (
+            <Link
+              href="/schedule"
+              className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs font-medium text-slate-300 transition-colors hover:border-teal-500/50 hover:text-teal-300"
+            >
+              Schedule
+            </Link>
+          )}
+          {canDashboard && (
+            <Link
+              href="/report"
+              className="rounded-lg border border-teal-500/40 bg-teal-500/10 px-3 py-1.5 text-xs font-semibold text-teal-300 transition-colors hover:border-teal-400 hover:text-white"
+            >
+              Reports →
+            </Link>
+          )}
+        </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
         {cards.map(({ label, value, icon: Icon, color, bg, href }) => (
           <Link
             key={label}
             href={href}
-            className="group rounded-xl border border-slate-800 bg-slate-900 p-4 transition-colors hover:border-slate-700"
+            className="group flex items-center gap-3 rounded-xl border border-slate-800 bg-slate-900 px-4 py-3 transition-colors hover:border-slate-700"
           >
-            <div className={`mb-3 inline-flex rounded-lg p-2 ${bg}`}>
-              <Icon className={`h-5 w-5 ${color}`} />
+            <div className={`shrink-0 rounded-lg p-1.5 ${bg}`}>
+              <Icon className={`h-4 w-4 ${color}`} />
             </div>
-            <div className="font-mono text-2xl font-bold text-white">{value}</div>
-            <div className="mt-0.5 text-xs text-slate-400">{label}</div>
+            <div className="min-w-0">
+              <div className="font-mono text-lg font-bold leading-none text-white">{value}</div>
+              <div className="mt-0.5 truncate text-[11px] text-slate-400">{label}</div>
+            </div>
           </Link>
         ))}
       </div>
 
-      {/* Quick links — only show what the user can actually access */}
+      <DashboardCharts pieData={stats.pieData} barData={stats.barData} />
+
       {(() => {
         const quickLinks = [
-          isAdmin && {
-            href: '/employees',
-            label: 'Manage Employees',
-            desc: 'Edit names & link users',
-          },
-          canAttendance && {
-            href: '/attendance',
-            label: 'Attendance Log',
-            desc: 'View scan history',
-          },
-          isAdmin && {
-            href: '/groups',
-            label: 'Employee Groups',
-            desc: 'Organize by team/shift group',
-          },
-          canSchedule && {
-            href: '/schedule',
-            label: 'Shift Schedule',
-            desc: 'Assign shifts & view calendar',
-          },
-          canDashboard && {
-            href: '/performance',
-            label: 'Performance',
-            desc: 'Per profile late/on-time stats',
-          },
-          isAdmin && {
-            href: '/shifts',
-            label: 'Shift Maker',
-            desc: 'Customize punch in/out templates',
-          },
-          isAdmin && { href: '/users', label: 'Users', desc: 'Manage device user accounts' },
-          isAdmin && { href: '/scanlog', label: 'Scan Log', desc: 'Raw biometric scanlog viewer' },
+          isAdmin && { href: '/employees', label: 'Employees', desc: 'Edit names & link users' },
+          isAdmin && { href: '/groups', label: 'Groups', desc: 'Organize by team/shift group' },
+          canDashboard && { href: '/performance', label: 'Performance', desc: 'Late/on-time stats' },
+          isAdmin && { href: '/shifts', label: 'Shift Maker', desc: 'Punch in/out templates' },
+          isAdmin && { href: '/users', label: 'Users', desc: 'Device user accounts' },
+          isAdmin && { href: '/scanlog', label: 'Scan Log', desc: 'Raw biometric scanlog' },
         ].filter(Boolean);
         if (!quickLinks.length) return null;
         return (
-          <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+          <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 lg:grid-cols-6">
             {quickLinks.map(({ href, label, desc }) => (
               <Link
                 key={href}
                 href={href}
-                className="group rounded-xl border border-slate-800 bg-slate-900 p-4 transition-all hover:border-teal-500/40"
+                title={desc}
+                className="group rounded-lg border border-slate-800 bg-slate-900/60 px-3 py-2.5 text-center transition-all hover:border-slate-700 hover:bg-slate-900"
               >
-                <div className="text-sm font-semibold text-white transition-colors group-hover:text-teal-400">
+                <div className="text-xs font-semibold text-slate-300 transition-colors group-hover:text-white">
                   {label}
                 </div>
-                <div className="mt-1 text-xs text-slate-500">{desc}</div>
-                <div className="mt-3 font-mono text-xs text-teal-500">-&gt; Open</div>
               </Link>
             ))}
           </div>
         );
       })()}
 
-      {isAdmin && <DashboardOpsPanel />}
+      <DashboardNeedsReview items={stats.needsReview} />
 
-      <div className="overflow-hidden rounded-xl border border-slate-800 bg-slate-900">
-        <div className="flex items-center gap-2 border-b border-slate-800 px-5 py-3">
-          <Fingerprint className="h-4 w-4 text-teal-400" />
-          <span className="text-sm font-semibold text-white">Recent Scans</span>
-          <div className="ml-auto flex items-center gap-2">
-            <span className="font-mono text-xs text-slate-500">
-              page {safePage}/{totalPages} | showing {limit}
-            </span>
-            {[50, 100, 200].map((option) => (
-              <Link
-                key={option}
-                href={pageLink(1, option)}
-                className={`rounded-md border px-2 py-1 text-[11px] ${
-                  option === limit
-                    ? 'border-teal-500/50 bg-teal-500/15 text-teal-300'
-                    : 'border-slate-700 text-slate-400 hover:text-white'
-                }`}
-              >
-                {option}
-              </Link>
-            ))}
-          </div>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-slate-800 text-left">
-                <th className="px-5 py-2.5 text-xs font-medium uppercase tracking-wide text-slate-500">
-                  Nama
-                </th>
-                <th className="px-4 py-2.5 text-xs font-medium uppercase tracking-wide text-slate-500">
-                  PIN
-                </th>
-                <th className="px-4 py-2.5 text-xs font-medium uppercase tracking-wide text-slate-500">
-                  Tanggal
-                </th>
-                <th className="px-4 py-2.5 text-xs font-medium uppercase tracking-wide text-slate-500">
-                  Waktu
-                </th>
-                <th className="px-4 py-2.5 text-xs font-medium uppercase tracking-wide text-slate-500">
-                  Metode
-                </th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-800/50">
-              {stats.recent.length === 0 ? (
-                <tr>
-                  <td colSpan={5} className="px-5 py-8 text-center text-xs text-slate-500">
-                    No scan data found
-                  </td>
-                </tr>
-              ) : (
-                stats.recent.map((row) => (
-                  <tr key={`${row.pin}-${row.scan_date}-${row.scan_time}`} className="data-row">
-                    <td className="px-5 py-2.5 text-white">
-                      {row.karyawan_id ? (
-                        <Link
-                          href={`/employees/${row.karyawan_id}`}
-                          className="hover:text-teal-300"
-                        >
-                          {row.nama}
-                        </Link>
-                      ) : (
-                        row.nama
-                      )}
-                    </td>
-                    <td className="px-4 py-2.5 font-mono text-xs text-slate-400">{row.pin}</td>
-                    <td className="px-4 py-2.5 font-mono text-xs text-slate-400">
-                      {String(row.scan_date).slice(0, 10)}
-                    </td>
-                    <td className="px-4 py-2.5 font-mono text-xs text-teal-400">
-                      {String(row.scan_time).slice(0, 8)}
-                    </td>
-                    <td className="px-4 py-2.5">
-                      <span className="inline-flex rounded border border-slate-700 bg-slate-800 px-2 py-0.5 text-xs text-slate-300">
-                        {verifyLabel(row.verifymode)}
-                      </span>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-        <div className="flex items-center justify-between border-t border-slate-800 px-5 py-2 text-xs">
-          <span className="text-slate-500">total scans: {stats.recentTotal}</span>
-          <div className="flex items-center gap-2">
-            {safePage > 1 ? (
-              <Link
-                href={pageLink(safePage - 1, limit)}
-                className="rounded border border-slate-700 px-2 py-1 text-slate-300 hover:text-white"
-              >
-                Prev
-              </Link>
-            ) : (
-              <span className="rounded border border-slate-800 px-2 py-1 text-slate-600">Prev</span>
-            )}
-            {safePage < totalPages ? (
-              <Link
-                href={pageLink(safePage + 1, limit)}
-                className="rounded border border-slate-700 px-2 py-1 text-slate-300 hover:text-white"
-              >
-                Next
-              </Link>
-            ) : (
-              <span className="rounded border border-slate-800 px-2 py-1 text-slate-600">Next</span>
-            )}
-          </div>
-        </div>
-      </div>
+      {isAdmin && <DashboardOpsPanel />}
     </div>
   );
 }

@@ -59,7 +59,12 @@ export default function EmployeesTable({ loading, rows, onEdit, onDelete }) {
                   <td className="table-cell-muted px-4 py-3 font-mono text-xs">{employee.id}</td>
                   <td className="table-cell px-4 py-3">
                     {hasName ? (
-                      <span className="text-foreground">{employee.nama_karyawan}</span>
+                      <span
+                        className="block max-w-[200px] truncate text-foreground"
+                        title={employee.nama_karyawan}
+                      >
+                        {employee.nama_karyawan}
+                      </span>
                     ) : (
                       <span className="text-xs italic text-amber-600 dark:text-amber-300">
                         {t('employeesTable.noName')}

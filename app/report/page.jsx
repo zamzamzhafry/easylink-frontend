@@ -1,10 +1,11 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { BarChart3, Download, PieChart, RefreshCcw } from 'lucide-react';
+import { BarChart3, Download, FileSpreadsheet, PieChart, RefreshCcw } from 'lucide-react';
 import { useAppLocale } from '@/components/app-shell';
 import { useToast } from '@/components/ui/toast-provider';
 import { getUIText } from '@/lib/localization/ui-texts';
+import { endOfRange, isoDate, PRESET_RANGE, startOfRange } from '@/lib/attendance-helpers';
 
 const PIE_COLORS = {
   on_time: '#10b981',
@@ -13,15 +14,7 @@ const PIE_COLORS = {
   anomaly: '#a78bfa',
 };
 
-function isoDate(value = new Date()) {
-  return new Date(value).toISOString().slice(0, 10);
-}
 
-function monthStart(value = new Date()) {
-  const date = new Date(value);
-  date.setDate(1);
-  return isoDate(date);
-}
 
 function parseJsonSafely(text) {
   if (!text) return null;
@@ -83,7 +76,7 @@ export default function ReportPage() {
   const localeContext = useAppLocale();
   const resolvedLocale = localeContext?.locale === 'id' ? 'id' : 'en';
   const [filters, setFilters] = useState({
-    from: monthStart(),
+    from: startOfRange('week'),
     to: isoDate(),
     group_id: '',
     employee_id: '',
@@ -93,6 +86,8 @@ export default function ReportPage() {
     series: { pie: [], bar: { categories: [], series: [] } },
     drilldown: { rows: [], limit: 0, page: 1, total: 0, totalPages: 0, truncated: false },
     metadata: { totalRecords: 0, drilldownTotal: 0 },
+    availableGroups: [],
+    availableEmployees: [],
   });
   const [loading, setLoading] = useState(false);
   const [apiError, setApiError] = useState(null);
@@ -111,27 +106,14 @@ export default function ReportPage() {
     [report]
   );
 
-  const groupOptions = useMemo(() => {
-    const map = new Map();
-    drillRows.forEach((row) => {
-      const key = row?.group_id == null ? '' : String(row.group_id);
-      const label = row?.group_name || 'Ungrouped';
-      if (!map.has(key)) map.set(key, label);
-    });
-    return [...map.entries()].map(([id, label]) => ({ id, label }));
-  }, [drillRows]);
+  const groupOptions = useMemo(
+    () => (Array.isArray(report?.availableGroups) ? report.availableGroups : []),
+    [report]
+  );
 
   const employeeOptions = useMemo(() => {
-    const map = new Map();
-    drillRows.forEach((row) => {
-      if (row?.employee_id == null) return;
-      const key = String(row.employee_id);
-      const pinLabel = row?.pin ? ` (${row.pin})` : '';
-      const label = `${row?.employee_name || 'Unknown'}${pinLabel}`;
-      if (!map.has(key)) map.set(key, label);
-    });
-    return [...map.entries()].map(([id, label]) => ({ id, label }));
-  }, [drillRows]);
+    return Array.isArray(report?.availableEmployees) ? report.availableEmployees : [];
+  }, [report]);
 
   const loadReport = useCallback(async () => {
     const localizedRequestFailed = getUIText('reportPage.errors.requestFailed', resolvedLocale);
@@ -178,6 +160,8 @@ export default function ReportPage() {
             series: { pie: [], bar: { categories: [], series: [] } },
             drilldown: { rows: [], limit: 0, total: 0, truncated: false },
             metadata: { totalRecords: 0 },
+            availableGroups: [],
+            availableEmployees: [],
           });
           return;
         }
@@ -203,6 +187,8 @@ export default function ReportPage() {
           truncated: Boolean(payload?.drilldown?.truncated),
         },
         metadata: payload?.metadata || { totalRecords: 0, drilldownTotal: 0 },
+        availableGroups: Array.isArray(payload?.availableGroups) ? payload.availableGroups : [],
+        availableEmployees: Array.isArray(payload?.availableEmployees) ? payload.availableEmployees : [],
       });
     } catch (error) {
       const message = error?.message || localizedFetchFailed;
@@ -317,6 +303,17 @@ export default function ReportPage() {
     window.location.href = `/api/report?${query.toString()}`;
   };
 
+  const exportExcel = () => {
+    const query = new URLSearchParams({
+      from: filters.from,
+      to: filters.to,
+      excel: '1',
+    });
+    if (filters.group_id) query.set('group_id', filters.group_id);
+    if (filters.employee_id) query.set('employee_id', filters.employee_id);
+    window.location.href = `/api/report?${query.toString()}`;
+  };
+
   const handlePieClick = useCallback((statusKey) => {
     setDrilldownState((prev) => {
       const newStatus = prev.status === statusKey ? null : statusKey;
@@ -337,6 +334,14 @@ export default function ReportPage() {
 
   const handlePageChange = useCallback((newPage) => {
     setDrilldownState((prev) => ({ ...prev, page: newPage }));
+  }, []);
+
+  const handleSetRange = useCallback((rangeKey) => {
+    setFilters((prev) => ({
+      ...prev,
+      from: startOfRange(rangeKey),
+      to: endOfRange(rangeKey),
+    }));
   }, []);
 
   const statusToneClass =
@@ -361,10 +366,16 @@ export default function ReportPage() {
           <h1 className="text-3xl font-bold text-foreground">{t('reportPage.header.title')}</h1>
           <p className="ui-readable-muted mt-1">{t('reportPage.header.description')}</p>
         </div>
-        <button type="button" onClick={exportReport} className="ui-btn-secondary">
-          <Download className="h-4 w-4" />
-          {t('reportPage.actions.exportCsv')}
-        </button>
+        <div className="flex gap-2">
+          <button type="button" onClick={exportReport} className="ui-btn-secondary">
+            <Download className="h-4 w-4" />
+            {t('reportPage.actions.exportCsv')}
+          </button>
+          <button type="button" onClick={exportExcel} className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-300 hover:bg-emerald-500/20 inline-flex items-center gap-2">
+            <FileSpreadsheet className="h-4 w-4" />
+            Export Excel
+          </button>
+        </div>
       </div>
 
       {apiError && (
@@ -442,6 +453,18 @@ export default function ReportPage() {
               </option>
             ))}
           </select>
+        </div>
+        <div className="col-span-full flex flex-wrap gap-2">
+          {PRESET_RANGE.map((range) => (
+            <button
+              key={range.key}
+              type="button"
+              onClick={() => handleSetRange(range.key)}
+              className="rounded-lg border border-slate-700 bg-slate-800 px-3 py-1.5 text-xs text-slate-300 transition-colors hover:border-slate-500 hover:text-white"
+            >
+              {range.label}
+            </button>
+          ))}
         </div>
         <div className="flex items-end">
           <button type="button" onClick={loadReport} className="ui-btn-primary w-full">
@@ -639,18 +662,21 @@ export default function ReportPage() {
                 <th className="ui-table-head-cell px-4 py-2">
                   {t('reportPage.table.columns.scans')}
                 </th>
+                <th className="ui-table-head-cell px-4 py-2">
+                  {t('reportPage.table.columns.workedHours')}
+                </th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={drillRows.some(r => r.flags !== undefined) ? 8 : 7} className="ui-table-cell-muted px-4 py-8 text-center text-xs">
+                  <td colSpan={drillRows.some(r => r.flags !== undefined) ? 9 : 8} className="ui-table-cell-muted px-4 py-8 text-center text-xs">
                     {t('reportPage.drilldown.loading')}
                   </td>
                 </tr>
               ) : drillRows.length === 0 ? (
                 <tr>
-                  <td colSpan={drillRows.some(r => r.flags !== undefined) ? 8 : 7} className="ui-table-cell-muted px-4 py-8 text-center text-xs">
+                  <td colSpan={drillRows.some(r => r.flags !== undefined) ? 9 : 8} className="ui-table-cell-muted px-4 py-8 text-center text-xs">
                     {t('reportPage.drilldown.emptyState')}
                   </td>
                 </tr>
@@ -664,7 +690,12 @@ export default function ReportPage() {
                       {row.scan_date || '-'}
                     </td>
                     <td className="ui-table-cell px-4 py-3">
-                      {row.employee_name || 'Unknown'}{' '}
+                      <span
+                        className="inline-block max-w-[200px] truncate align-bottom"
+                        title={row.employee_name || 'Unknown'}
+                      >
+                        {row.employee_name || 'Unknown'}
+                      </span>{' '}
                       <span className="ui-table-cell-muted font-mono text-xs">
                         ({row.pin || '-'})
                       </span>
@@ -686,6 +717,11 @@ export default function ReportPage() {
                     </td>
                     <td className="ui-table-cell px-4 py-3 font-mono text-xs text-cyan-300">
                       {toNumber(row.scan_count)}
+                    </td>
+                    <td className="ui-table-cell px-4 py-3 font-mono text-xs">
+                      {row.worked_minutes != null
+                        ? `${Math.floor(row.worked_minutes / 60)}h ${row.worked_minutes % 60}m`
+                        : '-'}
                     </td>
                   </tr>
                 ))

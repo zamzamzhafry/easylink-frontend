@@ -2,22 +2,20 @@
 
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Download, FileSpreadsheet, Printer, BarChart3 } from 'lucide-react';
+import { Download, FileSpreadsheet, Printer } from 'lucide-react';
 import { useAppLocale } from '@/components/app-shell';
 import AttendanceFilters from '@/components/attendance/attendance-filters';
 import AttendanceTable from '@/components/attendance/attendance-table';
 import NoteModal from '@/components/attendance/note-modal';
 import QuickSummariesTable from '@/components/schedule/quick-summaries-table';
-import InlineStatusPanel from '@/components/ui/inline-status-panel';
-import { TableEmptyRow, TableLoadingRow, TableShell } from '@/components/ui/table-shell';
+
 import { useToast } from '@/components/ui/toast-provider';
 import {
   attendanceCsv,
   countAnomalies,
   endOfRange,
   isoDate,
-  lateChartData,
-  rawScanlogCsv,
+
   startOfRange,
 } from '@/lib/attendance-helpers';
 import {
@@ -29,7 +27,7 @@ import {
 } from '@/lib/quick-summaries-export';
 import { requestJson } from '@/lib/request-json';
 import { getUIText } from '@/lib/localization/ui-texts';
-import { SvgPieChart, SvgBarChart } from '@/components/ui/charts';
+
 import { PAGE_SIZE_OPTIONS } from '@/lib/constants';
 import useAuthSession from '@/hooks/use-auth-session';
 import {
@@ -39,8 +37,7 @@ import {
   getAttendanceScope,
 } from '@/lib/authz/authorization-adapter';
 
-const ADMIN_TABS = ['dashboard', 'summary', 'quick_summaries', 'raw'];
-const MEMBER_TABS = ['summary', 'quick_summaries'];
+const ALL_TABS = ['summary', 'quick_summaries'];
 
 const toSafeNumber = (value) => {
   const parsed = Number(value);
@@ -186,7 +183,7 @@ export default function AttendancePage() {
   const resolvedLocale = locale === 'id' ? 'id' : 'en';
   const t = useCallback((path) => getUIText(path, resolvedLocale), [resolvedLocale]);
   const { user: currentUser } = useAuthSession();
-  const [activeTab, setActiveTab] = useState('dashboard');
+  const [activeTab, setActiveTab] = useState('summary');
   const [from, setFrom] = useState(startOfRange('week'));
   const [to, setTo] = useState(isoDate());
   const [groupId, setGroupId] = useState('');
@@ -198,10 +195,7 @@ export default function AttendancePage() {
     rows: [],
   });
   const [quickSummariesLoading, setQuickSummariesLoading] = useState(false);
-  const [reportData, setReportData] = useState(null);
-  const [reportLoading, setReportLoading] = useState(false);
-  const [reportError, setReportError] = useState('');
-  const [drilldownState, setDrilldownState] = useState({ type: null, filter: null });
+
   const [quickSummariesError, setQuickSummariesError] = useState('');
   const [holidayMap, setHolidayMap] = useState({});
   const [quickSummaryExportScope, setQuickSummaryExportScope] = useState('current');
@@ -209,20 +203,12 @@ export default function AttendancePage() {
     cumulative_summary: null,
     prediction_context: null,
   });
-  const [rawRows, setRawRows] = useState([]);
   const [groups, setGroups] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [rawLoading, setRawLoading] = useState(false);
-  const [rawError, setRawError] = useState('');
-  const [rawTotal, setRawTotal] = useState(0);
-  const [rawPages, setRawPages] = useState(1);
-  const [rawLimit, setRawLimit] = useState(50);
   const [editing, setEditing] = useState(null);
   const [employeeFilter, setEmployeeFilter] = useState('');
   const [incompleteOnly, setIncompleteOnly] = useState(false);
   const [summaryPage, setSummaryPage] = useState(1);
-  const [rawPage, setRawPage] = useState(1);
-  const [dashboardPage, setDashboardPage] = useState(1);
   const [rowsPerPage, setRowsPerPage] = useState(20);
   const displayLocale = resolvedLocale === 'id' ? 'id-ID' : 'en-US';
 
@@ -232,20 +218,10 @@ export default function AttendancePage() {
   const isEmployee = attendanceScope === 'employee';
   const canEditNotes = canManageAttendanceNotes(currentUser);
   const canAccessReviewQueue = canAccessAttendanceReviewQueue(currentUser);
-  const TABS = useMemo(() => {
-    const keys = isAdmin ? ADMIN_TABS : MEMBER_TABS;
-    return keys.map((key) => ({ key, label: t(`attendancePage.tabs.${key}`) }));
-  }, [isAdmin, t]);
-  const rawEmployeeQuery = useMemo(() => {
-    if (!employeeFilter) return { pin: '', employeeId: '' };
-    if (employeeFilter.startsWith('emp-')) {
-      return { pin: '', employeeId: employeeFilter.slice(4) };
-    }
-    if (employeeFilter.startsWith('pin-')) {
-      return { pin: employeeFilter.slice(4), employeeId: '' };
-    }
-    return { pin: '', employeeId: '' };
-  }, [employeeFilter]);
+  const TABS = useMemo(
+    () => ALL_TABS.map((key) => ({ key, label: t(`attendancePage.tabs.${key}`) })),
+    [t]
+  );
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -280,56 +256,6 @@ export default function AttendancePage() {
       setLoading(false);
     }
   }, [from, to, groupId, warning, t]);
-
-  const loadRaw = useCallback(async () => {
-    if (!isAdmin) {
-      setRawRows([]);
-      setRawTotal(0);
-      setRawPages(1);
-      setRawError('');
-      return;
-    }
-
-    setRawLoading(true);
-    setRawError('');
-
-    try {
-      const query = new URLSearchParams({
-        from,
-        to,
-        limit: String(rawLimit),
-        page: String(rawPage),
-      });
-
-      if (groupId) query.set('group_id', groupId);
-      if (rawEmployeeQuery.pin) query.set('pin', rawEmployeeQuery.pin);
-      if (rawEmployeeQuery.employeeId) query.set('employee_id', rawEmployeeQuery.employeeId);
-
-      const data = await requestJson(`/api/attendance/raw?${query.toString()}`);
-
-      const nextRows = Array.isArray(data?.rows) ? data.rows : [];
-      const nextTotal = Number(data?.total ?? nextRows.length);
-      const nextPages = Math.max(1, Number(data?.pages ?? 1));
-      const nextPage = Math.max(1, Number(data?.page ?? rawPage));
-
-      setRawRows(nextRows);
-      setRawTotal(nextTotal);
-      setRawPages(nextPages);
-
-      if (nextPage !== rawPage) {
-        setRawPage(nextPage);
-      }
-    } catch (error) {
-      const message = error.message || t('reportPage.errors.fetchFailed');
-      setRawRows([]);
-      setRawTotal(0);
-      setRawPages(1);
-      setRawError(message);
-      warning(message, t('reportPage.errors.requestFailed'));
-    } finally {
-      setRawLoading(false);
-    }
-  }, [from, to, groupId, warning, isAdmin, rawPage, rawLimit, rawEmployeeQuery, t]);
 
   const loadQuickSummaries = useCallback(async () => {
     setQuickSummariesLoading(true);
@@ -385,20 +311,7 @@ export default function AttendancePage() {
 
   useEffect(() => {
     load();
-    if (isAdmin) {
-      loadRaw();
-    } else {
-      setRawRows([]);
-    }
-  }, [load, loadRaw, isAdmin]);
-
-  useEffect(() => {
-    if (!isAdmin && activeTab === 'raw') setActiveTab('summary');
-  }, [isAdmin, activeTab]);
-
-  useEffect(() => {
-    if (!isAdmin && activeTab === 'dashboard') setActiveTab('summary');
-  }, [isAdmin, activeTab]);
+  }, [load]);
 
   useEffect(() => {
     if (activeTab !== 'quick_summaries') return;
@@ -485,9 +398,6 @@ export default function AttendancePage() {
     }
   };
 
-  const lateData = useMemo(() => lateChartData(rows).slice(0, 12), [rows]);
-  const maxLate = lateData.length ? Math.max(...lateData.map((item) => item.lateCount), 1) : 1;
-
   const employeeOptions = useMemo(() => {
     const map = new Map();
     rows.forEach((row) => {
@@ -520,16 +430,6 @@ export default function AttendancePage() {
       return status !== 'normal' && status !== 'reviewed';
     });
   }, [rows, employeeFilter, incompleteOnly]);
-
-  const filteredLateData = useMemo(() => {
-    if (!employeeFilter) return lateData;
-    if (employeeFilter.startsWith('emp-')) {
-      const target = employeeFilter.slice(4);
-      return lateData.filter((item) => String(item.karyawan_id || '') === target);
-    }
-    const pin = employeeFilter.slice(4);
-    return lateData.filter((item) => String(item.pin || '') === pin);
-  }, [lateData, employeeFilter]);
 
   const filteredQuickSummaryRows = useMemo(() => {
     return filterQuickSummaryRowsByEmployee(quickSummariesData?.rows, employeeFilter);
@@ -680,15 +580,10 @@ export default function AttendancePage() {
   };
 
   const summaryMeta = pageMeta(filteredSummaryRows.length);
-  const dashboardMeta = pageMeta(filteredLateData.length);
 
   const pagedSummaryRows = filteredSummaryRows.slice(
     (summaryPage - 1) * rowsPerPage,
     summaryPage * rowsPerPage
-  );
-  const pagedLateData = filteredLateData.slice(
-    (dashboardPage - 1) * rowsPerPage,
-    dashboardPage * rowsPerPage
   );
 
   const selectedGroupLabel = useMemo(() => {
@@ -766,15 +661,14 @@ export default function AttendancePage() {
   );
 
   const exportCsv = async () => {
-    const isRawTab = activeTab === 'raw';
     const isQuickTab = activeTab === 'quick_summaries';
 
     if (!isQuickTab) {
-      const csv = isRawTab ? rawScanlogCsv(rawRows) : attendanceCsv(filteredSummaryRows);
+      const csv = attendanceCsv(filteredSummaryRows);
       const blob = new Blob([csv], { type: 'text/csv' });
       const link = document.createElement('a');
       link.href = URL.createObjectURL(blob);
-      link.download = isRawTab ? `raw_scanlog_${from}_${to}.csv` : `absensi_${from}_${to}.csv`;
+      link.download = `absensi_${from}_${to}.csv`;
       link.click();
       URL.revokeObjectURL(link.href);
       return;
@@ -826,18 +720,13 @@ export default function AttendancePage() {
 
   const exportExcel = async () => {
     const XLSX = await import('xlsx');
-    const isRawTab = activeTab === 'raw';
     const isQuickTab = activeTab === 'quick_summaries';
 
     if (!isQuickTab) {
-      const records = isRawTab ? rawRows : filteredSummaryRows;
-      const worksheet = XLSX.utils.json_to_sheet(records);
+      const worksheet = XLSX.utils.json_to_sheet(filteredSummaryRows);
       const workbook = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(workbook, worksheet, isRawTab ? 'Raw Scanlog' : 'Attendance');
-      XLSX.writeFile(
-        workbook,
-        isRawTab ? `raw_scanlog_${from}_${to}.xlsx` : `absensi_${from}_${to}.xlsx`
-      );
+      XLSX.utils.book_append_sheet(workbook, worksheet, 'Attendance');
+      XLSX.writeFile(workbook, `absensi_${from}_${to}.xlsx`);
       return;
     }
 
@@ -892,7 +781,6 @@ export default function AttendancePage() {
         .replace(/"/g, '&quot;')
         .replace(/'/g, '&#39;');
 
-    const isRawTab = activeTab === 'raw';
     const isQuickTab = activeTab === 'quick_summaries';
 
     if (isQuickTab) {
@@ -985,7 +873,7 @@ export default function AttendancePage() {
       return;
     }
 
-    const records = isRawTab ? rawRows : filteredSummaryRows;
+    const records = filteredSummaryRows;
     const headers = records.length ? Object.keys(records[0]) : [];
     const rowsHtml = records
       .slice(0, 1000)
@@ -997,9 +885,7 @@ export default function AttendancePage() {
 
     const printTitle = t('attendancePage.print.title');
     const printRangeLabel = t('attendancePage.print.dateRangeLabel');
-    const printTabLabel = isRawTab
-      ? t('attendancePage.print.rawTitle')
-      : t('attendancePage.print.summaryTitle');
+    const printTabLabel = t('attendancePage.print.summaryTitle');
     const html = `<!doctype html><html><head><meta charset="utf-8"/><title>${printTitle}</title><style>
       body { font-family: Arial, sans-serif; padding: 16px; }
       table { border-collapse: collapse; width: 100%; font-size: 11px; }
@@ -1021,8 +907,6 @@ export default function AttendancePage() {
 
   const resetPages = () => {
     setSummaryPage(1);
-    setRawPage(1);
-    setDashboardPage(1);
   };
 
   const renderPager = (page, setPage, meta) => (
@@ -1067,56 +951,6 @@ export default function AttendancePage() {
           type="button"
           onClick={() => setPage((prev) => Math.min(meta.pages, prev + 1))}
           disabled={page >= meta.pages}
-          className="ui-btn-secondary min-h-0 px-2 py-1 text-xs disabled:cursor-not-allowed disabled:opacity-40"
-        >
-          {t('attendanceShared.next')}
-        </button>
-      </div>
-    </div>
-  );
-
-  const renderRawPager = () => (
-    <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border px-4 py-3 text-xs text-muted-foreground">
-      <div>
-        {getUIText('attendancePage.pager.showing', resolvedLocale)
-          .replace('{{from}}', String(rawRows.length === 0 ? 0 : (rawPage - 1) * rawLimit + 1))
-          .replace('{{to}}', String(Math.min((rawPage - 1) * rawLimit + rawRows.length, rawTotal)))
-          .replace('{{total}}', String(rawTotal))}
-      </div>
-      <div className="flex items-center gap-2">
-        <label htmlFor="attendance-raw-rows" className="ui-control-label">
-          {t('attendanceShared.rows')}
-        </label>
-        <select
-          id="attendance-raw-rows"
-          value={rawLimit}
-          onChange={(event) => {
-            setRawLimit(Number(event.target.value));
-            setRawPage(1);
-          }}
-          className="ui-control-select !w-auto min-h-0 py-1 pl-2 pr-8 text-xs"
-        >
-          {[20, 50, 100, 200, 500].map((size) => (
-            <option key={size} value={size}>
-              {size}
-            </option>
-          ))}
-        </select>
-        <button
-          type="button"
-          onClick={() => setRawPage((prev) => Math.max(1, prev - 1))}
-          disabled={rawPage <= 1}
-          className="ui-btn-secondary min-h-0 px-2 py-1 text-xs disabled:cursor-not-allowed disabled:opacity-40"
-        >
-          {t('attendanceShared.previous')}
-        </button>
-        <span className="font-mono text-foreground">
-          {rawPage}/{rawPages}
-        </span>
-        <button
-          type="button"
-          onClick={() => setRawPage((prev) => Math.min(rawPages, prev + 1))}
-          disabled={rawPage >= rawPages}
           className="ui-btn-secondary min-h-0 px-2 py-1 text-xs disabled:cursor-not-allowed disabled:opacity-40"
         >
           {t('attendanceShared.next')}
@@ -1199,11 +1033,9 @@ export default function AttendancePage() {
         from={from}
         to={to}
         count={
-          activeTab === 'raw'
-            ? rawTotal
-            : activeTab === 'quick_summaries'
-              ? quickSummaryEmployees.length
-              : filteredSummaryRows.length
+          activeTab === 'quick_summaries'
+            ? quickSummaryEmployees.length
+            : filteredSummaryRows.length
         }
         anomalyCount={countAnomalies(filteredSummaryRows)}
         groupId={groupId}
@@ -1447,202 +1279,6 @@ export default function AttendancePage() {
             holidayMap={holidayMap}
             onRetry={loadQuickSummaries}
           />
-        </div>
-      )}
-
-      {activeTab === 'raw' && (
-        <div className="ui-table-shell">
-          <InlineStatusPanel
-            message={rawError}
-            variant="error"
-            actionLabel={t('attendancePage.raw.retry')}
-            onAction={() => loadRaw()}
-            className="m-4"
-          />
-          <TableShell>
-            <table className="w-full text-sm">
-              <thead className="ui-table-head">
-                <tr className="text-left">
-                  <th className="ui-table-head-cell px-4 py-3">{t('attendancePage.raw.date')}</th>
-                  <th className="ui-table-head-cell px-4 py-3">{t('attendancePage.raw.time')}</th>
-                  <th className="ui-table-head-cell px-4 py-3">{t('attendancePage.raw.pin')}</th>
-                  <th className="ui-table-head-cell px-4 py-3">
-                    {t('attendancePage.raw.employee')}
-                  </th>
-                  <th className="ui-table-head-cell px-4 py-3">{t('attendancePage.raw.group')}</th>
-                  <th className="ui-table-head-cell px-4 py-3">{t('attendancePage.raw.review')}</th>
-                  <th className="ui-table-head-cell px-4 py-3">
-                    {t('attendancePage.raw.verifyIoWorkcode')}
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {rawLoading ? (
-                  <TableLoadingRow colSpan={7} />
-                ) : rawRows.length === 0 ? (
-                  <TableEmptyRow colSpan={7} label={t('attendancePage.raw.empty')} />
-                ) : (
-                  rawRows.map((row) => (
-                    <tr
-                      key={`${row.pin}-${row.scan_date}-${row.scan_time}-${row.verifymode}-${row.iomode}-${row.workcode}`}
-                      className="ui-table-row"
-                    >
-                      <td className="ui-table-cell-muted px-4 py-3 font-mono text-xs">
-                        {String(row.scan_date).slice(0, 10)}
-                      </td>
-                      <td className="ui-table-cell px-4 py-3 font-mono text-xs text-teal-300">
-                        {String(row.scan_time).slice(0, 8)}
-                      </td>
-                      <td className="ui-table-cell px-4 py-3 font-mono text-xs text-foreground">
-                        {row.pin}
-                      </td>
-                      <td className="ui-table-cell px-4 py-3 text-foreground">
-                        {row.karyawan_id ? (
-                          <Link
-                            href={`/employees/${row.karyawan_id}`}
-                            className="hover:text-teal-300"
-                          >
-                            {row.nama}
-                          </Link>
-                        ) : (
-                          row.nama
-                        )}
-                      </td>
-                      <td className="ui-table-cell-muted px-4 py-3 text-xs">
-                        {row.nama_group || '-'}
-                      </td>
-                      <td className="ui-table-cell px-4 py-3">
-                        {row.reviewed_status === 'reviewed' ? (
-                          <span className="inline-flex rounded border border-emerald-500/20 bg-emerald-500/10 px-2 py-0.5 text-xs text-emerald-300">
-                            {t('attendancePage.raw.reviewed')}
-                          </span>
-                        ) : (
-                          <span className="inline-flex rounded border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-xs text-amber-300">
-                            {t('attendancePage.raw.pending')}
-                          </span>
-                        )}
-                      </td>
-                      <td className="ui-table-cell-muted px-4 py-3 font-mono text-xs">
-                        {row.verifymode}/{row.iomode}/{row.workcode}
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </TableShell>
-          {renderRawPager()}
-        </div>
-      )}
-
-      {activeTab === 'dashboard' && (
-        <div className="space-y-4">
-          <div className="ui-card-shell p-4">
-            <h2 className="text-sm font-semibold text-foreground">
-              {t('attendancePage.dashboard.title')}
-            </h2>
-            <div className="mt-4 space-y-2">
-              {filteredLateData.length === 0 ? (
-                <p className="text-xs text-muted-foreground">
-                  {t('attendancePage.dashboard.empty')}
-                </p>
-              ) : (
-                pagedLateData.map((item) => (
-                  <div key={`${item.pin}-${item.nama}`} className="space-y-1">
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="text-foreground">
-                        {item.karyawan_id ? (
-                          <Link
-                            href={`/employees/${item.karyawan_id}`}
-                            className="hover:text-teal-300"
-                          >
-                            {item.nama}
-                          </Link>
-                        ) : (
-                          item.nama
-                        )}{' '}
-                        <span className="text-muted-foreground">(PIN {item.pin})</span>
-                      </span>
-                      <span className="font-mono text-amber-300">
-                        {item.lateCount} {t('attendancePage.dashboard.lateSuffix')}
-                      </span>
-                    </div>
-                    <div className="h-2 rounded bg-muted">
-                      <div
-                        className="h-2 rounded bg-amber-400"
-                        style={{
-                          width: `${Math.max((item.lateCount / maxLate) * 100, item.lateCount ? 8 : 0)}%`,
-                        }}
-                      />
-                    </div>
-                    <div className="text-[11px] text-muted-foreground">
-                      {t('attendancePage.dashboard.group')}: {item.group} |{' '}
-                      {t('attendancePage.dashboard.anomaly')}: {item.anomalyCount} |{' '}
-                      {t('attendancePage.dashboard.earlyLeave')}: {item.earlyCount} |{' '}
-                      {t('attendancePage.dashboard.records')}: {item.totalRows}
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-
-          <TableShell>
-            <table className="w-full text-sm">
-              <thead className="ui-table-head">
-                <tr className="text-left">
-                  <th className="ui-table-head-cell px-4 py-2">
-                    {t('attendancePage.dashboard.employee')}
-                  </th>
-                  <th className="ui-table-head-cell px-4 py-2">{t('attendancePage.raw.group')}</th>
-                  <th className="ui-table-head-cell px-4 py-2">
-                    {t('attendancePage.dashboard.late')}
-                  </th>
-                  <th className="ui-table-head-cell px-4 py-2">
-                    {t('attendancePage.dashboard.earlyLeave')}
-                  </th>
-                  <th className="ui-table-head-cell px-4 py-2">
-                    {t('attendancePage.dashboard.anomaly')}
-                  </th>
-                  <th className="ui-table-head-cell px-4 py-2">
-                    {t('attendancePage.dashboard.totalRows')}
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {pagedLateData.map((item) => (
-                  <tr key={`dashboard-${item.pin}-${item.nama}`} className="ui-table-row">
-                    <td className="ui-table-cell px-4 py-2 text-foreground">
-                      {item.karyawan_id ? (
-                        <Link
-                          href={`/employees/${item.karyawan_id}`}
-                          className="hover:text-teal-300"
-                        >
-                          {item.nama}
-                        </Link>
-                      ) : (
-                        item.nama
-                      )}
-                    </td>
-                    <td className="ui-table-cell-muted px-4 py-2 text-xs">{item.group}</td>
-                    <td className="ui-table-cell px-4 py-2 font-mono text-xs text-amber-300">
-                      {item.lateCount}
-                    </td>
-                    <td className="ui-table-cell px-4 py-2 font-mono text-xs text-rose-300">
-                      {item.earlyCount}
-                    </td>
-                    <td className="ui-table-cell px-4 py-2 font-mono text-xs text-foreground">
-                      {item.anomalyCount}
-                    </td>
-                    <td className="ui-table-cell-muted px-4 py-2 font-mono text-xs">
-                      {item.totalRows}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </TableShell>
-          {renderPager(dashboardPage, setDashboardPage, dashboardMeta)}
         </div>
       )}
 

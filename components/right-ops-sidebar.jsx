@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { Bell, ChevronLeft, ChevronRight, Clock3, RefreshCw, ShieldCheck } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Fragment } from 'react';
 import { useAppLocale } from '@/components/app-shell';
 import { getUIText } from '@/lib/localization/ui-texts';
 import { requestJson } from '@/lib/request-json';
@@ -195,14 +196,14 @@ export default function RightOpsSidebar({ currentUser, collapsed = false, onTogg
   }, []);
 
   useEffect(() => {
-    if (!isAdmin || collapsed) return;
+    if (!isAdmin) return;
 
     void refreshData();
     const timer = setInterval(() => {
       void refreshData();
     }, REFRESH_MS);
     return () => clearInterval(timer);
-  }, [collapsed, isAdmin, refreshData]);
+  }, [isAdmin, refreshData]);
 
   const debugPreview = useMemo(
     () => ({
@@ -215,95 +216,112 @@ export default function RightOpsSidebar({ currentUser, collapsed = false, onTogg
 
   if (!isAdmin) return null;
 
-  return (
-    <aside
-      className={cn(
-        'app-right-sidebar fixed inset-y-0 right-0 z-30 hidden flex-col border-l border-border bg-card/95 backdrop-blur transition-all duration-300 xl:flex',
-        collapsed ? 'w-16 p-2' : 'w-80 p-4'
-      )}
-      aria-label="Admin operations sidebar"
-    >
-      <div
-        className={cn(
-          'mb-4 flex items-center gap-2 border-b border-border pb-3',
-          collapsed ? 'justify-center' : 'justify-between'
-        )}
-      >
-        <div className={cn('min-w-0', collapsed && 'sr-only')}>
-          <p className="flex items-center gap-2 text-sm font-semibold text-card-foreground">
-            <ShieldCheck className="h-4 w-4 text-teal-400" /> {t('rightOpsSidebar.title')}
-          </p>
-          <p className="text-[11px] text-muted-foreground">{t('rightOpsSidebar.subtitle')}</p>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => void refreshData()}
-            className="ui-btn-secondary min-h-0 p-2"
-            aria-label="Refresh right sidebar"
-          >
-            <RefreshCw className={cn('h-4 w-4', loading && 'animate-spin')} />
-          </button>
-          <button
-            type="button"
-            onClick={() => onToggle?.()}
-            className="ui-btn-secondary min-h-0 p-2"
-            aria-label={collapsed ? 'Expand right sidebar' : 'Collapse right sidebar'}
-            aria-expanded={!collapsed}
-          >
-            {collapsed ? <ChevronLeft className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-          </button>
-        </div>
+  if (collapsed) {
+    return (
+      <div className="pointer-events-none fixed bottom-6 right-6 z-40 hidden xl:block">
+        <button
+          type="button"
+          onClick={() => onToggle?.()}
+          className="pointer-events-auto relative inline-flex h-12 w-12 items-center justify-center rounded-full border border-amber-500/40 bg-slate-950/90 text-amber-200 shadow-lg shadow-slate-950/50 transition-colors hover:bg-slate-900"
+          aria-label={getUIText('rightOpsSidebar.reviewAria', resolvedLocale)
+            .replace('{{pending}}', String(pendingReviewCount))
+            .concat('. Expand right sidebar')}
+          aria-expanded={false}
+        >
+          <Bell className={cn('h-5 w-5', pendingReviewCount > 0 && 'bell-ring-subtle')} />
+          <span className="absolute -right-1 -top-1 min-w-[1.25rem] rounded-full border border-amber-300/40 bg-amber-500 px-1 py-0.5 text-center text-[10px] font-semibold leading-none text-slate-950">
+            {pendingReviewCount > 99 ? '99+' : pendingReviewCount}
+          </span>
+        </button>
       </div>
+    );
+  }
 
-      <Link
-        href="/attendance/review"
+  return (
+    <Fragment>
+      <button
+        type="button"
+        onClick={() => onToggle?.()}
+        className="fixed inset-0 z-30 hidden bg-black/35 backdrop-blur-[1px] xl:block"
+        aria-label="Close right sidebar overlay"
+      />
+      <aside
         className={cn(
-          'mb-4 rounded-xl border border-amber-500/30 bg-amber-500/10 text-amber-100 transition-colors hover:bg-amber-500/15',
-          collapsed ? 'p-2' : 'p-3'
+          'app-right-sidebar fixed inset-y-0 right-0 z-40 hidden flex-col border-l border-border bg-card/95 backdrop-blur transition-all duration-300 xl:flex',
+          'w-80 p-4 shadow-2xl shadow-black/45'
         )}
-        aria-label={getUIText('rightOpsSidebar.reviewAria', resolvedLocale).replace(
-          '{{pending}}',
-          String(pendingReviewCount)
-        )}
+        aria-label="Admin operations sidebar"
       >
         <div
           className={cn(
-            'flex items-center gap-2',
-            collapsed ? 'justify-center' : 'justify-between'
+            'mb-4 flex items-center gap-2 border-b border-border pb-3',
+            'justify-between'
           )}
         >
+          <div className="min-w-0">
+            <p className="flex items-center gap-2 text-sm font-semibold text-card-foreground">
+              <ShieldCheck className="h-4 w-4 text-teal-400" /> {t('rightOpsSidebar.title')}
+            </p>
+            <p className="text-[11px] text-muted-foreground">{t('rightOpsSidebar.subtitle')}</p>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => void refreshData()}
+              className="ui-btn-secondary min-h-0 p-2"
+              aria-label="Refresh right sidebar"
+            >
+              <RefreshCw className={cn('h-4 w-4', loading && 'animate-spin')} />
+            </button>
+            <button
+              type="button"
+              onClick={() => onToggle?.()}
+              className="ui-btn-secondary min-h-0 p-2"
+              aria-label={collapsed ? 'Expand right sidebar' : 'Collapse right sidebar'}
+              aria-expanded={!collapsed}
+            >
+              {collapsed ? (
+                <ChevronLeft className="h-4 w-4" />
+              ) : (
+                <ChevronRight className="h-4 w-4" />
+              )}
+            </button>
+          </div>
+        </div>
+
+        <Link
+          href="/attendance/review"
+          className={cn(
+            'mb-4 rounded-xl border border-amber-500/30 bg-amber-500/10 text-amber-100 transition-colors hover:bg-amber-500/15',
+            'p-3'
+          )}
+          aria-label={getUIText('rightOpsSidebar.reviewAria', resolvedLocale).replace(
+            '{{pending}}',
+            String(pendingReviewCount)
+          )}
+        >
+        <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2">
             <Bell className={cn('h-4 w-4', pendingReviewCount > 0 && 'bell-ring-subtle')} />
-            {!collapsed ? (
-              <p className="text-xs font-semibold">{t('rightOpsSidebar.reviewTitle')}</p>
-            ) : null}
+            <p className="text-xs font-semibold">{t('rightOpsSidebar.reviewTitle')}</p>
           </div>
           <span className="rounded-full border border-amber-300/40 px-2 py-0.5 text-[10px] font-semibold">
             {pendingReviewCount}
           </span>
         </div>
-        {!collapsed ? (
-          <p className="mt-1 flex items-center gap-1 text-[11px] text-amber-200/90">
-            <Clock3 className="h-3 w-3" />
-            {t('rightOpsSidebar.reviewHint')}
-          </p>
-        ) : null}
-      </Link>
+        <p className="mt-1 flex items-center gap-1 text-[11px] text-amber-200/90">
+          <Clock3 className="h-3 w-3" />
+          {t('rightOpsSidebar.reviewHint')}
+        </p>
+        </Link>
 
-      {error && (
-        <div
-          className={cn(
-            'mb-3 rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-200',
-            collapsed && 'px-2 py-1 text-[10px]'
-          )}
-        >
-          {collapsed ? '!' : error}
-        </div>
-      )}
+        {error && (
+          <div className="mb-3 rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-200">
+            {error}
+          </div>
+        )}
 
-      {!collapsed ? (
         <div className="space-y-4 overflow-y-auto pb-4">
           <LazyAccordionSection
             id="scanlog-queue-panel"
@@ -335,8 +353,7 @@ export default function RightOpsSidebar({ currentUser, collapsed = false, onTogg
           >
             <div className="grid grid-cols-1 gap-2 text-[11px] text-muted-foreground">
               <div className="rounded-lg border border-border bg-background/60 px-2 py-1">
-                {t('rightOpsSidebar.migration.policy')}:{' '}
-                {migrationFlags?.flags?.policySource?.mode || 'legacy'}
+                {t('rightOpsSidebar.migration.policy')}: {migrationFlags?.flags?.policySource?.mode || 'legacy'}
               </div>
               <div className="rounded-lg border border-border bg-background/60 px-2 py-1">
                 {t('rightOpsSidebar.migration.dataSource')}:{' '}
@@ -381,7 +398,7 @@ export default function RightOpsSidebar({ currentUser, collapsed = false, onTogg
             </pre>
           </LazyAccordionSection>
         </div>
-      ) : null}
-    </aside>
+      </aside>
+    </Fragment>
   );
 }

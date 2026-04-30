@@ -29,6 +29,7 @@ function privilegeToCanonicalRole(privilege) {
 
 async function upsertIdentificationMethod(connection, { employeeId, methodType, methodValue }) {
   if (!methodValue) return;
+  if (!(await tableExists('cs_employee_identification_methods'))) return;
 
   await connection.query(
     `UPDATE cs_employee_identification_methods
@@ -55,6 +56,8 @@ async function upsertIdentificationMethod(connection, { employeeId, methodType, 
 }
 
 async function resolveCanonicalIdentityByPin(connection, pin) {
+  if (!(await tableExists('cs_employee_auth_identity'))) return null;
+
   const [rows] = await connection.query(
     `SELECT
        ai.employee_id,
@@ -101,6 +104,8 @@ async function ensureEmployeeByPin(connection, { pin, nama }) {
 }
 
 async function syncCanonicalGlobalRole(connection, { employeeId, privilege }) {
+  if (!(await tableExists('cs_employee_role_bindings'))) return;
+
   const roleKey = privilegeToCanonicalRole(privilege);
 
   await connection.query(
@@ -149,7 +154,23 @@ async function syncCanonicalGlobalRole(connection, { employeeId, privilege }) {
 }
 
 // ─────────────────────────────────────────────
-// GET /api/users  — canonical employee-auth identities + compatibility metadata
+// Helpers — detect canonical vs legacy schema at runtime
+// ─────────────────────────────────────────────
+const _tableExistsCache = new Map();
+async function tableExists(tableName) {
+  if (_tableExistsCache.has(tableName)) return _tableExistsCache.get(tableName);
+  const [rows] = await pool.query(
+    `SELECT 1 AS found FROM information_schema.TABLES
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? LIMIT 1`,
+    [tableName]
+  );
+  const exists = Array.isArray(rows) && rows.length > 0;
+  _tableExistsCache.set(tableName, exists);
+  return exists;
+}
+
+// ─────────────────────────────────────────────
+// GET /api/users  — canonical or legacy user list with scanlog + group access
 // ─────────────────────────────────────────────
 export async function GET(request) {
   const auth = await getAuthContextFromCookies();
@@ -163,75 +184,99 @@ export async function GET(request) {
     maxLimit: 100,
   });
 
+  const useCanonical = await tableExists('cs_employee_auth_identity');
+
   const whereClauses = [];
   const params = [];
 
   if (search) {
-    whereClauses.push(
-      '(base.pin LIKE ? OR base.nama LIKE ? OR base.rfid LIKE ? OR base.login_nip LIKE ?)'
-    );
-    params.push(`%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`);
+    if (useCanonical) {
+      whereClauses.push(
+        '(base.pin LIKE ? OR base.nama LIKE ? OR base.rfid LIKE ? OR base.login_nip LIKE ?)'
+      );
+      params.push(`%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`);
+    } else {
+      whereClauses.push('(u.pin LIKE ? OR u.nama LIKE ?)');
+      params.push(`%${search}%`, `%${search}%`);
+    }
   }
 
   const whereSQL = whereClauses.length ? `WHERE ${whereClauses.join(' AND ')}` : '';
-  const canonicalBaseSQL = `
-    FROM (
-      SELECT
-        ai.employee_id AS karyawan_id,
-        COALESCE(pin_method.method_value, k.pin, ai.login_nip) AS pin,
-        COALESCE(k.nama, u.nama, ai.login_nip) AS nama,
-        COALESCE(rfid_method.method_value, u.rfid) AS rfid,
-        ai.login_nip,
-        CASE WHEN admin_role.employee_id IS NULL THEN 0 ELSE 14 END AS privilege
-      FROM cs_employee_auth_identity ai
-      JOIN tb_karyawan k ON k.id = ai.employee_id
-      LEFT JOIN (
-        SELECT employee_id, MAX(method_value) AS method_value
-        FROM cs_employee_identification_methods
-        WHERE method_type = 'pin' AND valid_to IS NULL
-        GROUP BY employee_id
-      ) pin_method ON pin_method.employee_id = ai.employee_id
-      LEFT JOIN (
-        SELECT employee_id, MAX(method_value) AS method_value
-        FROM cs_employee_identification_methods
-        WHERE method_type = 'rfid' AND valid_to IS NULL
-        GROUP BY employee_id
-      ) rfid_method ON rfid_method.employee_id = ai.employee_id
-      LEFT JOIN tb_user u ON u.pin = COALESCE(pin_method.method_value, k.pin)
-      LEFT JOIN (
-        SELECT DISTINCT employee_id
-        FROM cs_employee_role_bindings
-        WHERE role_key = 'admin'
-          AND is_active = 1
-          AND (ends_at IS NULL OR ends_at >= NOW())
-      ) admin_role ON admin_role.employee_id = ai.employee_id
-    ) base
-  `;
 
   try {
-    const [countRows] = await pool.query(
-      `SELECT COUNT(*) AS total
-       ${canonicalBaseSQL}
-       ${whereSQL}`,
-      params
-    );
+    let rows;
+    let total;
+    let meta;
 
-    const total = Number(countRows?.[0]?.total ?? 0);
-    const meta = computePaginationMeta({ total, pageInput, limit });
+    if (useCanonical) {
+      // ── Canonical path (cs_* tables exist) ──
+      const canonicalBaseSQL = `
+        FROM (
+          SELECT
+            ai.employee_id AS karyawan_id,
+            COALESCE(pin_method.method_value, k.pin, ai.login_nip) AS pin,
+            COALESCE(k.nama, u.nama, ai.login_nip) AS nama,
+            COALESCE(rfid_method.method_value, u.rfid) AS rfid,
+            ai.login_nip,
+            CASE WHEN admin_role.employee_id IS NULL THEN 0 ELSE 14 END AS privilege
+          FROM cs_employee_auth_identity ai
+          JOIN tb_karyawan k ON k.id = ai.employee_id
+          LEFT JOIN (
+            SELECT employee_id, MAX(method_value) AS method_value
+            FROM cs_employee_identification_methods
+            WHERE method_type = 'pin' AND valid_to IS NULL
+            GROUP BY employee_id
+          ) pin_method ON pin_method.employee_id = ai.employee_id
+          LEFT JOIN (
+            SELECT employee_id, MAX(method_value) AS method_value
+            FROM cs_employee_identification_methods
+            WHERE method_type = 'rfid' AND valid_to IS NULL
+            GROUP BY employee_id
+          ) rfid_method ON rfid_method.employee_id = ai.employee_id
+          LEFT JOIN tb_user u ON u.pin = COALESCE(pin_method.method_value, k.pin)
+          LEFT JOIN (
+            SELECT DISTINCT employee_id
+            FROM cs_employee_role_bindings
+            WHERE role_key = 'admin'
+              AND is_active = 1
+              AND (ends_at IS NULL OR ends_at >= NOW())
+          ) admin_role ON admin_role.employee_id = ai.employee_id
+        ) base
+      `;
 
-    const [rows] = await pool.query(
-      `SELECT
-         base.pin,
-         base.nama,
-         base.rfid,
-         base.privilege,
-         base.karyawan_id
-       ${canonicalBaseSQL}
-       ${whereSQL}
-       ORDER BY base.nama, base.pin
-       LIMIT ? OFFSET ?`,
-      [...params, meta.limit, meta.offset]
-    );
+      const [countRows] = await pool.query(
+        `SELECT COUNT(*) AS total ${canonicalBaseSQL} ${whereSQL}`,
+        params
+      );
+      total = Number(countRows?.[0]?.total ?? 0);
+      meta = computePaginationMeta({ total, pageInput, limit });
+
+      [rows] = await pool.query(
+        `SELECT base.pin, base.nama, base.rfid, base.privilege, base.karyawan_id
+         ${canonicalBaseSQL} ${whereSQL}
+         ORDER BY base.nama, base.pin
+         LIMIT ? OFFSET ?`,
+        [...params, meta.limit, meta.offset]
+      );
+    } else {
+      // ── Legacy path (tb_user only) ──
+      const [countRows] = await pool.query(
+        `SELECT COUNT(*) AS total FROM tb_user u ${whereSQL}`,
+        params
+      );
+      total = Number(countRows?.[0]?.total ?? 0);
+      meta = computePaginationMeta({ total, pageInput, limit });
+
+      [rows] = await pool.query(
+        `SELECT u.pin, u.nama, u.rfid, u.privilege, k.id AS karyawan_id
+         FROM tb_user u
+         LEFT JOIN tb_karyawan k ON k.pin = u.pin
+         ${whereSQL}
+         ORDER BY u.nama, u.pin
+         LIMIT ? OFFSET ?`,
+        [...params, meta.limit, meta.offset]
+      );
+    }
 
     const pins = rows.map((row) => String(row.pin)).filter(Boolean);
 
@@ -373,20 +418,33 @@ export async function POST(request) {
       return NextResponse.json({ ok: false, error: `PIN ${pin} already exists` }, { status: 409 });
     }
 
+    if (!existingCanonical) {
+      const [legacyCheck] = await connection.query(
+        'SELECT pin FROM tb_user WHERE pin = ? LIMIT 1',
+        [pin]
+      );
+      if (Array.isArray(legacyCheck) && legacyCheck.length > 0) {
+        await connection.rollback();
+        return NextResponse.json({ ok: false, error: `PIN ${pin} already exists` }, { status: 409 });
+      }
+    }
+
     const employeeId = await ensureEmployeeByPin(connection, { pin, nama });
 
-    await connection.query(
-      `INSERT INTO cs_employee_auth_identity
-        (employee_id, login_nip, password_hash, identity_status, password_updated_at)
-       VALUES (?, ?, ?, 'active', NOW())
-       ON DUPLICATE KEY UPDATE
-        login_nip = VALUES(login_nip),
-        password_hash = VALUES(password_hash),
-        identity_status = 'active',
-        password_updated_at = NOW(),
-        updated_at = CURRENT_TIMESTAMP`,
-      [employeeId, nip, pwd]
-    );
+    if (await tableExists('cs_employee_auth_identity')) {
+      await connection.query(
+        `INSERT INTO cs_employee_auth_identity
+          (employee_id, login_nip, password_hash, identity_status, password_updated_at)
+         VALUES (?, ?, ?, 'active', NOW())
+         ON DUPLICATE KEY UPDATE
+          login_nip = VALUES(login_nip),
+          password_hash = VALUES(password_hash),
+          identity_status = 'active',
+          password_updated_at = NOW(),
+          updated_at = CURRENT_TIMESTAMP`,
+        [employeeId, nip, pwd]
+      );
+    }
 
     await upsertIdentificationMethod(connection, {
       employeeId,
@@ -507,7 +565,7 @@ export async function PUT(request) {
         ]);
       }
 
-      if (body.pwd !== undefined) {
+      if (body.pwd !== undefined && (await tableExists('cs_employee_auth_identity'))) {
         await connection.query(
           `UPDATE cs_employee_auth_identity
            SET password_hash = ?,
@@ -524,10 +582,12 @@ export async function PUT(request) {
           await connection.rollback();
           return NextResponse.json({ ok: false, error: 'NIP cannot be empty' }, { status: 400 });
         }
-        await connection.query(
-          'UPDATE cs_employee_auth_identity SET login_nip = ?, updated_at = CURRENT_TIMESTAMP WHERE employee_id = ?',
-          [nextNip, employeeId]
-        );
+        if (await tableExists('cs_employee_auth_identity')) {
+          await connection.query(
+            'UPDATE cs_employee_auth_identity SET login_nip = ?, updated_at = CURRENT_TIMESTAMP WHERE employee_id = ?',
+            [nextNip, employeeId]
+          );
+        }
         await connection.query('UPDATE tb_karyawan SET nip = ? WHERE id = ?', [
           nextNip,
           employeeId,
@@ -546,7 +606,7 @@ export async function PUT(request) {
             methodType: 'rfid',
             methodValue: nextRfid,
           });
-        } else {
+        } else if (await tableExists('cs_employee_identification_methods')) {
           await connection.query(
             `UPDATE cs_employee_identification_methods
              SET is_primary = 0,
@@ -681,7 +741,7 @@ export async function DELETE(request) {
       return NextResponse.json({ ok: false, error: 'User not found' }, { status: 404 });
     }
 
-    if (canonicalIdentity) {
+    if (canonicalIdentity && (await tableExists('cs_employee_auth_identity'))) {
       await connection.query(
         `UPDATE cs_employee_auth_identity
          SET identity_status = 'disabled',

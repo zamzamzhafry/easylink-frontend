@@ -126,12 +126,15 @@ export default function AttendanceTable({
                     {row.karyawan_id ? (
                       <Link
                         href={`/employees/${row.karyawan_id}`}
-                        className="text-foreground transition-colors hover:text-primary"
+                        className="block max-w-[200px] truncate text-foreground transition-colors hover:text-primary"
+                        title={row.nama}
                       >
                         {row.nama}
                       </Link>
                     ) : (
-                      <span className="text-foreground">{row.nama}</span>
+                      <span className="block max-w-[200px] truncate text-foreground" title={row.nama}>
+                        {row.nama}
+                      </span>
                     )}
                   </td>
                   <td className="table-cell-muted px-4 py-3 text-xs">{row.nama_group || '-'}</td>

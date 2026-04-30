@@ -1,6 +1,7 @@
 export const dynamic = 'force-dynamic';
 
 import { NextResponse } from 'next/server';
+import * as XLSX from 'xlsx';
 import pool from '@/lib/db';
 import { hasKaryawanColumn } from '@/lib/karyawan-schema';
 import {
@@ -136,6 +137,21 @@ function buildSeries(rows) {
 
 function formatDrilldownRow(row, isAdmin) {
   const groupId = row.group_id == null ? null : Number(row.group_id);
+  const scheduledIn = toMinutes(row.jam_masuk);
+  const scheduledOut = toMinutes(row.jam_keluar);
+  const actualIn = toMinutes(row.masuk);
+  const actualOut = toMinutes(row.keluar);
+  
+  let workedMinutes = null;
+  if (actualIn !== null && actualOut !== null) {
+    const isNextDay = Number(row.next_day ?? 0) === 1;
+    if (isNextDay) {
+      workedMinutes = (1440 - actualIn) + actualOut;
+    } else {
+      workedMinutes = actualOut - actualIn;
+    }
+  }
+  
   const drilldownRow = {
     employee_id: row.karyawan_id == null ? null : Number(row.karyawan_id),
     employee_name: row.nama,
@@ -147,6 +163,7 @@ function formatDrilldownRow(row, isAdmin) {
     scheduled_out: row.jam_keluar || null,
     actual_in: row.masuk || null,
     actual_out: row.keluar || null,
+    worked_minutes: workedMinutes,
     scan_date: row.scan_date,
     status: row.status,
     flags: Array.isArray(row.flags) ? row.flags : [],
@@ -227,6 +244,7 @@ export async function GET(req) {
   const groupParam = searchParams.get('group_id');
   const employeeParam = searchParams.get('employee_id');
   const wantsDownload = searchParams.get('download') === '1';
+  const wantsExcel = searchParams.get('excel') === '1';
   const page = Math.max(1, Number.parseInt(searchParams.get('page') || '1', 10));
   const limit = Math.min(1000, Math.max(1, Number.parseInt(searchParams.get('limit') || String(DRILLDOWN_LIMIT), 10)));
   const drilldownStatus = searchParams.get('drilldown_status') || null;
@@ -345,6 +363,75 @@ export async function GET(req) {
     });
   }
 
+  if (wantsExcel) {
+    const workbook = XLSX.utils.book_new();
+    
+    const dataHeaders = [
+      'Date',
+      'Employee',
+      'PIN',
+      'Group',
+      'Status',
+      ...(auth.is_admin ? ['Flags'] : []),
+      'Shift',
+      'Scheduled In',
+      'Scheduled Out',
+      'Actual In',
+      'Actual Out',
+      'Worked Hours',
+      'Scans',
+    ];
+    
+    const dataRows = sortedRows.map(row => {
+      const workedMinutes = row.worked_minutes != null ? row.worked_minutes : null;
+      const workedHours = workedMinutes != null 
+        ? `${Math.floor(workedMinutes / 60)}h ${workedMinutes % 60}m`
+        : '-';
+      
+      return [
+        row.scan_date,
+        row.nama,
+        row.pin,
+        row.nama_group || 'Ungrouped',
+        row.status,
+        ...(auth.is_admin ? [Array.isArray(row.flags) ? row.flags.join(';') : ''] : []),
+        row.nama_shift || '',
+        row.jam_masuk || '',
+        row.jam_keluar || '',
+        row.masuk || '',
+        row.keluar || '',
+        workedHours,
+        row.scan_count ?? 0,
+      ];
+    });
+    
+    const dataSheet = XLSX.utils.aoa_to_sheet([dataHeaders, ...dataRows]);
+    XLSX.utils.book_append_sheet(workbook, dataSheet, 'Attendance Data');
+    
+    const series = buildSeries(sortedRows);
+    const pieHeaders = ['Status', 'Count'];
+    const pieRows = series.pie.map(item => [item.name, item.value]);
+    const pieSheet = XLSX.utils.aoa_to_sheet([pieHeaders, ...pieRows]);
+    XLSX.utils.book_append_sheet(workbook, pieSheet, 'Status Summary');
+    
+    const barHeaders = ['Group', ...series.bar.series.map(s => s.name)];
+    const barRows = series.bar.categories.map((category, idx) => [
+      category,
+      ...series.bar.series.map(s => s.data[idx])
+    ]);
+    const barSheet = XLSX.utils.aoa_to_sheet([barHeaders, ...barRows]);
+    XLSX.utils.book_append_sheet(workbook, barSheet, 'Group Summary');
+    
+    const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+    
+    return new NextResponse(buffer, {
+      headers: {
+        'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'Content-Disposition': `attachment; filename="report_${from}_${to}.xlsx"`,
+      },
+    });
+  }
+
   const series = buildSeries(sortedRows);
   
   let filteredForDrilldown = sortedRows;
@@ -358,7 +445,66 @@ export async function GET(req) {
       });
   }
 
+  filteredForDrilldown.sort((a, b) => {
+    const dateComp = String(b.scan_date ?? '').localeCompare(String(a.scan_date ?? ''));
+    if (dateComp !== 0) return dateComp;
+    const groupComp = String(a.nama_group ?? '').localeCompare(String(b.nama_group ?? ''));
+    if (groupComp !== 0) return groupComp;
+    return String(a.nama ?? '').localeCompare(String(b.nama ?? ''));
+  });
+
   const drilldown = buildDrilldownPayload(filteredForDrilldown, auth.is_admin, page, limit);
+
+  // Fetch all available groups for filter dropdown
+  let groupsQuery = `
+    SELECT g.id, g.nama_group
+    FROM tb_group g
+    WHERE 1 = 1
+  `;
+  const groupsParams = [];
+  if (!auth.is_admin && Array.isArray(allowedGroupIds) && allowedGroupIds.length > 0) {
+    groupsQuery += ` AND g.id IN (${allowedGroupIds.map(() => '?').join(',')})`;
+    groupsParams.push(...allowedGroupIds);
+  }
+  groupsQuery += ' ORDER BY g.nama_group ASC';
+  const [groupsRows] = await pool.query(groupsQuery, groupsParams);
+  const availableGroups = groupsRows.map(g => ({ id: Number(g.id), label: g.nama_group }));
+
+  // Fetch all available employees for filter dropdown
+  let employeesQuery = `
+    SELECT DISTINCT k.id, k.nama, k.pin
+    FROM tb_karyawan k
+    WHERE 1 = 1 ${canFilterDeleted ? 'AND k.isDeleted = 0' : ''}
+  `;
+  const employeesParams = [];
+
+  if (groupFilter !== null) {
+    employeesQuery += `
+      AND EXISTS (
+        SELECT 1 FROM tb_employee_group eg
+        WHERE eg.karyawan_id = k.id
+        AND eg.group_id = ?
+      )
+    `;
+    employeesParams.push(groupFilter);
+  }
+
+  if (!auth.is_admin && Array.isArray(allowedGroupIds) && allowedGroupIds.length > 0) {
+    employeesQuery += `
+      AND EXISTS (
+        SELECT 1 FROM tb_employee_group eg
+        WHERE eg.karyawan_id = k.id
+        AND eg.group_id IN (${allowedGroupIds.map(() => '?').join(',')})
+      )
+    `;
+    employeesParams.push(...allowedGroupIds);
+  }
+  employeesQuery += ' ORDER BY k.nama ASC';
+  const [employeesRows] = await pool.query(employeesQuery, employeesParams);
+  const availableEmployees = employeesRows.map(e => ({
+    id: Number(e.id),
+    label: `${e.nama}${e.pin ? ` (${e.pin})` : ''}`
+  }));
 
   return NextResponse.json({
     ok: true,
@@ -370,5 +516,7 @@ export async function GET(req) {
       drilldownLimit: limit,
       drilldownTotal: drilldown.total
     },
+    availableGroups,
+    availableEmployees,
   });
 }

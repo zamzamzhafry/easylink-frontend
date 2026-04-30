@@ -467,7 +467,11 @@ export default function PerformancePage() {
                 pagedSummary.map((item) => (
                   <tr key={item.key}>
                     <td className="px-4 py-3 text-white">
-                      <Link href={`/employees/${item.employee_id}`} className="hover:text-teal-300">
+                      <Link
+                        href={`/employees/${item.employee_id}`}
+                        className="block max-w-[200px] truncate hover:text-teal-300"
+                        title={item.nama}
+                      >
                         {item.nama}
                       </Link>{' '}
                       <span className="font-mono text-xs text-slate-500">({item.pin})</span>

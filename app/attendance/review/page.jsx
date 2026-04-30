@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, EyeOff, Filter, ShieldCheck, UserRoundSearch } from 'lucide-react';
 import { useRouter } from 'next/navigation';
+import { useAppLocale } from '@/components/app-shell';
 import {
   TableEmptyRow,
   TableHeadRow,
@@ -11,7 +12,8 @@ import {
   TableShell,
 } from '@/components/ui/table-shell';
 import { useToast } from '@/components/ui/toast-provider';
-import { isoDate, startOfRange } from '@/lib/attendance-helpers';
+import { endOfRange, isoDate, startOfRange } from '@/lib/attendance-helpers';
+import { getUIText } from '@/lib/localization/ui-texts';
 import { requestJson } from '@/lib/request-json';
 import useAuthSession from '@/hooks/use-auth-session';
 
@@ -49,6 +51,25 @@ const TAXONOMY_OPTIONS = [
   { value: 'invalid', label: 'invalid' },
 ];
 const DEFAULT_MUTATION = { status: 'acceptable', reason: '', note: '' };
+const QUICK_PRESET = [
+  { key: 'today', labelPath: 'attendanceReviewPage.filters.quickPreset.today' },
+  { key: 'week', labelPath: 'attendanceReviewPage.filters.quickPreset.thisWeek' },
+  { key: 'month', labelPath: 'attendanceReviewPage.filters.quickPreset.thisMonth' },
+  { key: 'last_month', labelPath: 'attendanceReviewPage.filters.quickPreset.lastMonth' },
+];
+const ANOMALY_FILTER_DEFAULT = {
+  late: true,
+  earlyLeave: true,
+  absent: true,
+  anomaly: true,
+};
+
+function resolvePresetRange(rangeKey) {
+  return {
+    from: startOfRange(rangeKey),
+    to: endOfRange(rangeKey),
+  };
+}
 
 function capabilityEnabled(value) {
   return value === true || value === 1 || value === '1' || value === 'true';
@@ -77,6 +98,9 @@ function statusLabel(value) {
 export default function AttendanceReviewPage() {
   const { warning, success } = useToast();
   const router = useRouter();
+  const { locale } = useAppLocale();
+  const resolvedLocale = locale === 'id' ? 'id' : 'en';
+  const T = useCallback((path) => getUIText(path, resolvedLocale), [resolvedLocale]);
   const { user: currentUser, loading: authLoading } = useAuthSession();
   const [groups, setGroups] = useState([]);
   const [rows, setRows] = useState([]);
@@ -87,6 +111,7 @@ export default function AttendanceReviewPage() {
   const [to, setTo] = useState(isoDate());
   const [groupId, setGroupId] = useState('');
   const [pinFilter, setPinFilter] = useState('');
+  const [anomalyFilters, setAnomalyFilters] = useState(ANOMALY_FILTER_DEFAULT);
   const [hasHiddenTable, setHasHiddenTable] = useState(false);
   const [mutationDrafts, setMutationDrafts] = useState({});
 
@@ -144,6 +169,28 @@ export default function AttendanceReviewPage() {
     }
     return output;
   }, [rows]);
+
+  const activeQuickPreset = useMemo(() => {
+    const found = QUICK_PRESET.find((preset) => {
+      const range = resolvePresetRange(preset.key);
+      return from === range.from && to === range.to;
+    });
+    return found?.key || '';
+  }, [from, to]);
+
+  const filteredRows = useMemo(() => {
+    const source = Array.isArray(rows) ? rows : [];
+    return source.filter((row) => {
+      const status = String(row?.computed_status || '').toLowerCase();
+      if (status === 'terlambat') return anomalyFilters.late;
+      if (status === 'pulang_awal') return anomalyFilters.earlyLeave;
+      if (status === 'tidak_hadir') return anomalyFilters.absent;
+      if (status === 'anomaly' || status === 'anomali' || status === 'double_punch') {
+        return anomalyFilters.anomaly;
+      }
+      return true;
+    });
+  }, [rows, anomalyFilters]);
 
   const [selectedProfile, setSelectedProfile] = useState('');
 
@@ -236,8 +283,32 @@ export default function AttendanceReviewPage() {
 
       <div className="rounded-xl border border-slate-800 bg-slate-900 p-3">
         <div className="grid gap-3 md:grid-cols-6">
+          <div className="col-span-full flex flex-wrap items-center gap-2">
+            {QUICK_PRESET.map((preset) => {
+              const isActive = activeQuickPreset === preset.key;
+              return (
+                <button
+                  key={preset.key}
+                  type="button"
+                  onClick={() => {
+                    const nextRange = resolvePresetRange(preset.key);
+                    setFrom(nextRange.from);
+                    setTo(nextRange.to);
+                  }}
+                  className={`rounded-full border px-3 py-1.5 text-xs transition-colors ${
+                    isActive
+                      ? 'border-teal-400/50 bg-teal-500/20 text-teal-200'
+                      : 'border-slate-700 bg-slate-800 text-slate-300 hover:border-slate-500 hover:text-white'
+                  }`}
+                >
+                  {T(preset.labelPath)}
+                </button>
+              );
+            })}
+          </div>
+
           <label className="text-xs text-slate-400">
-            From
+            {T('attendanceReviewPage.filters.from')}
             <input
               type="date"
               value={from}
@@ -246,7 +317,7 @@ export default function AttendanceReviewPage() {
             />
           </label>
           <label className="text-xs text-slate-400">
-            To
+            {T('attendanceReviewPage.filters.to')}
             <input
               type="date"
               value={to}
@@ -255,13 +326,13 @@ export default function AttendanceReviewPage() {
             />
           </label>
           <label className="text-xs text-slate-400">
-            Group
+            {T('attendanceReviewPage.filters.group')}
             <select
               value={groupId}
               onChange={(e) => setGroupId(e.target.value)}
               className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-800 px-2 py-2 text-xs text-white"
             >
-              <option value="">All groups</option>
+              <option value="">{T('attendanceReviewPage.filters.allGroups')}</option>
               {groups.map((group) => (
                 <option key={group.id} value={group.id}>
                   {group.nama_group}
@@ -285,8 +356,56 @@ export default function AttendanceReviewPage() {
               onClick={loadRows}
               className="inline-flex items-center gap-2 rounded-lg border border-teal-500/30 bg-teal-500/10 px-3 py-2 text-xs text-teal-300 hover:bg-teal-500/20"
             >
-              <Filter className="h-3.5 w-3.5" /> Apply
+              <Filter className="h-3.5 w-3.5" /> {T('attendanceReviewPage.filters.apply')}
             </button>
+          </div>
+
+          <div className="col-span-full flex flex-wrap items-center gap-4 rounded-lg border border-slate-800 bg-slate-950/50 px-3 py-2">
+            <div className="text-xs text-slate-400">{T('attendanceReviewPage.filters.anomalyType')}</div>
+            <label className="inline-flex items-center gap-2 text-xs text-slate-300">
+              <input
+                type="checkbox"
+                checked={anomalyFilters.late}
+                onChange={(e) =>
+                  setAnomalyFilters((prev) => ({ ...prev, late: e.target.checked }))
+                }
+                className="h-3.5 w-3.5 rounded border-slate-600 bg-slate-800 text-teal-400"
+              />
+              {T('attendanceReviewPage.filters.anomalyOptions.late')}
+            </label>
+            <label className="inline-flex items-center gap-2 text-xs text-slate-300">
+              <input
+                type="checkbox"
+                checked={anomalyFilters.earlyLeave}
+                onChange={(e) =>
+                  setAnomalyFilters((prev) => ({ ...prev, earlyLeave: e.target.checked }))
+                }
+                className="h-3.5 w-3.5 rounded border-slate-600 bg-slate-800 text-teal-400"
+              />
+              {T('attendanceReviewPage.filters.anomalyOptions.earlyLeave')}
+            </label>
+            <label className="inline-flex items-center gap-2 text-xs text-slate-300">
+              <input
+                type="checkbox"
+                checked={anomalyFilters.absent}
+                onChange={(e) =>
+                  setAnomalyFilters((prev) => ({ ...prev, absent: e.target.checked }))
+                }
+                className="h-3.5 w-3.5 rounded border-slate-600 bg-slate-800 text-teal-400"
+              />
+              {T('attendanceReviewPage.filters.anomalyOptions.absent')}
+            </label>
+            <label className="inline-flex items-center gap-2 text-xs text-slate-300">
+              <input
+                type="checkbox"
+                checked={anomalyFilters.anomaly}
+                onChange={(e) =>
+                  setAnomalyFilters((prev) => ({ ...prev, anomaly: e.target.checked }))
+                }
+                className="h-3.5 w-3.5 rounded border-slate-600 bg-slate-800 text-teal-400"
+              />
+              {T('attendanceReviewPage.filters.anomalyOptions.anomaly')}
+            </label>
           </div>
 
           {isAdmin && (
@@ -337,16 +456,16 @@ export default function AttendanceReviewPage() {
           <tbody className="divide-y divide-slate-800/50">
             {loading ? (
               <TableLoadingRow colSpan={8} label="Loading review rows..." />
-            ) : rows.length === 0 ? (
+            ) : filteredRows.length === 0 ? (
               <TableEmptyRow colSpan={8} label="No rows for selected range" />
             ) : (
-              rows.map((row) => {
+              filteredRows.map((row, idx) => {
                 const key = `${row.pin}-${row.scan_date}`;
                 const open = expanded === key;
                 const statusCls = STATUS_BADGE[row.computed_status] || STATUS_BADGE.normal;
                 return (
-                  <Fragment key={key}>
-                    <tr key={key} className="data-row">
+                  <Fragment key={`${key}-${idx}`}>
+                    <tr className="data-row">
                       <td className="px-4 py-3 font-mono text-xs text-slate-400">
                         {String(row.scan_date).slice(0, 10)}
                       </td>
@@ -354,12 +473,15 @@ export default function AttendanceReviewPage() {
                         {row.karyawan_id ? (
                           <Link
                             href={`/employees/${row.karyawan_id}`}
-                            className="hover:text-teal-300"
+                            className="block max-w-[200px] truncate hover:text-teal-300"
+                            title={row.nama}
                           >
                             {row.nama}
                           </Link>
                         ) : (
-                          row.nama
+                          <span className="block max-w-[200px] truncate" title={row.nama}>
+                            {row.nama}
+                          </span>
                         )}
                         <div className="font-mono text-[11px] text-slate-500">PIN {row.pin}</div>
                       </td>

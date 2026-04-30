@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import {
   ChevronLeft,
   ChevronRight,
@@ -85,8 +86,18 @@ function uniqueByEmployeeId(employees) {
 export default function SchedulePage() {
   const { success, warning } = useToast();
   const { user: currentUser } = useAuthSession();
+  const searchParams = useSearchParams();
   const [activeTab, setActiveTab] = useState('plan');
-  const [monthOf, setMonthOf] = useState(() => monthStart(new Date()));
+  const [monthOf, setMonthOf] = useState(() => {
+    const monthParam = searchParams?.get('month');
+    if (monthParam === 'next') return monthStart(addDays(monthEnd(new Date()), 1));
+    if (monthParam === 'prev') return monthStart(addDays(monthStart(new Date()), -1));
+    if (monthParam && /^\d{4}-\d{2}$/.test(monthParam)) {
+      const parsed = new Date(`${monthParam}-01T00:00:00`);
+      if (!Number.isNaN(parsed.getTime())) return monthStart(parsed);
+    }
+    return monthStart(new Date());
+  });
   const [groupTab, setGroupTab] = useState('all');
   const [data, setData] = useState({
     shifts: [],
@@ -958,7 +969,11 @@ export default function SchedulePage() {
               <tbody className="divide-y divide-slate-800/50">
                 {punchRows.slice(0, 250).map((row) => (
                   <tr key={`${row.pin}-${row.scan_date}`}>
-                    <td className="px-3 py-2 text-white">{row.nama || row.pin}</td>
+                    <td className="px-3 py-2 text-white">
+                      <span className="block max-w-[200px] truncate" title={row.nama || row.pin}>
+                        {row.nama || row.pin}
+                      </span>
+                    </td>
                     <td className="px-3 py-2 font-mono text-slate-300">{row.scan_date}</td>
                     <td className="px-3 py-2 text-slate-300">{row.shift || '-'}</td>
                     <td className="px-3 py-2 font-mono text-emerald-300">{row.punch_in || '-'}</td>
@@ -1157,7 +1172,11 @@ export default function SchedulePage() {
                   {filteredSummary.map(({ employee, metrics }) => (
                     <tr key={employee.id}>
                       <td className="px-4 py-3 text-white">
-                        <Link href={`/employees/${employee.id}`} className="hover:text-teal-300">
+                        <Link
+                          href={`/employees/${employee.id}`}
+                          className="block max-w-[200px] truncate hover:text-teal-300"
+                          title={employee.nama}
+                        >
                           {employee.nama}
                         </Link>
                       </td>
