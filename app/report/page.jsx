@@ -303,15 +303,22 @@ export default function ReportPage() {
     window.location.href = `/api/report?${query.toString()}`;
   };
 
-  const exportExcel = () => {
-    const query = new URLSearchParams({
-      from: filters.from,
-      to: filters.to,
-      excel: '1',
-    });
-    if (filters.group_id) query.set('group_id', filters.group_id);
-    if (filters.employee_id) query.set('employee_id', filters.employee_id);
-    window.location.href = `/api/report?${query.toString()}`;
+  const exportExcel = async () => {
+    try {
+      const { exportReportExcel } = await import('@/lib/export-excel');
+      await exportReportExcel(report, filters);
+    } catch (err) {
+      warning(err.message || 'Excel export failed.', 'Export Error');
+    }
+  };
+
+  const exportPDF = async () => {
+    try {
+      const { exportReportPDF } = await import('@/lib/export-pdf');
+      await exportReportPDF(report, filters);
+    } catch (err) {
+      warning(err.message || 'PDF export failed.', 'Export Error');
+    }
   };
 
   const handlePieClick = useCallback((statusKey) => {
@@ -371,9 +378,13 @@ export default function ReportPage() {
             <Download className="h-4 w-4" />
             {t('reportPage.actions.exportCsv')}
           </button>
+          <button type="button" onClick={exportPDF} className="rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-sm text-rose-300 hover:bg-rose-500/20 inline-flex items-center gap-2">
+            <Download className="h-4 w-4" />
+            PDF
+          </button>
           <button type="button" onClick={exportExcel} className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-300 hover:bg-emerald-500/20 inline-flex items-center gap-2">
             <FileSpreadsheet className="h-4 w-4" />
-            Export Excel
+            Excel
           </button>
         </div>
       </div>

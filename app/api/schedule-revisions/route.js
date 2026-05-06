@@ -1,6 +1,13 @@
 import { NextResponse } from 'next/server';
 import pool from '@/lib/db';
 import { getAuthContextFromCookies } from '@/lib/auth-session';
+import { z } from 'zod';
+
+const revisionRequestSchema = z.object({
+  group_id: z.number().int().positive(),
+  revision_type: z.string().min(1).max(50),
+  payload: z.object({}).passthrough(),
+});
 
 export async function GET() {
   try {
@@ -44,11 +51,18 @@ export async function POST(request) {
     if (!auth) return NextResponse.json({ ok: false, error: 'Unauthorized' }, { status: 401 });
 
     const body = await request.json();
-    const { group_id, revision_type, payload } = body;
+    const result = revisionRequestSchema.safeParse(body);
+    if (!result.success) {
+      return NextResponse.json(
+        { ok: false, error: 'Invalid input', details: result.error.errors },
+        { status: 400 }
+      );
+    }
+
+    const { group_id, revision_type, payload } = result.data;
 
     const connection = await pool.getConnection();
     try {
-      // In a real app, you'd validate payload structure here
       await connection.query(`
         INSERT INTO tb_schedule_revision_requests 
         (requester_karyawan_id, group_id, revision_type, payload, status)

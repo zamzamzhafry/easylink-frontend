@@ -37,7 +37,9 @@ import {
   scheduleCsvTemplate,
   schedulePrintHtml,
   scheduleTemplateRows,
+  shiftAbbreviation,
 } from '@/lib/schedule-helpers';
+import { sanitizeExcelSheetName } from '@/lib/quick-summaries-export';
 
 const TABS = [
   { key: 'plan', label: 'Monthly Plan' },
@@ -482,51 +484,73 @@ export default function SchedulePage() {
 
   const exportTemplateExcel = async () => {
     const scope = chooseScheduleExportScope();
-    const exportEmployees = resolveExportEmployees(scope);
+    const allExportEmployees = resolveExportEmployees(scope);
     const XLSX = await import('xlsx');
-    const headerRows = scheduleTemplateRows(exportEmployees, dates, getShift);
-    const scheduleSheetRows = headerRows.map((row, index) => {
-      if (index === 0) {
-        return ['Nama', 'PIN', 'Total Jam (Formula)', ...row.slice(2)];
+    const workbook = XLSX.utils.book_new();
+
+    // --- Info sheet ---
+    const noteRows = [
+      ['Instructions'],
+      ['1. Fill shift names exactly as listed in Shift Reference sheet.'],
+      ['2. Total Jam is calculated automatically via VLOOKUP formula.'],
+      ['3. Each group has its own sheet tab.'],
+      ['4. Upload this file back in Import / Check tab.'],
+    ];
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet(noteRows), 'Info');
+
+    // --- Shift Reference sheet (with abbreviation column) ---
+    const shiftRefRows = [
+      ['Shift Name', 'Abbreviation', 'Hours'],
+      ...data.shifts.map((shift) => [
+        shift.nama_shift,
+        shiftAbbreviation(shift),
+        Number(shift.jam_kerja || 0),
+      ]),
+    ];
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet(shiftRefRows), 'Shift Reference');
+
+    // --- Group employees into buckets ---
+    const groupBuckets = new Map();
+    const ungrouped = [];
+    for (const emp of allExportEmployees) {
+      if (emp.group_id && emp.nama_group) {
+        const key = String(emp.group_id);
+        if (!groupBuckets.has(key)) groupBuckets.set(key, { name: emp.nama_group, employees: [] });
+        groupBuckets.get(key).employees.push(emp);
+      } else {
+        ungrouped.push(emp);
       }
-      return [row[0], row[1], '', ...row.slice(2)];
-    });
+    }
 
     const formulaCol = 3;
     const startDateCol = 4;
     const endDateCol = startDateCol + dates.length - 1;
 
-    for (let i = 1; i < scheduleSheetRows.length; i += 1) {
-      const rowIndex = i + 1;
-      const startCol = excelCol(startDateCol);
-      const endCol = excelCol(endDateCol);
-      const formulaCell = {
-        f: `SUMPRODUCT(IFERROR(VLOOKUP(${startCol}${rowIndex}:${endCol}${rowIndex},'Shift Reference'!A:B,2,FALSE),0))`,
-      };
-      scheduleSheetRows[i][formulaCol - 1] = formulaCell;
+    const buildGroupSheet = (groupEmployees) => {
+      const headerRows = scheduleTemplateRows(groupEmployees, dates, getShift);
+      const sheetRows = headerRows.map((row, index) => {
+        if (index === 0) return ['Nama', 'PIN', 'Total Jam', ...row.slice(2)];
+        return [row[0], row[1], '', ...row.slice(2)];
+      });
+      for (let i = 1; i < sheetRows.length; i += 1) {
+        const rowIndex = i + 1;
+        const startCol = excelCol(startDateCol);
+        const endCol = excelCol(endDateCol);
+        sheetRows[i][formulaCol - 1] = {
+          f: `SUMPRODUCT(IFERROR(VLOOKUP(${startCol}${rowIndex}:${endCol}${rowIndex},'Shift Reference'!A:C,3,FALSE),0))`,
+        };
+      }
+      return XLSX.utils.aoa_to_sheet(sheetRows);
+    };
+
+    // --- Per-group sheets ---
+    for (const [, bucket] of groupBuckets) {
+      const sheetName = sanitizeExcelSheetName(bucket.name);
+      XLSX.utils.book_append_sheet(workbook, buildGroupSheet(bucket.employees), sheetName);
     }
-
-    const shiftRefRows = [
-      ['Shift Name', 'Hours'],
-      ...data.shifts.map((shift) => [shift.nama_shift, Number(shift.jam_kerja || 0)]),
-    ];
-
-    const noteRows = [
-      ['Instructions'],
-      ['1. Fill shift names exactly as listed in Shift Reference sheet.'],
-      ['2. Total Jam is calculated automatically.'],
-      ['3. You can use Excel formulas around the date columns as needed.'],
-      ['4. Upload this file back in Import / Check tab.'],
-    ];
-
-    const workbook = XLSX.utils.book_new();
-    const scheduleSheet = XLSX.utils.aoa_to_sheet(scheduleSheetRows);
-    const shiftRefSheet = XLSX.utils.aoa_to_sheet(shiftRefRows);
-    const infoSheet = XLSX.utils.aoa_to_sheet(noteRows);
-
-    XLSX.utils.book_append_sheet(workbook, scheduleSheet, 'Schedule Template');
-    XLSX.utils.book_append_sheet(workbook, shiftRefSheet, 'Shift Reference');
-    XLSX.utils.book_append_sheet(workbook, infoSheet, 'Info');
+    if (ungrouped.length > 0) {
+      XLSX.utils.book_append_sheet(workbook, buildGroupSheet(ungrouped), 'Ungrouped');
+    }
 
     XLSX.writeFile(
       workbook,

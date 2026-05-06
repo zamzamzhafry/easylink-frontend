@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AlertTriangle, EyeOff, Filter, ShieldCheck, UserRoundSearch } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useAppLocale } from '@/components/app-shell';
@@ -134,6 +134,7 @@ export default function AttendanceReviewPage() {
     }
   }, [isAdmin]);
 
+  const debounceRef = useRef(null);
   const loadRows = useCallback(async () => {
     setLoading(true);
     try {
@@ -156,7 +157,11 @@ export default function AttendanceReviewPage() {
   }, [loadGroups]);
 
   useEffect(() => {
-    loadRows();
+    clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      loadRows();
+    }, 300);
+    return () => clearTimeout(debounceRef.current);
   }, [loadRows]);
 
   const profileOptions = useMemo(() => {

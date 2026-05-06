@@ -7,8 +7,8 @@ import {
   findAuthAccountByLoginId,
   setAuthCookie,
   updateAuthAccountLastLogin,
-  verifyPlainPassword,
 } from '@/lib/auth-session';
+import { verifyPassword, hashPassword } from '@/lib/password';
 
 const loginSchema = z.object({
   login_id: z.string().min(1, 'Login ID is required').max(80).optional(),
@@ -39,8 +39,13 @@ export async function POST(request) {
     try {
       const standaloneAccount = await findAuthAccountByLoginId(loginId, connection);
       if (standaloneAccount) {
-        if (!verifyPlainPassword(standaloneAccount.password_hash, password)) {
+        const { valid, needsRehash } = await verifyPassword(standaloneAccount.password_hash, password);
+        if (!valid) {
           return NextResponse.json({ ok: false, error: 'Invalid credentials' }, { status: 401 });
+        }
+        if (needsRehash) {
+          const hashed = await hashPassword(password);
+          await connection.query('UPDATE auth_accounts SET password_hash = ? WHERE id = ?', [hashed, standaloneAccount.id]);
         }
 
         await updateAuthAccountLastLogin(Number(standaloneAccount.id), connection);
@@ -90,8 +95,13 @@ export async function POST(request) {
 
       const user = users[0];
 
-      if (!verifyPlainPassword(user.password_hash, password)) {
+      const { valid: nipValid, needsRehash: nipNeedsRehash } = await verifyPassword(user.password_hash, password);
+      if (!nipValid) {
         return NextResponse.json({ ok: false, error: 'Invalid credentials' }, { status: 401 });
+      }
+      if (nipNeedsRehash) {
+        const hashed = await hashPassword(password);
+        await connection.query('UPDATE tb_karyawan_auth SET password_hash = ? WHERE karyawan_id = ?', [hashed, user.karyawan_id]);
       }
 
       await connection.query('UPDATE tb_karyawan_auth SET last_login_at = NOW() WHERE karyawan_id = ?', [

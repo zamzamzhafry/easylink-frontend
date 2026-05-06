@@ -1,19 +1,29 @@
 export const dynamic = 'force-dynamic';
 // app/api/employees/route.js
 import { NextResponse } from 'next/server';
+import {
+  getAuthContextFromCookies,
+  unauthorizedResponse,
+  forbiddenResponse,
+} from '@/lib/auth-session';
 import pool from '@/lib/db';
 import { getKaryawanColumns } from '@/lib/karyawan-schema';
+import { z } from 'zod';
 
 const IDENTIFIER_PATTERN = /^[A-Za-z0-9._-]{1,50}$/;
+
+const employeeSchema = z.object({
+  nama_karyawan: z.string().min(1).max(100),
+  user_pin: z.string().regex(IDENTIFIER_PATTERN).optional().or(z.literal('')),
+  nip: z.string().regex(IDENTIFIER_PATTERN).optional().or(z.literal('')),
+  awal_kontrak: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().or(z.literal('')),
+  akhir_kontrak: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().or(z.literal('')),
+  isActiveDuty: z.boolean().optional(),
+});
 
 function normalizeIdentifier(value) {
   const normalized = String(value ?? '').trim();
   return normalized || null;
-}
-
-function isValidIdentifier(value) {
-  if (!value) return true;
-  return IDENTIFIER_PATTERN.test(value);
 }
 
 function resolveLoginNip(nip, pin) {
@@ -21,6 +31,10 @@ function resolveLoginNip(nip, pin) {
 }
 
 export async function GET() {
+  const auth = await getAuthContextFromCookies();
+  if (!auth) return unauthorizedResponse('Login required.');
+  if (!auth.is_admin) return forbiddenResponse('Only admin can list employees.');
+
   const columns = await getKaryawanColumns();
   const hasSoftDelete = columns.has('isDeleted');
   const hasActiveDuty = columns.has('isActiveDuty');
@@ -52,35 +66,29 @@ export async function GET() {
 }
 
 export async function POST(req) {
+  const auth = await getAuthContextFromCookies();
+  if (!auth) return unauthorizedResponse('Login required.');
+  if (!auth.is_admin) return forbiddenResponse('Only admin can create employees.');
+
   const body = await req.json();
-  const namaKaryawan = body.nama_karyawan?.trim();
-  const userPin = normalizeIdentifier(body.user_pin);
-  const nip = normalizeIdentifier(body.nip);
-  const awalKontrak = body.awal_kontrak?.trim() || null;
-  const akhirKontrak = body.akhir_kontrak?.trim() || null;
-  const isActiveDuty = body.isActiveDuty ? 1 : 0;
+  const result = employeeSchema.safeParse(body);
+  if (!result.success) {
+    return NextResponse.json(
+      { ok: false, error: 'Invalid input', details: result.error.errors },
+      { status: 400 }
+    );
+  }
+
+  const namaKaryawan = result.data.nama_karyawan.trim();
+  const userPin = normalizeIdentifier(result.data.user_pin);
+  const nip = normalizeIdentifier(result.data.nip);
+  const awalKontrak = result.data.awal_kontrak?.trim() || null;
+  const akhirKontrak = result.data.akhir_kontrak?.trim() || null;
+  const isActiveDuty = result.data.isActiveDuty ? 1 : 0;
   const columns = await getKaryawanColumns();
   const hasSoftDelete = columns.has('isDeleted');
   const hasDeletedAt = columns.has('deletedAt');
   const hasActiveDuty = columns.has('isActiveDuty');
-
-  if (!namaKaryawan) {
-    return NextResponse.json({ ok: false, error: 'nama_karyawan is required.' }, { status: 400 });
-  }
-
-  if (!isValidIdentifier(userPin)) {
-    return NextResponse.json(
-      { ok: false, error: 'user_pin must use only letters, numbers, dot, underscore, or dash.' },
-      { status: 400 }
-    );
-  }
-
-  if (!isValidIdentifier(nip)) {
-    return NextResponse.json(
-      { ok: false, error: 'nip must use only letters, numbers, dot, underscore, or dash.' },
-      { status: 400 }
-    );
-  }
 
   const loginNip = resolveLoginNip(nip, userPin);
   if (!loginNip) {

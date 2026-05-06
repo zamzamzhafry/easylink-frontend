@@ -143,6 +143,24 @@ export default function PerformancePage() {
     window.location.href = `/api/performance?${query.toString()}`;
   };
 
+  const handleExportPDF = async () => {
+    try {
+      const { exportPerformancePDF } = await import('@/lib/export-pdf');
+      await exportPerformancePDF(data, { from, to, groupId, employeeId });
+    } catch (err) {
+      warning(err.message || 'PDF export failed.', 'Export Error');
+    }
+  };
+
+  const handleExportExcel = async () => {
+    try {
+      const { exportPerformanceExcel } = await import('@/lib/export-excel');
+      await exportPerformanceExcel(data, { from, to, groupId, employeeId });
+    } catch (err) {
+      warning(err.message || 'Excel export failed.', 'Export Error');
+    }
+  };
+
   const summaryPages = useMemo(
     () => Math.max(1, Math.ceil(data.summary.length / summaryLimit)),
     [data.summary.length, summaryLimit]
@@ -188,14 +206,32 @@ export default function PerformancePage() {
             Per employee trend for on-time, late, and anomaly statistics.
           </p>
         </div>
-        <button
-          type="button"
-          onClick={downloadBatch}
-          className="flex items-center gap-2 rounded-xl border border-teal-500/30 bg-teal-500/10 px-4 py-2.5 text-sm text-teal-300 transition-colors hover:bg-teal-500/20"
-        >
-          <Download className="h-4 w-4" />
-          Download Batch CSV
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={downloadBatch}
+            className="flex items-center gap-2 rounded-xl border border-teal-500/30 bg-teal-500/10 px-4 py-2.5 text-sm text-teal-300 transition-colors hover:bg-teal-500/20"
+          >
+            <Download className="h-4 w-4" />
+            CSV
+          </button>
+          <button
+            type="button"
+            onClick={handleExportPDF}
+            className="flex items-center gap-2 rounded-xl border border-rose-500/30 bg-rose-500/10 px-4 py-2.5 text-sm text-rose-300 transition-colors hover:bg-rose-500/20"
+          >
+            <Download className="h-4 w-4" />
+            PDF
+          </button>
+          <button
+            type="button"
+            onClick={handleExportExcel}
+            className="flex items-center gap-2 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-2.5 text-sm text-emerald-300 transition-colors hover:bg-emerald-500/20"
+          >
+            <Download className="h-4 w-4" />
+            Excel
+          </button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 gap-3 rounded-xl border border-slate-800 bg-slate-900 p-3 md:grid-cols-5">

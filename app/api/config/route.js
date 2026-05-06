@@ -1,6 +1,21 @@
 import { NextResponse } from 'next/server';
+import {
+  getAuthContextFromCookies,
+  unauthorizedResponse,
+  forbiddenResponse,
+} from '@/lib/auth-session';
 import { readFileSync, writeFileSync } from 'fs';
 import { join } from 'path';
+import { z } from 'zod';
+
+const configUpdateSchema = z
+  .object({
+    scheduling: z.object({}).passthrough().optional(),
+    device: z.object({}).passthrough().optional(),
+  })
+  .refine((data) => data.scheduling !== undefined || data.device !== undefined, {
+    message: 'At least one of scheduling or device must be provided',
+  });
 
 const CONFIG_PATH = join(process.cwd(), 'data', 'config.json');
 
@@ -18,6 +33,10 @@ function writeConfig(config) {
 
 /* ── GET  /api/config ─────────────────────────────────────── */
 export async function GET() {
+  const auth = await getAuthContextFromCookies();
+  if (!auth) return unauthorizedResponse('Login required.');
+  if (!auth.is_admin) return forbiddenResponse('Only admin can view config.');
+
   try {
     const config = readConfig();
     return NextResponse.json({ ok: true, config });
@@ -28,16 +47,28 @@ export async function GET() {
 
 /* ── PUT  /api/config  { scheduling?, device? } ───────────── */
 export async function PUT(request) {
+  const auth = await getAuthContextFromCookies();
+  if (!auth) return unauthorizedResponse('Login required.');
+  if (!auth.is_admin) return forbiddenResponse('Only admin can update config.');
+
   try {
     const body = await request.json();
+    const result = configUpdateSchema.safeParse(body);
+    if (!result.success) {
+      return NextResponse.json(
+        { ok: false, error: 'Invalid input', details: result.error.errors },
+        { status: 400 }
+      );
+    }
+
     const current = readConfig();
 
     /* shallow‑merge each section */
-    if (body.scheduling) {
-      current.scheduling = { ...(current.scheduling || {}), ...body.scheduling };
+    if (result.data.scheduling) {
+      current.scheduling = { ...(current.scheduling || {}), ...result.data.scheduling };
     }
-    if (body.device) {
-      current.device = { ...(current.device || {}), ...body.device };
+    if (result.data.device) {
+      current.device = { ...(current.device || {}), ...result.data.device };
     }
 
     writeConfig(current);

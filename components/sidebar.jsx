@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useCallback, useMemo, useState } from 'react';
 import { usePathname } from 'next/navigation';
 import {
+  Activity,
   BarChart3,
   CalendarClock,
   CalendarRange,
@@ -79,6 +80,12 @@ export default function Sidebar({
             href: '/performance',
             label: t('sidebar.items.performance'),
             icon: BarChart3,
+            auth: 'dashboard',
+          },
+          {
+            href: '/analytics',
+            label: t('sidebar.items.analytics'),
+            icon: Activity,
             auth: 'dashboard',
           },
           {

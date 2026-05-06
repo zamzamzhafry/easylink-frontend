@@ -1,5 +1,10 @@
 import { NextResponse } from 'next/server';
 import {
+  getAuthContextFromCookies,
+  unauthorizedResponse,
+  forbiddenResponse,
+} from '@/lib/auth-session';
+import {
   fallbackIndonesianHolidays,
   readCustomHolidays,
   saveCustomHolidays,
@@ -48,6 +53,9 @@ function mergeRows(primaryRows, fallbackRows) {
 /* ── GET  /api/holidays?year=YYYY ─────────────────────────── */
 
 export async function GET(request) {
+  const auth = await getAuthContextFromCookies();
+  if (!auth) return unauthorizedResponse('Login required.');
+
   const url = new URL(request.url);
   const year = Number(url.searchParams.get('year') || new Date().getFullYear());
 
@@ -84,6 +92,10 @@ export async function GET(request) {
 /* ── POST  /api/holidays  { date, name, is_cuti_bersama? } ── */
 
 export async function POST(request) {
+  const auth = await getAuthContextFromCookies();
+  if (!auth) return unauthorizedResponse('Login required.');
+  if (!auth.is_admin) return forbiddenResponse('Only admin can create holidays.');
+
   try {
     const body = await request.json();
     const date = toIsoDate(body?.date);
@@ -124,6 +136,10 @@ export async function POST(request) {
 /* ── DELETE  /api/holidays  { date } ─────────────────────── */
 
 export async function DELETE(request) {
+  const auth = await getAuthContextFromCookies();
+  if (!auth) return unauthorizedResponse('Login required.');
+  if (!auth.is_admin) return forbiddenResponse('Only admin can delete holidays.');
+
   try {
     const body = await request.json();
     const date = toIsoDate(body?.date);

@@ -24,6 +24,7 @@ import {
   quickSummaryDateLabel,
   quickSummaryRowsToArrays,
   sanitizeExcelSheetName,
+  splitQuickSummaryRowsByGroup,
 } from '@/lib/quick-summaries-export';
 import { requestJson } from '@/lib/request-json';
 import { getUIText } from '@/lib/localization/ui-texts';
@@ -721,11 +722,45 @@ export default function AttendancePage() {
   const exportExcel = async () => {
     const XLSX = await import('xlsx');
     const isQuickTab = activeTab === 'quick_summaries';
+    const ungroupedLabel = t('attendancePage.print.allGroupsFallback') || 'Ungrouped';
 
     if (!isQuickTab) {
-      const worksheet = XLSX.utils.json_to_sheet(filteredSummaryRows);
       const workbook = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(workbook, worksheet, 'Attendance');
+
+      const infoRows = [
+        [t('attendancePage.print.title') || 'Attendance Summary'],
+        [`${t('attendancePage.print.dateRangeLabel') || 'Date Range'}: ${from} — ${to}`],
+        [],
+      ];
+      XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet(infoRows), 'Info');
+
+      const groupBuckets = new Map();
+      const ungrouped = [];
+      for (const row of filteredSummaryRows) {
+        const gName = String(row.nama_group || '').trim();
+        if (gName) {
+          if (!groupBuckets.has(gName)) groupBuckets.set(gName, []);
+          groupBuckets.get(gName).push(row);
+        } else {
+          ungrouped.push(row);
+        }
+      }
+
+      for (const [gName, gRows] of groupBuckets) {
+        const ws = XLSX.utils.json_to_sheet(gRows);
+        XLSX.utils.book_append_sheet(workbook, ws, sanitizeExcelSheetName(gName));
+      }
+      if (ungrouped.length > 0) {
+        XLSX.utils.book_append_sheet(
+          workbook,
+          XLSX.utils.json_to_sheet(ungrouped),
+          sanitizeExcelSheetName(ungroupedLabel, 'Ungrouped')
+        );
+      }
+      if (groupBuckets.size === 0 && ungrouped.length === 0) {
+        XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([['No data']]), 'Attendance');
+      }
+
       XLSX.writeFile(workbook, `absensi_${from}_${to}.xlsx`);
       return;
     }
@@ -736,7 +771,8 @@ export default function AttendancePage() {
       const columns = buildQuickSummaryColumns(quickData.dates);
       const headerRow = columns.map((column) => column.label);
       const workbook = XLSX.utils.book_new();
-      const sheetRows = [
+
+      const infoRows = [
         ...buildQuickSummariesMetadataRows(
           {
             reportTitle: t('attendancePage.tabs.quick_summaries'),
@@ -752,16 +788,31 @@ export default function AttendancePage() {
             },
           }
         ),
-        headerRow,
-        ...quickSummaryRowsToArrays(quickData.rows, quickData.dates, {
-          emptyGroupLabel: t('attendancePage.print.allGroupsFallback'),
-          emptyCellLabel: '-',
-        }),
       ];
+      XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet(infoRows), 'Info');
 
-      const worksheet = XLSX.utils.aoa_to_sheet(sheetRows);
-      const sheetName = sanitizeExcelSheetName(t('attendancePage.tabs.quick_summaries'), 'Quick');
-      XLSX.utils.book_append_sheet(workbook, worksheet, sheetName);
+      const groupBuckets = splitQuickSummaryRowsByGroup(quickData.rows, {
+        emptyGroupLabel: ungroupedLabel,
+      });
+
+      for (const bucket of groupBuckets) {
+        const sheetRows = [
+          headerRow,
+          ...quickSummaryRowsToArrays(bucket.rows, quickData.dates, {
+            emptyGroupLabel: ungroupedLabel,
+            emptyCellLabel: '-',
+          }),
+        ];
+        const ws = XLSX.utils.aoa_to_sheet(sheetRows);
+        XLSX.utils.book_append_sheet(
+          workbook,
+          ws,
+          sanitizeExcelSheetName(bucket.groupName, 'Ungrouped')
+        );
+      }
+      if (groupBuckets.length === 0) {
+        XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([headerRow, ['No data']]), 'Quick');
+      }
 
       XLSX.writeFile(
         workbook,
