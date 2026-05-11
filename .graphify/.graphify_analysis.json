@@ -1,0 +1,416 @@
+{
+  "communities": {
+    "0": [
+      "page",
+      "page_attendancereviewpage",
+      "page_buildbarseries",
+      "page_builddaterange",
+      "page_buildpieseries",
+      "page_buildyearrange",
+      "page_canreviewpunch",
+      "page_capabilityenabled",
+      "page_csvescape",
+      "page_currentmonthrange",
+      "page_downloadcsv",
+      "page_employeeprofilepage",
+      "page_employeespage",
+      "page_excelcol",
+      "page_field",
+      "page_filterquicksummaryrowsbyemployee",
+      "page_groupspage",
+      "page_inforow",
+      "page_input",
+      "page_iolabel",
+      "page_isterminalstatus",
+      "page_loginpage",
+      "page_migratescanlogpage",
+      "page_normalizedate",
+      "page_normalizepredictioncontext",
+      "page_parseapiresponse",
+      "page_parsejsonsafely",
+      "page_privilegelabel",
+      "page_recentscankey",
+      "page_resolvepresetrange",
+      "page_schedulepage",
+      "page_shiftbreakdown",
+      "page_shifticonforkey",
+      "page_shiftmakerpage",
+      "page_shiftmodal",
+      "page_shiftradarchart",
+      "page_statcard",
+      "page_statuslabel",
+      "page_tonumber",
+      "page_trendpoints",
+      "page_uniquebyemployeeid",
+      "page_usermodal",
+      "page_userspage",
+      "page_verifybadge",
+      "page_verifylabel"
+    ],
+    "1": [
+      "route",
+      "route_buildcheckstatus",
+      "route_builddaterange",
+      "route_builddrilldownpayload",
+      "route_buildfingerprint",
+      "route_buildinplaceholders",
+      "route_buildnormalizedrows",
+      "route_buildoverallstatus",
+      "route_buildpayload",
+      "route_categorizerow",
+      "route_createcumulativesummarytemplate",
+      "route_csvescape",
+      "route_ensureadmin",
+      "route_ensurescheduleview",
+      "route_get",
+      "route_getbatchbyid",
+      "route_getscanlogqueuesnapshot",
+      "route_hasattendancenotecolumn",
+      "route_hasgroupaccesscolumn",
+      "route_hastable",
+      "route_invalid",
+      "route_issdkconfigured",
+      "route_isterminalstatus",
+      "route_loadpredictioncontextforpins",
+      "route_markbatchrunning",
+      "route_mergerows",
+      "route_nextisodate",
+      "route_normalizerow",
+      "route_parsedateparam",
+      "route_queuemeta",
+      "route_readconfig",
+      "route_reportcsv",
+      "route_requireadmin",
+      "route_serializebatchrow",
+      "route_serializejob",
+      "route_sse",
+      "route_summarycsv"
+    ],
+    "2": [
+      "route_appendreviewmutationaudit",
+      "route_assertdangerconfirmation",
+      "route_builddeltareport",
+      "route_closebatch",
+      "route_counttablerows",
+      "route_employeeallowed",
+      "route_enqueuesyncjob",
+      "route_ensureemployeebypin",
+      "route_ensurereviewmutationaudittable",
+      "route_ensurereviewtagtable",
+      "route_ensurescheduleedit",
+      "route_extractdeltatotal",
+      "route_insertsafeevents",
+      "route_mergesafeeventsintolegacy",
+      "route_normalizeaction",
+      "route_openbatch",
+      "route_post",
+      "route_pumpqueue",
+      "route_requiredinitphrase",
+      "route_resolveloginnip",
+      "route_runsyncbatch",
+      "route_tableexists",
+      "route_tablehascolumns",
+      "route_upsertbatchdetail"
+    ],
+    "3": [
+      "route_delete",
+      "route_handlelogout",
+      "route_isvalididentifier",
+      "route_normalizeholidayrow",
+      "route_normalizeidentifier",
+      "route_privilegetocanonicalrole",
+      "route_put",
+      "route_resolvecanonicalidentitybypin",
+      "route_sqlboolean",
+      "route_synccanonicalglobalrole",
+      "route_toisodate",
+      "route_upsertidentificationmethod",
+      "route_validationerror",
+      "route_writeconfig"
+    ],
+    "4": [
+      "route_creatededupekey",
+      "route_fetchdeviceinfo",
+      "route_getuserpollingconfig",
+      "route_runmachineaction",
+      "route_runuserpolling",
+      "route_stablepayloadstring",
+      "route_toboundedint"
+    ],
+    "5": [
+      "route_cancelmachinejob",
+      "route_enqueuemachinejob",
+      "route_findduplicatejob",
+      "route_nowiso",
+      "route_processmachinejob",
+      "route_pumpmachinequeue",
+      "route_trimjobcache"
+    ],
+    "6": [
+      "page_dashboard",
+      "page_getstats",
+      "page_normalizelimit",
+      "page_normalizepage",
+      "page_pagelink"
+    ],
+    "7": [
+      "route_formatdatevalue",
+      "route_formattimevalue",
+      "route_normalizelegacyrow",
+      "route_normalizesaferow",
+      "route_toisostring"
+    ],
+    "8": [
+      "page_attendancepage",
+      "page_formatminutestohours",
+      "page_formattargetsource",
+      "page_tosafenumber"
+    ],
+    "9": [
+      "page_actionlabel",
+      "page_formatjson",
+      "page_formatlocaldatetime",
+      "page_machinepage"
+    ],
+    "10": [
+      "page_daysago",
+      "page_scanlogpage",
+      "page_todayiso",
+      "page_toiso"
+    ],
+    "11": [
+      "page_compactdatewithday",
+      "page_normalizedatekey",
+      "page_quicksummarydaymeta"
+    ],
+    "12": [
+      "page_isodate",
+      "page_monthstart",
+      "page_performancepage"
+    ],
+    "13": [
+      "page_formattext",
+      "page_getstatuslabel",
+      "page_reportpage"
+    ],
+    "14": [
+      "route_buildstatus",
+      "route_formatdrilldownrow",
+      "route_tominutes"
+    ],
+    "15": [
+      "page_colorforseries",
+      "page_normalizekey"
+    ],
+    "16": [
+      "page_mapshifttoform",
+      "page_totimeinput"
+    ],
+    "17": [
+      "route_buildseries",
+      "route_createstatuscounts"
+    ],
+    "18": [
+      "layout",
+      "layout_rootlayout"
+    ]
+  },
+  "cohesion": {
+    "0": 0.04,
+    "1": 0.1,
+    "2": 0.11,
+    "3": 0.16,
+    "4": 0.33,
+    "5": 0.29,
+    "6": 0.4,
+    "7": 0.8,
+    "8": 0.67,
+    "9": 0.5,
+    "10": 0.67,
+    "11": 0.67,
+    "12": 1,
+    "13": 0.67,
+    "14": 0.67,
+    "15": 1,
+    "16": 1,
+    "17": 1,
+    "18": 1
+  },
+  "gods": [
+    {
+      "id": "route",
+      "label": "route.js",
+      "edges": 98,
+      "degree": 98
+    },
+    {
+      "id": "page",
+      "label": "page.jsx",
+      "edges": 74,
+      "degree": 74
+    },
+    {
+      "id": "route_post",
+      "label": "POST()",
+      "edges": 44,
+      "degree": 44
+    },
+    {
+      "id": "route_get",
+      "label": "GET()",
+      "edges": 39,
+      "degree": 39
+    },
+    {
+      "id": "route_put",
+      "label": "PUT()",
+      "edges": 10,
+      "degree": 10
+    },
+    {
+      "id": "route_toisostring",
+      "label": "toIsoString()",
+      "edges": 9,
+      "degree": 9
+    },
+    {
+      "id": "route_enqueuemachinejob",
+      "label": "enqueueMachineJob()",
+      "edges": 7,
+      "degree": 7
+    },
+    {
+      "id": "route_builddeltareport",
+      "label": "buildDeltaReport()",
+      "edges": 7,
+      "degree": 7
+    },
+    {
+      "id": "route_delete",
+      "label": "DELETE()",
+      "edges": 6,
+      "degree": 6
+    },
+    {
+      "id": "route_runmachineaction",
+      "label": "runMachineAction()",
+      "edges": 6,
+      "degree": 6
+    }
+  ],
+  "surprises": [
+    {
+      "source": "GET()",
+      "target": "nextIsoDate()",
+      "source_files": [
+        "E:\\Project\\easylink-frontend\\app\\api\\users\\route.js",
+        "E:\\Project\\easylink-frontend\\app\\api\\scanlog\\route.js"
+      ],
+      "confidence": "EXTRACTED",
+      "relation": "calls",
+      "why": "connects across different repos/directories; peripheral node `nextIsoDate()` unexpectedly reaches hub `GET()`"
+    },
+    {
+      "source": "POST()",
+      "target": "hasTable()",
+      "source_files": [
+        "E:\\Project\\easylink-frontend\\app\\api\\users\\route.js",
+        "E:\\Project\\easylink-frontend\\app\\api\\attendance\\review\\route.js"
+      ],
+      "confidence": "EXTRACTED",
+      "relation": "calls",
+      "why": "connects across different repos/directories; bridges separate communities"
+    },
+    {
+      "source": "POST()",
+      "target": "ensureReviewTagTable()",
+      "source_files": [
+        "E:\\Project\\easylink-frontend\\app\\api\\users\\route.js",
+        "E:\\Project\\easylink-frontend\\app\\api\\attendance\\review\\route.js"
+      ],
+      "confidence": "EXTRACTED",
+      "relation": "calls",
+      "why": "connects across different repos/directories; peripheral node `ensureReviewTagTable()` unexpectedly reaches hub `POST()`"
+    },
+    {
+      "source": "GET()",
+      "target": "loadPredictionContextForPins()",
+      "source_files": [
+        "E:\\Project\\easylink-frontend\\app\\api\\users\\route.js",
+        "E:\\Project\\easylink-frontend\\app\\api\\attendance\\route.js"
+      ],
+      "confidence": "EXTRACTED",
+      "relation": "calls",
+      "why": "connects across different repos/directories; peripheral node `loadPredictionContextForPins()` unexpectedly reaches hub `GET()`"
+    },
+    {
+      "source": "GET()",
+      "target": "createCumulativeSummaryTemplate()",
+      "source_files": [
+        "E:\\Project\\easylink-frontend\\app\\api\\users\\route.js",
+        "E:\\Project\\easylink-frontend\\app\\api\\attendance\\route.js"
+      ],
+      "confidence": "EXTRACTED",
+      "relation": "calls",
+      "why": "connects across different repos/directories; peripheral node `createCumulativeSummaryTemplate()` unexpectedly reaches hub `GET()`"
+    }
+  ],
+  "questions": [
+    {
+      "type": "bridge_node",
+      "question": "Why does `route.js` connect `Community 1` to `Community 2`, `Community 14`, `Community 3`, `Community 4`, `Community 5`, `Community 17`, `Community 7`?",
+      "why": "High betweenness centrality (0.250) - this node is a cross-community bridge."
+    },
+    {
+      "type": "bridge_node",
+      "question": "Why does `page.jsx` connect `Community 0` to `Community 8`, `Community 11`, `Community 9`, `Community 6`, `Community 12`, `Community 13`, `Community 15`, `Community 10`, `Community 16`?",
+      "why": "High betweenness centrality (0.175) - this node is a cross-community bridge."
+    },
+    {
+      "type": "bridge_node",
+      "question": "Why does `POST()` connect `Community 2` to `Community 1`, `Community 3`, `Community 4`, `Community 5`, `Community 7`?",
+      "why": "High betweenness centrality (0.027) - this node is a cross-community bridge."
+    },
+    {
+      "type": "isolated_nodes",
+      "question": "What connects `layout.jsx` to the rest of the system?",
+      "why": "1 weakly-connected nodes found - possible documentation gaps or missing edges."
+    },
+    {
+      "type": "low_cohesion",
+      "question": "Should `Community 0` be split into smaller, more focused modules?",
+      "why": "Cohesion score 0.04 - nodes in this community are weakly interconnected."
+    },
+    {
+      "type": "low_cohesion",
+      "question": "Should `Community 1` be split into smaller, more focused modules?",
+      "why": "Cohesion score 0.1 - nodes in this community are weakly interconnected."
+    },
+    {
+      "type": "low_cohesion",
+      "question": "Should `Community 2` be split into smaller, more focused modules?",
+      "why": "Cohesion score 0.11 - nodes in this community are weakly interconnected."
+    }
+  ],
+  "labels": {
+    "0": "Community 0",
+    "1": "Community 1",
+    "2": "Community 2",
+    "3": "Community 3",
+    "4": "Community 4",
+    "5": "Community 5",
+    "6": "Community 6",
+    "7": "Community 7",
+    "8": "Community 8",
+    "9": "Community 9",
+    "10": "Community 10",
+    "11": "Community 11",
+    "12": "Community 12",
+    "13": "Community 13",
+    "14": "Community 14",
+    "15": "Community 15",
+    "16": "Community 16",
+    "17": "Community 17",
+    "18": "Community 18"
+  }
+}

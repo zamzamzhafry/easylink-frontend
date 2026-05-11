@@ -1,0 +1,21 @@
+{
+  "0": "App Pages Cluster",
+  "1": "Read API Aggregators",
+  "2": "Review and Sync Mutations",
+  "3": "Identity and Config Writes",
+  "4": "Machine Actions",
+  "5": "Machine Job Queue",
+  "6": "Dashboard Surface",
+  "7": "Scanlog Row Normalizers",
+  "8": "Attendance Surface",
+  "9": "Machine UI Surface",
+  "10": "Scanlog UI Surface",
+  "11": "Quick Summary Helpers",
+  "12": "Performance Surface",
+  "13": "Report Surface",
+  "14": "Report Drilldown Math",
+  "15": "Chart Helpers",
+  "16": "Shift Form Helpers",
+  "17": "Report Series Builders",
+  "18": "Root Layout"
+}

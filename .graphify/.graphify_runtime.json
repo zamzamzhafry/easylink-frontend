@@ -1,0 +1,83 @@
+{
+  "runtime": "typescript",
+  "version": "0.4.25",
+  "node": "C:\\Program Files\\nodejs\\node.exe",
+  "script": "C:\\Users\\TECH NEWB\\AppData\\Roaming\\npm\\node_modules\\graphifyy\\dist\\skill-runtime.js",
+  "module": "C:\\Users\\TECH NEWB\\AppData\\Roaming\\npm\\node_modules\\graphifyy\\dist\\index.js",
+  "cli": "C:\\Users\\TECH NEWB\\AppData\\Roaming\\npm\\node_modules\\graphifyy\\dist\\cli.js",
+  "paths": {
+    "root": "E:\\Project\\easylink-frontend",
+    "stateDir": "E:\\Project\\easylink-frontend\\.graphify",
+    "graph": "E:\\Project\\easylink-frontend\\.graphify\\graph.json",
+    "report": "E:\\Project\\easylink-frontend\\.graphify\\GRAPH_REPORT.md",
+    "html": "E:\\Project\\easylink-frontend\\.graphify\\graph.html",
+    "manifest": "E:\\Project\\easylink-frontend\\.graphify\\manifest.json",
+    "cost": "E:\\Project\\easylink-frontend\\.graphify\\cost.json",
+    "cacheDir": "E:\\Project\\easylink-frontend\\.graphify\\cache",
+    "transcriptsDir": "E:\\Project\\easylink-frontend\\.graphify\\transcripts",
+    "downloadsDir": "E:\\Project\\easylink-frontend\\.graphify\\transcripts\\downloads",
+    "convertedDir": "E:\\Project\\easylink-frontend\\.graphify\\converted",
+    "memoryDir": "E:\\Project\\easylink-frontend\\.graphify\\memory",
+    "wikiDir": "E:\\Project\\easylink-frontend\\.graphify\\wiki",
+    "needsUpdate": "E:\\Project\\easylink-frontend\\.graphify\\needs_update",
+    "profile": {
+      "dir": "E:\\Project\\easylink-frontend\\.graphify\\profile",
+      "projectConfig": "E:\\Project\\easylink-frontend\\.graphify\\profile\\project-config.normalized.json",
+      "ontologyProfile": "E:\\Project\\easylink-frontend\\.graphify\\profile\\ontology-profile.normalized.json",
+      "state": "E:\\Project\\easylink-frontend\\.graphify\\profile\\profile-state.json",
+      "registriesDir": "E:\\Project\\easylink-frontend\\.graphify\\profile\\registries",
+      "registryExtraction": "E:\\Project\\easylink-frontend\\.graphify\\profile\\registry-extraction.json",
+      "semanticDetection": "E:\\Project\\easylink-frontend\\.graphify\\profile\\semantic-detection.json",
+      "dataprepReport": "E:\\Project\\easylink-frontend\\.graphify\\profile\\dataprep-report.md"
+    },
+    "imageDataprep": {
+      "dir": "E:\\Project\\easylink-frontend\\.graphify\\image-dataprep",
+      "manifest": "E:\\Project\\easylink-frontend\\.graphify\\image-dataprep\\manifest.json",
+      "captionsDir": "E:\\Project\\easylink-frontend\\.graphify\\image-dataprep\\captions",
+      "routingDir": "E:\\Project\\easylink-frontend\\.graphify\\image-dataprep\\routing",
+      "batchDir": "E:\\Project\\easylink-frontend\\.graphify\\image-dataprep\\batch",
+      "importsDir": "E:\\Project\\easylink-frontend\\.graphify\\image-dataprep\\imports",
+      "assistantInstructions": "E:\\Project\\easylink-frontend\\.graphify\\image-dataprep\\assistant-instructions.md"
+    },
+    "ontologyOutput": {
+      "dir": "E:\\Project\\easylink-frontend\\.graphify\\ontology",
+      "manifest": "E:\\Project\\easylink-frontend\\.graphify\\ontology\\manifest.json",
+      "nodes": "E:\\Project\\easylink-frontend\\.graphify\\ontology\\nodes.json",
+      "aliases": "E:\\Project\\easylink-frontend\\.graphify\\ontology\\aliases.json",
+      "relations": "E:\\Project\\easylink-frontend\\.graphify\\ontology\\relations.json",
+      "sources": "E:\\Project\\easylink-frontend\\.graphify\\ontology\\sources.json",
+      "occurrences": "E:\\Project\\easylink-frontend\\.graphify\\ontology\\occurrences.json",
+      "validation": "E:\\Project\\easylink-frontend\\.graphify\\ontology\\validation.json",
+      "index": "E:\\Project\\easylink-frontend\\.graphify\\ontology\\index.json",
+      "wikiDir": "E:\\Project\\easylink-frontend\\.graphify\\ontology\\wiki"
+    },
+    "scratch": {
+      "detect": "E:\\Project\\easylink-frontend\\.graphify\\.graphify_detect.json",
+      "detectSemantic": "E:\\Project\\easylink-frontend\\.graphify\\.graphify_detect_semantic.json",
+      "ast": "E:\\Project\\easylink-frontend\\.graphify\\.graphify_ast.json",
+      "cached": "E:\\Project\\easylink-frontend\\.graphify\\.graphify_cached.json",
+      "uncached": "E:\\Project\\easylink-frontend\\.graphify\\.graphify_uncached.txt",
+      "semanticNew": "E:\\Project\\easylink-frontend\\.graphify\\.graphify_semantic_new.json",
+      "semantic": "E:\\Project\\easylink-frontend\\.graphify\\.graphify_semantic.json",
+      "extract": "E:\\Project\\easylink-frontend\\.graphify\\.graphify_extract.json",
+      "analysis": "E:\\Project\\easylink-frontend\\.graphify\\.graphify_analysis.json",
+      "labels": "E:\\Project\\easylink-frontend\\.graphify\\.graphify_labels.json",
+      "transcripts": "E:\\Project\\easylink-frontend\\.graphify\\.graphify_transcripts.json",
+      "pdfOcr": "E:\\Project\\easylink-frontend\\.graphify\\.graphify_pdf_ocr.json",
+      "incremental": "E:\\Project\\easylink-frontend\\.graphify\\.graphify_incremental.json",
+      "incrementalSemantic": "E:\\Project\\easylink-frontend\\.graphify\\.graphify_incremental_semantic.json",
+      "oldGraph": "E:\\Project\\easylink-frontend\\.graphify\\.graphify_old.json",
+      "runtime": "E:\\Project\\easylink-frontend\\.graphify\\.graphify_runtime.json",
+      "node": "E:\\Project\\easylink-frontend\\.graphify\\.graphify_node",
+      "runtimeScript": "E:\\Project\\easylink-frontend\\.graphify\\.graphify_runtime_script"
+    },
+    "legacyRootScratch": {
+      "detect": "E:\\Project\\easylink-frontend\\.graphify_detect.json",
+      "extract": "E:\\Project\\easylink-frontend\\.graphify_extract.json",
+      "analysis": "E:\\Project\\easylink-frontend\\.graphify_analysis.json",
+      "labels": "E:\\Project\\easylink-frontend\\.graphify_labels.json",
+      "incremental": "E:\\Project\\easylink-frontend\\.graphify_incremental.json",
+      "oldGraph": "E:\\Project\\easylink-frontend\\.graphify_old.json"
+    }
+  }
+}
