@@ -454,25 +454,9 @@ export default function MachinePage() {
   }, [isAdmin, isPageVisible, refreshMachineQueue]);
 
   useEffect(() => {
-    if (!currentUser || !isPageVisible) return;
-
-    let cancelled = false;
-    const poll = async () => {
-      if (cancelled) return;
-      await refreshMachineStatus();
-    };
-
-    void poll();
-    const timer = setInterval(() => {
-      void poll();
-    }, 15000);
-
-    return () => {
-      cancelled = true;
-      clearInterval(timer);
-    };
-  }, [currentUser, isPageVisible, refreshMachineStatus]);
-
+    if (!currentUser) return;
+    void refreshMachineStatus();
+  }, [currentUser, refreshMachineStatus]);
   useEffect(() => {
     if (!isAdmin || !isPageVisible || !activeMachineJobId) return;
 
