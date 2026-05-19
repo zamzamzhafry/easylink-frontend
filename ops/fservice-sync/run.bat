@@ -11,10 +11,10 @@ set PHP_PORT=9090
 set FSERVICE_HOST=localhost
 set FSERVICE_PORT=8090
 set FSERVICE_SN=Fio66208021230737
-set DB_HOST=localhost
+set DB_HOST=192.168.1.129
 set DB_PORT=3306
-set DB_USER=root
-set DB_PASS=
+set DB_USER=easylink_sync
+set DB_PASS=EasyLink2026!
 set DB_NAME=demo_easylinksdk
 
 :: Find PHP
