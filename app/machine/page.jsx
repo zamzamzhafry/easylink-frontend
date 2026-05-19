@@ -18,6 +18,7 @@ import InlineStatusPanel from '@/components/ui/inline-status-panel';
 import { getUIText } from '@/lib/localization/ui-texts';
 import { requestJson } from '@/lib/request-json';
 import { PAGE_SIZE_OPTIONS } from '@/lib/constants';
+import MachineSyncPanel from '@/components/machine/machine-sync-panel';
 
 async function parseApiResponse(res) {
   const text = await res.text();
@@ -800,6 +801,10 @@ export default function MachinePage() {
             )}
           </div>
 
+
+          {isAdmin && (
+            <MachineSyncPanel machineId={1} />
+          )}
           {isAdmin && (
             <>
               <div className="ui-card-shell p-4">
