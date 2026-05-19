@@ -33,7 +33,7 @@ if %errorlevel% neq 0 (
     set PHP=php
 )
 
-echo [1/3] Checking FService...
+echo [1/4] Checking FService...
 tasklist /FI "IMAGENAME eq FService.exe" 2>NUL | find /I "FService.exe" >NUL
 if %errorlevel% neq 0 (
     echo       Starting FService from %FSERVICE_DIR%...
@@ -45,18 +45,27 @@ if %errorlevel% neq 0 (
 )
 
 echo.
-echo [2/3] Testing bridge connection...
+echo [2/4] Testing bridge connection...
 %PHP% -r "echo @file_get_contents('http://localhost:8090/dev/info', false, stream_context_create(['http'=>['method'=>'POST','header'=>'Content-Type: application/x-www-form-urlencoded','content'=>'sn=Fio66208021230737','timeout'=>10]])) ?: 'BRIDGE NOT RESPONDING';"
 echo.
 echo.
 
-echo [3/3] Starting Control Panel web server...
+echo [3/4] Starting Control Panel web server...
+start "EasyLink PHP Server" %PHP% -S localhost:%PHP_PORT% -t "%~dp0web"
+timeout /t 2 /nobreak >nul
+
+echo [4/4] Opening browser...
+start "" "http://localhost:%PHP_PORT%"
+
 echo.
 echo ============================================
 echo   Control Panel: http://localhost:%PHP_PORT%
 echo   FService:      http://localhost:%FSERVICE_PORT%
-echo   Press Ctrl+C to stop
+echo   Press any key to stop PHP server...
 echo ============================================
 echo.
+pause
 
-%PHP% -S localhost:%PHP_PORT% -t "%~dp0web"
+:: Kill PHP server on exit
+taskkill /FI "WINDOWTITLE eq EasyLink PHP Server" /F >nul 2>&1
+echo Stopped.
