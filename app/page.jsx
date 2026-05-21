@@ -250,6 +250,9 @@ async function getStats({ auth }) {
 
 export default async function Dashboard() {
   const auth = await getAuthContextFromCookies();
+  if (!auth) {
+    redirect('/login?next=/');
+  }
   if (auth && !auth.is_admin) {
     redirect('/attendance');
   }

@@ -20,10 +20,11 @@ npm run build
 Verify production hardening before deploy:
 
 1. `AUTH_SECRET` is set to a strong value.
-2. `ALLOW_INSECURE_COOKIES` is unset or `false`.
-3. `NODE_TLS_REJECT_UNAUTHORIZED` is unset or `1`.
-4. `EASYLINK_DEFAULT_USER_PASSWORD` is set and not `1234`.
-5. DB backup completed and restore path validated.
+2. If app is served over HTTPS, keep `ALLOW_INSECURE_COOKIES` unset or `false`.
+3. If app is served over plain LAN HTTP, set `ALLOW_INSECURE_COOKIES=true` or login session cookie will be dropped by browser.
+4. `NODE_TLS_REJECT_UNAUTHORIZED` is unset or `1`.
+5. `EASYLINK_DEFAULT_USER_PASSWORD` is set and not `1234`.
+6. DB backup completed and restore path validated.
 
 Pre-deploy schema drift checks:
 
@@ -56,6 +57,16 @@ export EASYLINK_REPORTING_INTERACTION_MODE=legacy
 
 Set required runtime env values (`AUTH_SECRET`, `DB_*`, `EASYLINK_DEVICE_SN`, SDK connectivity envs).
 Use `docs/release/env-contract.md` as the authoritative matrix.
+
+Cookie transport rule:
+
+```bash
+# HTTPS reverse proxy / TLS terminator
+unset ALLOW_INSECURE_COOKIES
+
+# Plain LAN HTTP only
+export ALLOW_INSECURE_COOKIES=true
+```
 
 Ensure migration/runtime DB targets are aligned before schema operations:
 

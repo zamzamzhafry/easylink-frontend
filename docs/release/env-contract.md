@@ -35,7 +35,7 @@ Use this with Windows/Linux runbooks in `docs/release/`.
 
 | Variable | Production Rule |
 |---|---|
-| `ALLOW_INSECURE_COOKIES` | Unset or `false`. |
+| `ALLOW_INSECURE_COOKIES` | Leave unset or `false` on HTTPS. Set `true` only for plain LAN HTTP deployments that cannot terminate TLS. |
 | `NODE_TLS_REJECT_UNAUTHORIZED` | Do not set to `0` in production. |
 | `EASYLINK_DEFAULT_USER_PASSWORD` | Set strong non-default value; never `1234`. |
 
@@ -109,3 +109,4 @@ Before deploy:
 2. UAT-hold flags are set to compatibility defaults.
 3. No security-critical variable violates production rule.
 4. Runtime and script DB targets are intentionally aligned (`DB_NAME` vs `EASYLINK_DB_NAME`), or explicitly documented if different.
+5. `ALLOW_INSECURE_COOKIES=true` is used only when absolute app URL is `http://...`; HTTPS deployments must not use it.

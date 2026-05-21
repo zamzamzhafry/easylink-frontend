@@ -27,13 +27,16 @@ export default function LoginPage() {
         if (!mounted) return;
         router.replace(nextPath);
       })
-      .catch(() => {
-        // not logged in
+      .catch((error) => {
+        if (!mounted) return;
+        if (error?.status && error.status !== 401) {
+          warning(error.message || 'Unable to validate current session.', 'Session check failed');
+        }
       });
     return () => {
       mounted = false;
     };
-  }, [nextPath, router]);
+  }, [nextPath, router, warning]);
 
   const login = async (event) => {
     event.preventDefault();
@@ -49,7 +52,9 @@ export default function LoginPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ login_id: loginId.trim(), password }),
       });
+      await requestJson('/api/auth/me');
       success('Login success.', 'Authenticated');
+      router.refresh();
       router.replace(nextPath);
     } catch (error) {
       warning(error.message || 'Unable to login with provided credentials.', 'Login failed');

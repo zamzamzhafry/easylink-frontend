@@ -72,7 +72,7 @@ export async function POST(request) {
           },
         });
 
-        setAuthCookie(response, loginId, { subjectType: 'account' });
+        setAuthCookie(response, loginId, request, { subjectType: 'account' });
         return response;
       }
 
@@ -129,7 +129,7 @@ export async function POST(request) {
         },
       });
 
-      setAuthCookie(response, loginId, { subjectType: 'employee_nip' });
+      setAuthCookie(response, loginId, request, { subjectType: 'employee_nip' });
       return response;
     } finally {
       connection.release();

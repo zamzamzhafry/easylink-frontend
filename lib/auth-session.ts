@@ -619,6 +619,7 @@ export async function getAuthContextFromCookies(): Promise<AuthContext | null> {
 export function setAuthCookie(
   response: NextResponse,
   subject: string,
+  request: any = null,
   options: { subjectType?: AuthSubjectType } = {}
 ) {
   const exp = Math.floor(Date.now() / 1000) + SESSION_TTL_SECONDS;
@@ -631,23 +632,43 @@ export function setAuthCookie(
     exp,
     payload_format: 'canonical',
   });
+  const forwardedProto = String(request?.headers?.get?.('x-forwarded-proto') ?? '').trim();
+  const requestProtocol = String(request?.nextUrl?.protocol ?? '').trim().replace(/:$/, '');
+  const envForcesInsecure = process.env.ALLOW_INSECURE_COOKIES === 'true';
+  const secure = envForcesInsecure
+    ? false
+    : forwardedProto
+      ? forwardedProto === 'https'
+      : requestProtocol
+        ? requestProtocol === 'https'
+        : process.env.NODE_ENV === 'production';
   response.cookies.set({
     name: SESSION_COOKIE,
     value: token,
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production' && process.env.ALLOW_INSECURE_COOKIES !== 'true',
+    secure,
     sameSite: 'lax',
     path: '/',
     maxAge: SESSION_TTL_SECONDS,
   });
 }
 
-export function clearAuthCookie(response: NextResponse) {
+export function clearAuthCookie(response: NextResponse, request: any = null) {
+  const forwardedProto = String(request?.headers?.get?.('x-forwarded-proto') ?? '').trim();
+  const requestProtocol = String(request?.nextUrl?.protocol ?? '').trim().replace(/:$/, '');
+  const envForcesInsecure = process.env.ALLOW_INSECURE_COOKIES === 'true';
+  const secure = envForcesInsecure
+    ? false
+    : forwardedProto
+      ? forwardedProto === 'https'
+      : requestProtocol
+        ? requestProtocol === 'https'
+        : process.env.NODE_ENV === 'production';
   response.cookies.set({
     name: SESSION_COOKIE,
     value: '',
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production' && process.env.ALLOW_INSECURE_COOKIES !== 'true',
+    secure,
     sameSite: 'lax',
     path: '/',
     maxAge: 0,
