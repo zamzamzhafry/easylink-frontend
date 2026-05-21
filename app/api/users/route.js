@@ -285,174 +285,108 @@ export async function GET(request) {
   const whereSQL = whereClauses.length ? `WHERE ${whereClauses.join(' AND ')}` : '';
 
   try {
-    let rows;
-    let total;
-    let meta;
-    const baseSegments = [];
+    let allRows = [];
 
-    const tbUserJoin =
-      tbUserScope.hasTbUser && tbUserScope.hasSn && tbUserScope.sn
-        ? 'LEFT JOIN tb_user u ON u.pin = base_pin.pin AND u.sn = ?'
-        : tbUserScope.hasTbUser
-          ? 'LEFT JOIN tb_user u ON u.pin = base_pin.pin'
-          : 'LEFT JOIN (SELECT NULL AS pin, NULL AS nama, NULL AS rfid, NULL AS privilege) u ON 1 = 0';
-
-    const hasCanonicalRoleBindings = await tableExists('cs_employee_role_bindings');
-    const adminRoleJoin = hasCanonicalRoleBindings
-      ? `
-      LEFT JOIN (
-        SELECT DISTINCT employee_id
-        FROM cs_employee_role_bindings
-        WHERE role_key = 'admin'
-          AND is_active = 1
-          AND (ends_at IS NULL OR ends_at >= NOW())
-      ) admin_role ON admin_role.employee_id = employee_ref.employee_id
-    `
-      : 'LEFT JOIN (SELECT NULL AS employee_id) admin_role ON 1 = 0';
-
-    if (useCanonical) {
-      baseSegments.push(`
-        SELECT
-          ai.employee_id AS karyawan_id,
-          CONVERT(COALESCE(pin_method.method_value, k.pin, ai.login_nip) USING utf8mb4) AS pin,
-          CONVERT(COALESCE(k.nama, u.nama, ai.login_nip) USING utf8mb4) AS nama,
-          CONVERT(COALESCE(rfid_method.method_value, u.rfid) USING utf8mb4) AS rfid,
-          CONVERT(ai.login_nip USING utf8mb4) AS login_nip,
-          CASE WHEN admin_role.employee_id IS NULL THEN 0 ELSE 14 END AS privilege
-        FROM cs_employee_auth_identity ai
-        JOIN tb_karyawan k ON k.id = ai.employee_id
-        LEFT JOIN (
-          SELECT employee_id, MAX(method_value) AS method_value
-          FROM cs_employee_identification_methods
-          WHERE method_type = 'pin' AND valid_to IS NULL
-          GROUP BY employee_id
-        ) pin_method ON pin_method.employee_id = ai.employee_id
-        LEFT JOIN (
-          SELECT employee_id, MAX(method_value) AS method_value
-          FROM cs_employee_identification_methods
-          WHERE method_type = 'rfid' AND valid_to IS NULL
-          GROUP BY employee_id
-        ) rfid_method ON rfid_method.employee_id = ai.employee_id
-        LEFT JOIN (
-          SELECT
-            ai.employee_id,
-            COALESCE(pin_method.method_value, k.pin, ai.login_nip) AS pin
-          FROM cs_employee_auth_identity ai
-          JOIN tb_karyawan k ON k.id = ai.employee_id
-          LEFT JOIN (
-            SELECT employee_id, MAX(method_value) AS method_value
-            FROM cs_employee_identification_methods
-            WHERE method_type = 'pin' AND valid_to IS NULL
-            GROUP BY employee_id
-          ) pin_method ON pin_method.employee_id = ai.employee_id
-        ) base_pin ON base_pin.employee_id = ai.employee_id
-        ${tbUserJoin}
-        LEFT JOIN (
-          SELECT ai.employee_id
-          FROM cs_employee_auth_identity ai
-        ) employee_ref ON employee_ref.employee_id = ai.employee_id
-        ${adminRoleJoin}
-      `);
+    // ── Source 1: tb_karyawan_auth (employee login accounts) ──
+    if (await tableExists('tb_karyawan_auth')) {
+      const [empAuthRows] = await pool.query(
+        `SELECT
+           auth.karyawan_id AS karyawan_id,
+           COALESCE(NULLIF(k.pin, ''), auth.nip) AS pin,
+           COALESCE(k.nama, auth.nip) AS nama,
+           '' AS rfid,
+           auth.nip AS login_nip,
+           0 AS privilege
+         FROM tb_karyawan_auth auth
+         JOIN tb_karyawan k ON k.id = auth.karyawan_id
+         WHERE auth.is_active = 1`
+      );
+      if (Array.isArray(empAuthRows)) allRows.push(...empAuthRows);
     }
 
-    if (hasEmployeeAuth) {
-      baseSegments.push(`
-        SELECT
-          auth.karyawan_id AS karyawan_id,
-          CONVERT(COALESCE(NULLIF(k.pin, ''), auth.nip) USING utf8mb4) AS pin,
-          CONVERT(COALESCE(k.nama, auth.nip) USING utf8mb4) AS nama,
-          CONVERT(u.rfid USING utf8mb4) AS rfid,
-          CONVERT(auth.nip USING utf8mb4) AS login_nip,
-          CASE WHEN admin_role.employee_id IS NULL THEN 0 ELSE 14 END AS privilege
-        FROM tb_karyawan_auth auth
-        JOIN tb_karyawan k ON k.id = auth.karyawan_id
-        ${useCanonical ? 'LEFT JOIN cs_employee_auth_identity ai ON ai.employee_id = auth.karyawan_id' : ''}
-        LEFT JOIN (
-          SELECT auth.karyawan_id AS employee_id, COALESCE(NULLIF(k.pin, ''), auth.nip) AS pin
-          FROM tb_karyawan_auth auth
-          JOIN tb_karyawan k ON k.id = auth.karyawan_id
-        ) base_pin ON base_pin.employee_id = auth.karyawan_id
-        ${tbUserJoin}
-        LEFT JOIN (
-          SELECT auth.karyawan_id AS employee_id
-          FROM tb_karyawan_auth auth
-        ) employee_ref ON employee_ref.employee_id = auth.karyawan_id
-        ${adminRoleJoin}
-        WHERE auth.is_active = 1
-          AND ${useCanonical ? 'ai.employee_id IS NULL' : '1 = 1'}
-      `);
+    // ── Source 2: auth_accounts (standalone admin/hr/scheduler accounts) ──
+    if (await tableExists('auth_accounts')) {
+      const [aaRows] = await pool.query(
+        `SELECT
+           NULL AS karyawan_id,
+           aa.login_id AS pin,
+           COALESCE(aa.display_name, aa.login_id) AS nama,
+           NULL AS rfid,
+           aa.login_id AS login_nip,
+           CASE aa.role_key
+             WHEN 'admin' THEN 14
+             WHEN 'hr' THEN 3
+             WHEN 'scheduler' THEN 2
+             ELSE 1
+           END AS privilege
+         FROM auth_accounts aa
+         WHERE aa.is_active = 1`
+      );
+      if (Array.isArray(aaRows)) allRows.push(...aaRows);
     }
 
-    if (tbUserScope.hasTbUser) {
-      const legacyWhere = [];
-      if (tbUserScope.hasSn && tbUserScope.sn) legacyWhere.push('u.sn = ?');
-      if (useCanonical) legacyWhere.push('ai.employee_id IS NULL');
-      if (hasEmployeeAuth) legacyWhere.push('(auth.karyawan_id IS NULL OR k.id IS NULL)');
-      baseSegments.push(`
-        SELECT
-          k.id AS karyawan_id,
-          CONVERT(u.pin USING utf8mb4) AS pin,
-          CONVERT(u.nama USING utf8mb4) AS nama,
-          CONVERT(u.rfid USING utf8mb4) AS rfid,
-          CAST(NULL AS CHAR(1)) AS login_nip,
-          u.privilege
-        FROM tb_user u
-        LEFT JOIN tb_karyawan k ON k.pin = u.pin
-        ${useCanonical ? 'LEFT JOIN cs_employee_auth_identity ai ON ai.employee_id = k.id' : ''}
-        ${hasEmployeeAuth ? 'LEFT JOIN tb_karyawan_auth auth ON auth.karyawan_id = k.id AND auth.is_active = 1' : ''}
-        ${legacyWhere.length ? `WHERE ${legacyWhere.join(' AND ')}` : ''}
-      `);
-    }
-
-    if (hasStandaloneAccounts) {
-      baseSegments.push(`
-        SELECT
-          NULL AS karyawan_id,
-          CONVERT(aa.login_id USING utf8mb4) AS pin,
-          CONVERT(COALESCE(aa.display_name, aa.login_id) USING utf8mb4) AS nama,
-          CAST(NULL AS CHAR(1)) AS rfid,
-          CONVERT(aa.login_id USING utf8mb4) AS login_nip,
-          CASE aa.role_key
-            WHEN 'admin' THEN 14
-            WHEN 'hr' THEN 3
-            WHEN 'scheduler' THEN 2
-            ELSE 1
-          END AS privilege
-        FROM auth_accounts aa
-        WHERE aa.is_active = 1
-      `);
-    }
-
-    const baseParams = [];
-    const tbUserJoinCount =
-      (useCanonical ? 1 : 0) + (hasEmployeeAuth ? 1 : 0);
-    if (tbUserScope.hasTbUser && tbUserScope.hasSn && tbUserScope.sn) {
-      for (let index = 0; index < tbUserJoinCount; index += 1) {
-        baseParams.push(tbUserScope.sn);
+    // ── Source 3: tb_user (legacy device-mirror users not already covered) ──
+    if (await tableExists('tb_user')) {
+      const coveredPins = new Set(allRows.map((r) => String(r.pin)));
+      const tbUserHasSn = await columnExists('tb_user', 'sn');
+      const defaultSn = getDefaultTbUserSn();
+      const snFilter = tbUserHasSn && defaultSn ? ' WHERE u.sn = ?' : '';
+      const snParams = tbUserHasSn && defaultSn ? [defaultSn] : [];
+      const [legacyRows] = await pool.query(
+        `SELECT
+           k.id AS karyawan_id,
+           u.pin,
+           u.nama,
+           u.rfid,
+           NULL AS login_nip,
+           u.privilege
+         FROM tb_user u
+         LEFT JOIN tb_karyawan k ON k.pin = u.pin${snFilter}`,
+        snParams
+      );
+      if (Array.isArray(legacyRows)) {
+        for (const row of legacyRows) {
+          if (!coveredPins.has(String(row.pin))) {
+            allRows.push(row);
+            coveredPins.add(String(row.pin));
+          }
+        }
       }
-      baseParams.push(tbUserScope.sn);
     }
 
-    const canonicalBaseSQL = `
-      FROM (
-        ${baseSegments.join('\nUNION ALL\n')}
-      ) base
-    `;
+    // ── Normalize and deduplicate by pin ──
+    const seen = new Map();
+    for (const row of allRows) {
+      const pin = String(row.pin || '').trim();
+      if (!pin) continue;
+      if (!seen.has(pin)) seen.set(pin, row);
+    }
+    let merged = [...seen.values()];
 
-    const [countRows] = await pool.query(
-      `SELECT COUNT(*) AS total ${canonicalBaseSQL} ${whereSQL}`,
-      [...baseParams, ...params]
-    );
-    total = Number(countRows?.[0]?.total ?? 0);
-    meta = computePaginationMeta({ total, pageInput, limit });
+    // ── Search filter ──
+    if (search) {
+      const s = search.toLowerCase();
+      merged = merged.filter((r) =>
+        (r.pin && String(r.pin).toLowerCase().includes(s)) ||
+        (r.nama && String(r.nama).toLowerCase().includes(s)) ||
+        (r.rfid && String(r.rfid).toLowerCase().includes(s)) ||
+        (r.login_nip && String(r.login_nip).toLowerCase().includes(s))
+      );
+    }
 
-    [rows] = await pool.query(
-      `SELECT base.pin, base.nama, base.rfid, base.privilege, base.karyawan_id
-       ${canonicalBaseSQL} ${whereSQL}
-       ORDER BY base.nama, base.pin
-       LIMIT ? OFFSET ?`,
-      [...baseParams, ...params, meta.limit, meta.offset]
-    );
+    // ── Sort ──
+    merged.sort((a, b) => {
+      const na = String(a.nama || '').toLowerCase();
+      const nb = String(b.nama || '').toLowerCase();
+      if (na < nb) return -1;
+      if (na > nb) return 1;
+      return String(a.pin || '').localeCompare(String(b.pin || ''));
+    });
+
+    // ── Pagination ──
+    const total = merged.length;
+    const meta = computePaginationMeta({ total, pageInput, limit });
+    const rows = merged.slice(meta.offset, meta.offset + meta.limit);
 
     const pins = rows.map((row) => String(row.pin)).filter(Boolean);
 
