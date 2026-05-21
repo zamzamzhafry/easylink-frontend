@@ -314,10 +314,10 @@ export async function GET(request) {
       baseSegments.push(`
         SELECT
           ai.employee_id AS karyawan_id,
-          COALESCE(pin_method.method_value, k.pin, ai.login_nip) COLLATE utf8mb4_unicode_ci AS pin,
-          COALESCE(k.nama, u.nama, ai.login_nip) COLLATE utf8mb4_unicode_ci AS nama,
-          COALESCE(rfid_method.method_value, u.rfid) COLLATE utf8mb4_unicode_ci AS rfid,
-          ai.login_nip COLLATE utf8mb4_unicode_ci AS login_nip,
+          CONVERT(COALESCE(pin_method.method_value, k.pin, ai.login_nip) USING utf8mb4) AS pin,
+          CONVERT(COALESCE(k.nama, u.nama, ai.login_nip) USING utf8mb4) AS nama,
+          CONVERT(COALESCE(rfid_method.method_value, u.rfid) USING utf8mb4) AS rfid,
+          CONVERT(ai.login_nip USING utf8mb4) AS login_nip,
           CASE WHEN admin_role.employee_id IS NULL THEN 0 ELSE 14 END AS privilege
         FROM cs_employee_auth_identity ai
         JOIN tb_karyawan k ON k.id = ai.employee_id
@@ -359,10 +359,10 @@ export async function GET(request) {
       baseSegments.push(`
         SELECT
           auth.karyawan_id AS karyawan_id,
-          COALESCE(NULLIF(k.pin, ''), auth.nip) COLLATE utf8mb4_unicode_ci AS pin,
-          COALESCE(k.nama, auth.nip) COLLATE utf8mb4_unicode_ci AS nama,
-          u.rfid COLLATE utf8mb4_unicode_ci AS rfid,
-          auth.nip COLLATE utf8mb4_unicode_ci AS login_nip,
+          CONVERT(COALESCE(NULLIF(k.pin, ''), auth.nip) USING utf8mb4) AS pin,
+          CONVERT(COALESCE(k.nama, auth.nip) USING utf8mb4) AS nama,
+          CONVERT(u.rfid USING utf8mb4) AS rfid,
+          CONVERT(auth.nip USING utf8mb4) AS login_nip,
           CASE WHEN admin_role.employee_id IS NULL THEN 0 ELSE 14 END AS privilege
         FROM tb_karyawan_auth auth
         JOIN tb_karyawan k ON k.id = auth.karyawan_id
@@ -391,10 +391,10 @@ export async function GET(request) {
       baseSegments.push(`
         SELECT
           k.id AS karyawan_id,
-          u.pin COLLATE utf8mb4_unicode_ci AS pin,
-          u.nama COLLATE utf8mb4_unicode_ci AS nama,
-          u.rfid COLLATE utf8mb4_unicode_ci AS rfid,
-          CAST(NULL AS CHAR) COLLATE utf8mb4_unicode_ci AS login_nip,
+          CONVERT(u.pin USING utf8mb4) AS pin,
+          CONVERT(u.nama USING utf8mb4) AS nama,
+          CONVERT(u.rfid USING utf8mb4) AS rfid,
+          CAST(NULL AS CHAR(1)) AS login_nip,
           u.privilege
         FROM tb_user u
         LEFT JOIN tb_karyawan k ON k.pin = u.pin
@@ -408,10 +408,10 @@ export async function GET(request) {
       baseSegments.push(`
         SELECT
           NULL AS karyawan_id,
-          aa.login_id COLLATE utf8mb4_unicode_ci AS pin,
-          COALESCE(aa.display_name, aa.login_id) COLLATE utf8mb4_unicode_ci AS nama,
-          CAST(NULL AS CHAR) COLLATE utf8mb4_unicode_ci AS rfid,
-          aa.login_id COLLATE utf8mb4_unicode_ci AS login_nip,
+          CONVERT(aa.login_id USING utf8mb4) AS pin,
+          CONVERT(COALESCE(aa.display_name, aa.login_id) USING utf8mb4) AS nama,
+          CAST(NULL AS CHAR(1)) AS rfid,
+          CONVERT(aa.login_id USING utf8mb4) AS login_nip,
           CASE aa.role_key
             WHEN 'admin' THEN 14
             WHEN 'hr' THEN 3
