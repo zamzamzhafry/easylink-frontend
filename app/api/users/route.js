@@ -297,7 +297,9 @@ export async function GET(request) {
           ? 'LEFT JOIN tb_user u ON u.pin = base_pin.pin'
           : 'LEFT JOIN (SELECT NULL AS pin, NULL AS nama, NULL AS rfid, NULL AS privilege) u ON 1 = 0';
 
-    const adminRoleJoin = `
+    const hasCanonicalRoleBindings = await tableExists('cs_employee_role_bindings');
+    const adminRoleJoin = hasCanonicalRoleBindings
+      ? `
       LEFT JOIN (
         SELECT DISTINCT employee_id
         FROM cs_employee_role_bindings
@@ -305,7 +307,8 @@ export async function GET(request) {
           AND is_active = 1
           AND (ends_at IS NULL OR ends_at >= NOW())
       ) admin_role ON admin_role.employee_id = employee_ref.employee_id
-    `;
+    `
+      : 'LEFT JOIN (SELECT NULL AS employee_id) admin_role ON 1 = 0';
 
     if (useCanonical) {
       baseSegments.push(`
@@ -363,7 +366,7 @@ export async function GET(request) {
           CASE WHEN admin_role.employee_id IS NULL THEN 0 ELSE 14 END AS privilege
         FROM tb_karyawan_auth auth
         JOIN tb_karyawan k ON k.id = auth.karyawan_id
-        LEFT JOIN cs_employee_auth_identity ai ON ai.employee_id = auth.karyawan_id
+        ${useCanonical ? 'LEFT JOIN cs_employee_auth_identity ai ON ai.employee_id = auth.karyawan_id' : ''}
         LEFT JOIN (
           SELECT auth.karyawan_id AS employee_id, COALESCE(NULLIF(k.pin, ''), auth.nip) AS pin
           FROM tb_karyawan_auth auth
