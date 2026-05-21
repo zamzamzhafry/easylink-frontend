@@ -937,10 +937,8 @@ export async function DELETE(request) {
           : null;
     const tbUserHasSn = await columnExists('tb_user', 'sn');
     const [legacyRows] = await connection.query(
-      tbUserHasSn && tbUserSn
-        ? 'SELECT pin, sn FROM tb_user WHERE pin = ? AND sn = ? LIMIT 1'
-        : 'SELECT pin FROM tb_user WHERE pin = ? LIMIT 1',
-      tbUserHasSn && tbUserSn ? [pin, tbUserSn] : [pin]
+      'SELECT pin FROM tb_user WHERE pin = ? LIMIT 1',
+      [pin]
     );
 
     if (!employeeId && (!Array.isArray(legacyRows) || legacyRows.length === 0)) {
@@ -968,18 +966,7 @@ export async function DELETE(request) {
     }
 
     await connection.query('DELETE FROM tb_user_group_access WHERE pin = ?', [pin]);
-    if (tbUserHasSn && !tbUserSn && Array.isArray(legacyRows) && legacyRows.length > 0) {
-      await connection.rollback();
-      return NextResponse.json(
-        { ok: false, error: 'tb_user requires SN. Set EASYLINK_DEVICE_SN or send body.sn.' },
-        { status: 400 }
-      );
-    }
-    if (tbUserHasSn && tbUserSn) {
-      await connection.query('DELETE FROM tb_user WHERE pin = ? AND sn = ?', [pin, tbUserSn]);
-    } else {
-      await connection.query('DELETE FROM tb_user WHERE pin = ?', [pin]);
-    }
+    await connection.query('DELETE FROM tb_user WHERE pin = ?', [pin]);
 
     await connection.commit();
     return NextResponse.json({ ok: true });
