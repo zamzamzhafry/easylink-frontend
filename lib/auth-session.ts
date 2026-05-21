@@ -505,6 +505,28 @@ export async function createAuthContextByNip(
           : 'viewer';
         groups = buildScopedGroupAccess((groupRows as AccountGroupScopeRow[]) ?? [], roleKey);
       }
+
+      // Fallback: if no groups from roles, check tb_user_group_access
+      if (groups.length === 0 && (await hasTable('tb_user_group_access'))) {
+        const userPin = user.pin || user.nip;
+        if (userPin) {
+          const [ugaRows] = await connection.query(
+            `SELECT uga.group_id, g.nama_group, uga.can_schedule, uga.can_dashboard, uga.is_leader
+             FROM tb_user_group_access uga
+             LEFT JOIN tb_group g ON g.id = uga.group_id
+             WHERE uga.pin = ? AND uga.is_approved = 1`,
+            [userPin]
+          );
+          const ugaList = Array.isArray(ugaRows) ? (ugaRows as GroupAccessRow[]) : [];
+          groups = ugaList.map((row) => ({
+            group_id: Number(row.group_id),
+            nama_group: row.nama_group || null,
+            can_schedule: normalizeBoolean(row.can_schedule),
+            can_dashboard: normalizeBoolean(row.can_dashboard),
+            is_leader: normalizeBoolean(row.is_leader),
+          }));
+        }
+      }
     }
 
     return {
@@ -532,6 +554,8 @@ export async function createAuthContextByNip(
 
 export async function createAuthContextByPin(pin: string): Promise<AuthContext | null> {
   recordLegacyAuthFallbackHit();
+  console.warn('[auth-session] Legacy PIN fallback used for subject:', pin);
+
   const [userRows] = await pool.query(
     `SELECT pin, nama, privilege
      FROM tb_user
@@ -542,6 +566,19 @@ export async function createAuthContextByPin(pin: string): Promise<AuthContext |
   const user = (Array.isArray(userRows) ? userRows[0] : null) as UserRow | null;
 
   if (!user) return null;
+
+  // Check if employee is still active (guard against stale privilege escalation)
+  if (await hasTable('tb_karyawan')) {
+    const [empRows] = await pool.query(
+      'SELECT isDeleted FROM tb_karyawan WHERE pin = ? LIMIT 1',
+      [pin]
+    );
+    const emp = Array.isArray(empRows) ? empRows[0] as any : null;
+    if (emp && Number(emp.isDeleted) === 1) {
+      console.warn('[auth-session] PIN fallback blocked: employee deleted, pin:', pin);
+      return null;
+    }
+  }
 
   const privilege = Number(user.privilege ?? 0) || 0;
   const isAdmin = privilege >= 4;
@@ -602,10 +639,19 @@ export async function getAuthContextFromCookies(): Promise<AuthContext | null> {
   const payload = decodeSession(token);
   if (!payload) return null;
 
+  // Direct dispatch when subject encodes type prefix
   if (payload.subject.startsWith('account:')) {
     return createAuthContextByLoginId(payload.subject.slice('account:'.length));
   }
+  if (payload.subject.startsWith('nip:')) {
+    return createAuthContextByNip(payload.subject.slice('nip:'.length));
+  }
+  if (payload.subject.startsWith('pin:')) {
+    if (!LEGACY_PIN_FALLBACK_ENABLED) return null;
+    return createAuthContextByPin(payload.subject.slice('pin:'.length));
+  }
 
+  // Legacy waterfall for sessions without type prefix
   const accountContext = await createAuthContextByLoginId(payload.subject);
   if (accountContext) return accountContext;
 
@@ -625,7 +671,13 @@ export function setAuthCookie(
   const exp = Math.floor(Date.now() / 1000) + SESSION_TTL_SECONDS;
   const subjectType = options.subjectType ?? 'account';
   const encodedSubject =
-    subjectType === 'account' ? `account:${String(subject ?? '').trim()}` : String(subject ?? '');
+    subjectType === 'account'
+      ? `account:${String(subject ?? '').trim()}`
+      : subjectType === 'employee_nip'
+        ? `nip:${String(subject ?? '').trim()}`
+        : subjectType === 'legacy_pin'
+          ? `pin:${String(subject ?? '').trim()}`
+          : String(subject ?? '');
 
   const token = encodeSession({
     subject: encodedSubject,
@@ -692,6 +744,16 @@ export function isAllowedGroup(
   if (!group) return false;
   if (capability === 'leader') return group.is_leader;
   return capability === 'schedule' ? group.can_schedule : group.can_dashboard;
+}
+
+
+export function getRoleDisplayLabel(auth: AuthContext): string {
+  if (auth.is_admin) return 'Admin';
+  if (auth.is_hr) return 'HR';
+  if (auth.role_key === 'scheduler' || auth.is_leader) return 'Group Leader';
+  if (auth.role_key === 'viewer') return 'Viewer';
+  if (auth.can_schedule || auth.can_dashboard) return 'Member';
+  return 'Member';
 }
 
 export function getAllowedGroupIds(
