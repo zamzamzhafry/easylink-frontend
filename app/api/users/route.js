@@ -590,13 +590,7 @@ export async function POST(request) {
     });
 
     const tbUserHasSn = await columnExists('tb_user', 'sn');
-    if (tbUserHasSn && !tbUserSn) {
-      await connection.rollback();
-      return NextResponse.json(
-        { ok: false, error: 'tb_user requires SN. Set EASYLINK_DEVICE_SN or send body.sn.' },
-        { status: 400 }
-      );
-    }
+
     if (tbUserHasSn) {
       await connection.query(
         `INSERT INTO tb_user (pin, sn, nama, pwd, rfid, privilege)
