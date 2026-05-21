@@ -911,6 +911,7 @@ export async function DELETE(request) {
   }
 
   const pin = normalizeIdentifier(body.pin);
+  const tbUserSn = normalizeIdentifier(body.sn) || getDefaultTbUserSn();
   if (!pin) return NextResponse.json({ ok: false, error: 'PIN is required' }, { status: 400 });
 
   // Protect deleting yourself
