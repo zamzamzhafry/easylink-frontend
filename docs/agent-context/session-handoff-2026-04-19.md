@@ -1,5 +1,9 @@
 # Session Handoff - April 19, 2026
 
+**Status**: Historical  
+**Canonical context**: `docs/CONTEXT.md`  
+**Reason**: Closed snapshot for April 2026 summary/export work. Keep for history, not as current planning truth.
+
 ## Scope Completed
 
 - Aligned schedule + attendance quick summaries to use compact date headers (`DD + short day name`) instead of raw long date columns.

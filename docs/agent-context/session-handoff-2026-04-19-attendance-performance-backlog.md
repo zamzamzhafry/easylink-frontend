@@ -1,5 +1,9 @@
 # Session Handoff - Attendance/Performance Planning Backlog
 
+**Status**: Stale/Superseded  
+**Canonical context**: `docs/CONTEXT.md`  
+**Reason**: Earlier planning backlog. Current auth and repo context now lives in canonical docs and current ADR/review set.
+
 ## Status
 
 This is a planning backlog, not an implementation spec.

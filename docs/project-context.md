@@ -1,5 +1,9 @@
 # Project Context (for Human + AI Handoff)
 
+**Status**: Reference  
+**Canonical replacement**: `docs/CONTEXT.md`  
+**Reason**: Detailed architectural background remains useful, but `docs/CONTEXT.md` is now primary compact entrypoint.
+
 ## 1) What this app is
 
 EasyLink attendance management app built with **Next.js App Router** and **MySQL**.

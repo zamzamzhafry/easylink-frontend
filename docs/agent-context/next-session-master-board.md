@@ -1,5 +1,9 @@
 # Next Session Master Board
 
+**Status**: Stale/Superseded  
+**Canonical replacement**: `docs/CONTEXT.md`  
+**Reason**: This board reflects April 2026 planning/status truth and is no longer canonical for current auth-hardening and repo-wide context.
+
 Last updated: 2026-04-19
 
 ## Canonical Sources

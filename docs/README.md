@@ -2,6 +2,12 @@
 
 This folder is the handoff context for future contributors and AI agents.
 
+## Start Here
+
+- [`CONTEXT.md`](./CONTEXT.md)
+  - Canonical compact context spine for future contributors and AI agents
+  - Current source of truth for repo-wide context, active focus, and stale-doc rules
+
 ## Core Docs
 
 - [`project-context.md`](./project-context.md)
@@ -9,6 +15,14 @@ This folder is the handoff context for future contributors and AI agents.
   - How request flow works (UI -> API -> DB/SDK)
   - Auth and authorization model
   - Environment configuration notes
+- [`auth-domain-glossary.md`](./auth-domain-glossary.md)
+  - Shared terminology for auth identity lanes, canonical roles, capabilities, scope, elevation, and hardening
+- [`adr/0001-auth-identity-resolution-and-capability-model.md`](./adr/0001-auth-identity-resolution-and-capability-model.md)
+  - Accepted auth architecture direction for identity resolution, capability-driven authorization, and controlled role mutation
+- [`auth-hardening-execution-plan.md`](./auth-hardening-execution-plan.md)
+  - Staged execution plan for auth hardening after the `HRD01` elevation incident
+- [`hrd01-auth-elevation-hardening-review-2026-05-22.md`](./hrd01-auth-elevation-hardening-review-2026-05-22.md)
+  - Incident-driven review of `HRD01` SQL elevation behavior, risks, and hardening recommendations
 - [`app-current-state-graph.md`](./app-current-state-graph.md)
   - Mermaid graph map of current UI routes, API topology, auth, data flows, machine/scanlog, ops recovery, and release gates
 - [`graphify-app-direction.md`](./graphify-app-direction.md)
@@ -42,7 +56,7 @@ This folder is the handoff context for future contributors and AI agents.
   - Server-machine blueprint for PHP-first SDK pulls, loose internal bridge settings, and Task Scheduler job mapping
   - Includes the exact endpoint family observed in `E:\Project\sdk` and an Express fallback path
 - [`agent-context/session-handoff-2026-04-19.md`](./agent-context/session-handoff-2026-04-19.md)
-  - Compact handoff summary of schedule/attendance export + quick-summary refactor session
+  - Historical April 2026 handoff for schedule/attendance export + quick-summary refactor session
   - Includes verification status and bulk Excel benchmark snapshot
 - [`agent-context/session-handoff-2026-04-19-relocate-export-scope.md`](./agent-context/session-handoff-2026-04-19-relocate-export-scope.md)
   - Follow-up handoff for relocating quick-summary export scope controls to export actions area
@@ -54,9 +68,13 @@ This folder is the handoff context for future contributors and AI agents.
 - [`agent-context/session-handoff-2026-04-19-machine-connection-checker.md`](./agent-context/session-handoff-2026-04-19-machine-connection-checker.md)
   - Role-aware machine checker behavior, polling cadence, and result rendering rules
 - [`agent-context/session-handoff-2026-04-19-attendance-performance-backlog.md`](./agent-context/session-handoff-2026-04-19-attendance-performance-backlog.md)
-  - Pending planning backlog distilled from the attendance/performance thread
+  - Stale planning backlog retained for history/reference only
 - [`agent-context/next-session-master-board.md`](./agent-context/next-session-master-board.md)
-  - Canonical next-session status matrix and execution gates
+  - Stale/superseded April status matrix retained for historical reference only
+- [`agent-context/session-handoff-2026-05-12-network-vm-landing.md`](./agent-context/session-handoff-2026-05-12-network-vm-landing.md)
+  - Current network-scope, refresh-model, VM deployment, and landing-page direction
+- [`release/vm-apache-landing-page.md`](./release/vm-apache-landing-page.md)
+  - Apache/PHP landing hub contract for private multi-app hosting
 
 ## Release Ops Docs
 
@@ -89,3 +107,4 @@ Read more:
 2. Follow all rules in `agent-restrictions.md`.
 3. If touching attendance/scanlog queries, align with `roadmap-n-plus-one-normalization.md` and scanlog docs.
 4. Validate with `npm run typecheck` and `npm run build` before finishing.
+5. If touching app entry/discovery UX, read `AGENTS.md` and `.codex/skills/ui-ux-pro-max/SKILL.md`.

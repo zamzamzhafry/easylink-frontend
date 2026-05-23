@@ -1,5 +1,10 @@
 # Session Handoff - Machine Role Elevation Explanation
 
+**Status**: Reference  
+**Canonical context**: `docs/CONTEXT.md`  
+**Current auth anchor docs**: `docs/auth-domain-glossary.md`, `docs/adr/0001-auth-identity-resolution-and-capability-model.md`, `docs/hrd01-auth-elevation-hardening-review-2026-05-22.md`  
+**Reason**: Useful background on legacy/canonical mapping, but no longer primary truth by itself.
+
 ## Status
 
 This note captures the current role-elevation rules used by the auth/session layer and why some legacy flags still map into broader canonical roles.
