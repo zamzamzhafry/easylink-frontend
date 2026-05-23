@@ -11,6 +11,7 @@ import {
   isAllowedGroup,
   unauthorizedResponse,
 } from '@/lib/auth-session';
+import { canAccessScheduleView, canManageSchedule } from '@/lib/authz/authorization-adapter';
 
 function invalid(message) {
   return NextResponse.json({ ok: false, error: message }, { status: 400 });
@@ -20,24 +21,24 @@ function buildInPlaceholders(values) {
   return values.map(() => '?').join(',');
 }
 
-// View-only: admin OR can_schedule (leaders + schedule members)
+// View-only: admin, leader, or employee group schedule scope
 async function ensureScheduleView() {
   const auth = await getAuthContextFromCookies();
   if (!auth) return { error: unauthorizedResponse('Login required.') };
-  if (!auth.is_admin && !auth.can_schedule) {
+  if (!canAccessScheduleView(auth)) {
     return { error: forbiddenResponse('You do not have schedule permission.') };
   }
   return {
     auth,
-    allowedGroupIds: getAllowedGroupIds(auth, 'schedule'),
+    allowedGroupIds: getAllowedGroupIds(auth, auth.is_admin || auth.can_schedule ? 'schedule' : 'dashboard'),
   };
 }
 
-// Edit: admin OR group leader only
+// Edit: admin OR leader schedule scope only
 async function ensureScheduleEdit() {
   const auth = await getAuthContextFromCookies();
   if (!auth) return { error: unauthorizedResponse('Login required.') };
-  if (!auth.is_admin && !auth.is_leader) {
+  if (!canManageSchedule(auth)) {
     return { error: forbiddenResponse('Only group leaders and admins can edit schedules.') };
   }
   return {
@@ -151,7 +152,7 @@ export async function GET(req) {
   let scanQuery = `
     SELECT
       k.id AS karyawan_id,
-      DATE_FORMAT(DATE(sl.scan_date), '%Y-%m-%d') AS tanggal,
+      DATE(sl.scan_date) AS tanggal,
       COUNT(*) AS scan_count
     FROM tb_scanlog sl
     JOIN tb_karyawan k ON k.pin = sl.pin

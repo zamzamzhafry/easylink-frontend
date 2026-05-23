@@ -3,13 +3,27 @@ import type { AuthContext } from '@/lib/auth-session';
 export type NavAuthRequirement = 'all' | 'member' | 'schedule' | 'dashboard' | 'admin';
 export type AttendanceScope = 'admin' | 'leader' | 'employee' | 'none';
 
+export function canAccessScheduleView(auth: AuthContext | null): boolean {
+  return Boolean(
+    auth &&
+      (auth.is_admin ||
+        auth.can_schedule ||
+        auth.can_dashboard ||
+        auth.canonical_roles.includes('employee'))
+  );
+}
+
+export function canManageSchedule(auth: AuthContext | null): boolean {
+  return Boolean(auth && (auth.is_admin || auth.is_leader || auth.can_schedule));
+}
+
 export function canSeeNavItem(auth: AuthContext | null, requirement: NavAuthRequirement): boolean {
   if (!auth) return requirement === 'all';
   if (auth.is_admin) return true;
 
   if (requirement === 'all') return true;
   if (requirement === 'member') return Boolean(auth.can_schedule || auth.can_dashboard);
-  if (requirement === 'schedule') return Boolean(auth.can_schedule);
+  if (requirement === 'schedule') return canAccessScheduleView(auth);
   if (requirement === 'dashboard') return Boolean(auth.can_dashboard);
 
   return false;

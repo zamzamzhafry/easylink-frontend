@@ -23,6 +23,10 @@ import { requestJson } from '@/lib/request-json';
 import { PAGE_SIZE_OPTIONS } from '@/lib/constants';
 import useAuthSession from '@/hooks/use-auth-session';
 import {
+  canAccessAttendanceReviewQueue,
+  canManageSchedule,
+} from '@/lib/authz/authorization-adapter';
+import {
   addDays,
   compactDateDayLabel,
   employeeScheduleMetrics,
@@ -41,13 +45,15 @@ import {
 } from '@/lib/schedule-helpers';
 import { sanitizeExcelSheetName } from '@/lib/quick-summaries-export';
 
+
 const TABS = [
-  { key: 'plan', label: 'Monthly Plan' },
-  { key: 'punches', label: 'Punch Shortcut' },
-  { key: 'quick_summaries', label: 'Quick Summaries' },
-  { key: 'import', label: 'Import / Check' },
-  { key: 'summary', label: 'Employee Metrics' },
+  { key: 'plan', label: 'Monthly Plan', requiresManage: false },
+  { key: 'punches', label: 'Punch Shortcut', requiresManage: false },
+  { key: 'quick_summaries', label: 'Quick Summaries', requiresManage: false },
+  { key: 'import', label: 'Import / Check', requiresManage: true },
+  { key: 'summary', label: 'Employee Metrics', requiresManage: false },
 ];
+
 
 function excelCol(index) {
   let n = index;
@@ -228,12 +234,23 @@ export default function SchedulePage() {
     loadQuickSummaries();
   }, [activeTab, loadQuickSummaries]);
 
-  // Fetch current user to gate edit button
-  const canEdit = currentUser?.is_admin || currentUser?.is_leader;
+  const canEdit = canManageSchedule(currentUser);
+  const canAccessReviewQueue = canAccessAttendanceReviewQueue(currentUser);
+  const visibleTabs = useMemo(
+    () => TABS.filter((tab) => !tab.requiresManage || canEdit),
+    [canEdit]
+  );
 
   useEffect(() => {
     if (!canEdit) setEditMode(false);
   }, [canEdit]);
+
+  useEffect(() => {
+    if (!visibleTabs.some((tab) => tab.key === activeTab)) {
+      setActiveTab('plan');
+    }
+  }, [activeTab, visibleTabs]);
+
 
   useEffect(() => {
     const year = new Date(from).getFullYear();
@@ -721,12 +738,14 @@ export default function SchedulePage() {
           >
             <Printer className="h-4 w-4" /> Print / PDF
           </button>
-          <Link
-            href="/attendance/review"
-            className="flex items-center gap-2 rounded-xl border border-sky-500/30 bg-sky-500/10 px-4 py-2.5 text-sm text-sky-300 transition-colors hover:bg-sky-500/20"
-          >
-            Review Punches Shortcut
-          </Link>
+          {canAccessReviewQueue && (
+            <Link
+              href="/attendance/review"
+              className="flex items-center gap-2 rounded-xl border border-sky-500/30 bg-sky-500/10 px-4 py-2.5 text-sm text-sky-300 transition-colors hover:bg-sky-500/20"
+            >
+              Review Punches Shortcut
+            </Link>
+          )}
           {editMode && canEdit ? (
             <>
               <button
@@ -809,7 +828,7 @@ export default function SchedulePage() {
       </div>
 
       <div className="flex flex-wrap gap-2 rounded-xl border border-slate-800 bg-slate-900 p-2">
-        {TABS.map((tab) => (
+        {visibleTabs.map((tab) => (
           <button
             key={tab.key}
             type="button"
