@@ -79,6 +79,173 @@ function createCumulativeSummaryTemplate() {
   };
 }
 
+function createInteractiveSummary() {
+  return {
+    on_time: 0,
+    late: 0,
+    early_leave: 0,
+    anomaly: 0,
+  };
+}
+
+function categorizeAttendanceEntry(entry) {
+  const flags = Array.isArray(entry?.flags) ? entry.flags : [];
+  const computedStatus = String(entry?.computed_status || '').toLowerCase();
+  if (computedStatus === 'terlambat' || flags.includes('terlambat')) return 'late';
+  if (computedStatus === 'pulang_awal' || flags.includes('pulang_awal')) return 'early_leave';
+  if (computedStatus !== 'normal' || flags.length > 0) return 'anomaly';
+  return 'on_time';
+}
+
+function buildInteractivePayload(rows, {
+  auth,
+  dateFrom,
+  dateTo,
+  drilldownStatus,
+  drilldownGroup,
+  groupId,
+}) {
+  const statusSummary = createInteractiveSummary();
+  const grouped = new Map();
+
+  for (const row of rows) {
+    const category = categorizeAttendanceEntry(row);
+    statusSummary[category] += 1;
+    const groupName = row?.nama_group || 'Ungrouped';
+    const groupEntry = grouped.get(groupName) ?? {
+      category: groupName,
+      total: 0,
+      late: 0,
+      early_leave: 0,
+      anomaly: 0,
+      on_time: 0,
+      total_duration_minutes: 0,
+      record_count: 0,
+      target_contexts: new Map(),
+    };
+    groupEntry.total += 1;
+    groupEntry.record_count += 1;
+    groupEntry.total_duration_minutes += Number(row?.durasi_menit || 0);
+    groupEntry[category] += 1;
+    const prediction = row?.prediction_context;
+    if (prediction && typeof prediction === 'object') {
+      const targetHours = Number(
+        prediction.minimum_hours ??
+          prediction.minimumHours ??
+          prediction.target_hours ??
+          prediction.targetHours ??
+          prediction.monthly_target_hours ??
+          prediction.monthlyTargetHours
+      );
+      const yearMonth =
+        prediction.year_month ?? prediction.yearMonth ?? prediction.month ?? prediction.period ?? null;
+      const targetSource = prediction.target_source ?? prediction.targetSource ?? null;
+      const key = `${yearMonth ?? 'unknown'}::${Number.isFinite(targetHours) ? targetHours : 'na'}::${targetSource ?? 'na'}`;
+      if (!groupEntry.target_contexts.has(key)) {
+        groupEntry.target_contexts.set(key, {
+          year_month: yearMonth,
+          minimum_hours: Number.isFinite(targetHours) ? targetHours : null,
+          target_source: targetSource,
+        });
+      }
+    }
+    grouped.set(groupName, groupEntry);
+  }
+
+  const pie = Object.entries(statusSummary).map(([key, value]) => ({ key, name: key, value }));
+  const barRows = [...grouped.values()]
+    .map((groupEntry) => {
+      const targetContexts = [...groupEntry.target_contexts.values()];
+      const targetContext = targetContexts[0] ?? null;
+      return {
+        category: groupEntry.category,
+        total: groupEntry.total,
+        total_duration_minutes: groupEntry.total_duration_minutes,
+        average_duration_minutes: groupEntry.record_count
+          ? Math.round(groupEntry.total_duration_minutes / groupEntry.record_count)
+          : 0,
+        breakdown: {
+          on_time: groupEntry.on_time,
+          late: groupEntry.late,
+          early_leave: groupEntry.early_leave,
+          anomaly: groupEntry.anomaly,
+        },
+        prediction_context: targetContext
+          ? {
+              ...targetContext,
+              has_mixed_targets: targetContexts.some(
+                (item) =>
+                  item.year_month !== targetContext.year_month ||
+                  item.minimum_hours !== targetContext.minimum_hours ||
+                  item.target_source !== targetContext.target_source
+              ),
+            }
+          : null,
+      };
+    })
+    .sort((left, right) => right.total - left.total || left.category.localeCompare(right.category));
+
+  const filteredRows = rows.filter((row) => {
+    if (drilldownStatus && categorizeAttendanceEntry(row) !== drilldownStatus) return false;
+    if (drilldownGroup && String(row?.nama_group || 'Ungrouped') !== String(drilldownGroup)) return false;
+    return true;
+  });
+
+  const drillRows = filteredRows.map((row) => ({
+    date: row.scan_date,
+    employee: row.nama,
+    group: row.nama_group || 'Ungrouped',
+    status: categorizeAttendanceEntry(row),
+    schedule: [row.jam_masuk, row.jam_keluar].filter(Boolean).join(' - ') || '-',
+    actual: [row.masuk, row.keluar].filter(Boolean).join(' - ') || '-',
+    scans: Number(row.scan_count || 0),
+    worked_minutes: Number(row.durasi_menit || 0),
+    prediction_context: row.prediction_context ?? null,
+  }));
+
+  const availableGroups = [...new Set(rows.map((row) => String(row?.nama_group || 'Ungrouped')))].sort();
+  const availableEmployees = [...new Map(rows.map((row) => [String(row?.pin || row?.karyawan_id || row?.nama), {
+    id: row?.karyawan_id ?? row?.pin ?? null,
+    pin: row?.pin ?? null,
+    label: row?.nama || `PIN ${row?.pin ?? '-'}`,
+  }])).values()];
+
+  const predictionPayload = auth.is_admin
+    ? null
+    : rows.reduce((acc, row) => acc ?? row?.prediction_context ?? null, null);
+  const cumulativePayload = auth.is_admin
+    ? null
+    : rows.reduce((acc, row) => acc ?? row?.cumulative_summary ?? null, null);
+
+  return {
+    rows,
+    cumulative_summary: cumulativePayload,
+    prediction_context: predictionPayload,
+    interactive_report: {
+      filters: {
+        from: dateFrom,
+        to: dateTo,
+        group_id: groupId,
+        drilldown_status: drilldownStatus,
+        drilldown_group: drilldownGroup,
+      },
+      series: {
+        pie,
+        bar: barRows,
+      },
+      drilldown: {
+        rows: drillRows,
+        total: drillRows.length,
+      },
+      metadata: {
+        totalRecords: rows.length,
+        availableGroups,
+        availableEmployees,
+      },
+    },
+  };
+}
+
 export async function GET(req) {
   // Auth gate: need at least one approved group or admin
   const auth = await getAuthContextFromCookies();
@@ -91,6 +258,9 @@ export async function GET(req) {
   const pinFilter = searchParams.get('pin') || null;
   const groupId = searchParams.get('group_id') || null;
   const parsedGroupId = Number.parseInt(groupId ?? '', 10);
+  const reportingMode = searchParams.get('reporting') === 'interactive';
+  const drilldownStatus = searchParams.get('drilldown_status') || null;
+  const drilldownGroup = searchParams.get('drilldown_group') || null;
   const canFilterDeleted = await hasKaryawanColumn('isDeleted');
   const hasManualHours = await hasAttendanceNoteColumn('manual_hours');
   const hasManualApproved = await hasAttendanceNoteColumn('is_manual_approved');
@@ -320,7 +490,20 @@ export async function GET(req) {
     };
   });
 
-  return NextResponse.json(finalResult);
+  if (!reportingMode) {
+    return NextResponse.json(finalResult);
+  }
+
+  return NextResponse.json(
+    buildInteractivePayload(finalResult, {
+      auth,
+      dateFrom,
+      dateTo,
+      drilldownStatus,
+      drilldownGroup,
+      groupId,
+    })
+  );
 }
 
 // Update note/status for a scan entry

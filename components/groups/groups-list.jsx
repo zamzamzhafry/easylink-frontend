@@ -82,7 +82,7 @@ export default function GroupsList({
         const hasMoreMembers = groupedMembers.length > visibleMembers.length;
 
         return (
-          <div key={group.id} className="ui-card-shell overflow-hidden">
+          <div key={group.id} className="panel-card overflow-hidden">
             <div className="flex items-center gap-2 px-4 py-3">
               <button
                 type="button"
@@ -113,7 +113,7 @@ export default function GroupsList({
               <button
                 type="button"
                 onClick={() => onEditGroup(group)}
-                className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-primary"
+                className="ui-action-icon ui-action-icon--primary"
                 title={t('groupsList.actions.editGroup')}
               >
                 <Pencil className="h-3.5 w-3.5" />
@@ -121,7 +121,7 @@ export default function GroupsList({
               <button
                 type="button"
                 onClick={() => onDeleteGroup(group)}
-                className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-rose-300"
+                className="ui-action-icon ui-action-icon--danger"
                 title={t('groupsList.actions.deleteGroup')}
               >
                 <Trash2 className="h-3.5 w-3.5" />

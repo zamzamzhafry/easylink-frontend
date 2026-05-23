@@ -15,11 +15,14 @@ export default function AttendanceFilters({
   employeeId = '',
   employees = [],
   incompleteOnly = false,
+  rowsPerPage,
+  rowsPerPageOptions = [],
   onFromChange,
   onToChange,
   onGroupChange,
   onEmployeeChange,
   onIncompleteOnlyChange,
+  onRowsPerPageChange,
   onSetRange,
 }) {
   const { locale } = useAppLocale();
@@ -29,101 +32,129 @@ export default function AttendanceFilters({
     const localized = getUIText(`attendancePage.filters.presets.${key}`, resolvedLocale);
     return localized === `attendancePage.filters.presets.${key}` ? fallbackLabel : localized;
   };
+  const summaryText = t('attendancePage.filters.resultsSummary')
+    .replace('{{count}}', String(count))
+    .replace('{{anomalies}}', String(anomalyCount));
 
   return (
-    <div className="panel-card ui-control-row items-center p-4">
-      <CalendarDays className="h-4 w-4 shrink-0 text-primary" />
-      <div className="flex items-center gap-2">
-        <label htmlFor="attendance-from" className="ui-control-label">
-          {t('attendancePage.filters.from')}
-        </label>
-        <input
-          id="attendance-from"
-          type="date"
-          value={from}
-          onChange={(event) => onFromChange(event.target.value)}
-          className="control-input min-h-0 w-auto py-1.5 font-mono text-sm"
-        />
-        <label htmlFor="attendance-to" className="ui-control-label">
-          {t('attendancePage.filters.to')}
-        </label>
-        <input
-          id="attendance-to"
-          type="date"
-          value={to}
-          onChange={(event) => onToChange(event.target.value)}
-          className="control-input min-h-0 w-auto py-1.5 font-mono text-sm"
-        />
-      </div>
-      <div className="flex items-center gap-2">
-        <label htmlFor="attendance-group" className="ui-control-label">
-          {t('attendancePage.filters.group')}
-        </label>
-        <select
-          id="attendance-group"
-          value={groupId ?? ''}
-          onChange={(event) => onGroupChange?.(event.target.value)}
-          className="control-select min-h-0 w-auto py-1.5 pl-3 pr-8 text-sm"
-        >
-          <option value="">{t('attendancePage.filters.allGroups')}</option>
-          {groups.map((group) => (
-            <option key={group.id} value={group.id}>
-              {group.nama_group}
-            </option>
+    <div className="panel-card space-y-3 p-4">
+      <div className="ui-control-row items-center">
+        <div className="flex items-center gap-2 text-sm font-medium text-foreground">
+          <CalendarDays className="h-4 w-4 shrink-0 text-primary" />
+          <span>{summaryText}</span>
+        </div>
+        <div className="ml-auto flex flex-wrap gap-2">
+          {[
+            ['today', PRESET_RANGE.today],
+            ['week', PRESET_RANGE.week],
+            ['month', PRESET_RANGE.month],
+          ].map(([key, value]) => (
+            <button
+              key={value}
+              type="button"
+              onClick={() => onSetRange(value)}
+              className="pill-button px-3 py-1.5 text-xs"
+            >
+              {presetLabel(key, value)}
+            </button>
           ))}
-        </select>
+        </div>
       </div>
-      <div className="flex items-center gap-2">
-        <label htmlFor="attendance-employee" className="ui-control-label">
-          {t('attendancePage.filters.employee')}
-        </label>
-        <select
-          id="attendance-employee"
-          value={employeeId ?? ''}
-          onChange={(event) => onEmployeeChange?.(event.target.value)}
-          className="control-select min-h-0 max-w-[220px] py-1.5 pl-3 pr-8 text-sm"
-        >
-          <option value="">{t('attendancePage.filters.allEmployees')}</option>
-          {employees.map((employee) => (
-            <option key={employee.id} value={employee.id}>
-              {employee.name}
-            </option>
-          ))}
-        </select>
-      </div>
-      <label className="inline-flex items-center gap-2 rounded-lg border border-border/70 bg-muted/45 px-3 py-1.5 text-xs text-muted-foreground">
-        <input
-          type="checkbox"
-          checked={Boolean(incompleteOnly)}
-          onChange={(event) => onIncompleteOnlyChange?.(event.target.checked)}
-          className="ui-control-check"
-        />
-        {t('attendancePage.filters.incompleteOnly')}
-      </label>
-      <div className="flex flex-wrap gap-2">
-        {PRESET_RANGE.map((range) => (
-          <button
-            key={range.key}
-            type="button"
-            onClick={() => onSetRange(range.key)}
-            className="btn-outline min-h-0 px-3 py-1.5 text-xs"
+
+      <div className="ui-control-row">
+        <div className="ui-control-group max-w-[11rem]">
+          <label htmlFor="attendance-from" className="ui-control-label">
+            {t('attendancePage.filters.from')}
+          </label>
+          <input
+            id="attendance-from"
+            type="date"
+            value={from}
+            onChange={(event) => onFromChange(event.target.value)}
+            className="control-input min-h-0 py-1.5 font-mono text-sm"
+          />
+        </div>
+
+        <div className="ui-control-group max-w-[11rem]">
+          <label htmlFor="attendance-to" className="ui-control-label">
+            {t('attendancePage.filters.to')}
+          </label>
+          <input
+            id="attendance-to"
+            type="date"
+            value={to}
+            onChange={(event) => onToChange(event.target.value)}
+            className="control-input min-h-0 py-1.5 font-mono text-sm"
+          />
+        </div>
+
+        <div className="ui-control-group max-w-[13rem]">
+          <label htmlFor="attendance-group" className="ui-control-label">
+            {t('attendancePage.filters.group')}
+          </label>
+          <select
+            id="attendance-group"
+            value={groupId ?? ''}
+            onChange={(event) => onGroupChange?.(event.target.value)}
+            className="control-select min-h-0 py-1.5 pl-3 pr-8 text-sm"
           >
-            {presetLabel(range.key, range.label)}
-          </button>
-        ))}
-      </div>
-      <div className="ml-auto flex gap-4 text-xs">
-        <span className="text-muted-foreground">
-          <span className="font-mono font-bold text-foreground">{count}</span>{' '}
-          {t('attendanceShared.records')}
-        </span>
-        {anomalyCount > 0 && (
-          <span className="text-amber-500 dark:text-amber-400">
-            <span className="font-mono font-bold">{anomalyCount}</span>{' '}
-            {t('attendanceShared.anomalies')}
-          </span>
-        )}
+            <option value="">{t('attendancePage.filters.allGroups')}</option>
+            {groups.map((group) => (
+              <option key={group.id} value={group.id}>
+                {group.nama_group}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div className="ui-control-group min-w-[14rem]">
+          <label htmlFor="attendance-employee" className="ui-control-label">
+            {t('attendancePage.filters.employee')}
+          </label>
+          <select
+            id="attendance-employee"
+            value={employeeId ?? ''}
+            onChange={(event) => onEmployeeChange?.(event.target.value)}
+            className="control-select min-h-0 py-1.5 pl-3 pr-8 text-sm"
+          >
+            <option value="">{t('attendancePage.filters.allEmployees')}</option>
+            {employees.map((employee) => (
+              <option key={employee.id} value={employee.id}>
+                {employee.name}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div className="ui-control-group max-w-[10rem]">
+          <label htmlFor="attendance-rows-per-page" className="ui-control-label">
+            {t('attendancePage.filters.rowsPerPage')}
+          </label>
+          <select
+            id="attendance-rows-per-page"
+            value={rowsPerPage}
+            onChange={(event) => onRowsPerPageChange?.(Number(event.target.value))}
+            className="control-select min-h-0 py-1.5 pl-3 pr-8 text-sm"
+          >
+            {rowsPerPageOptions.map((option) => (
+              <option key={option} value={option}>
+                {option}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <label className="inline-flex min-h-[2.5rem] items-center gap-2 rounded-lg border border-border/70 bg-muted/45 px-3 py-1.5 text-xs text-muted-foreground">
+          <input
+            type="checkbox"
+            checked={Boolean(incompleteOnly)}
+            onChange={(event) => onIncompleteOnlyChange?.(event.target.checked)}
+            className="ui-control-check"
+          />
+          {t('attendancePage.filters.incompleteOnly')}
+        </label>
       </div>
     </div>
   );
 }
+

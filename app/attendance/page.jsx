@@ -2,12 +2,13 @@
 
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Download, FileSpreadsheet, Printer } from 'lucide-react';
+import { BarChart3, Download, FileSpreadsheet, PieChart, Printer } from 'lucide-react';
 import { useAppLocale } from '@/components/app-shell';
 import AttendanceFilters from '@/components/attendance/attendance-filters';
 import AttendanceTable from '@/components/attendance/attendance-table';
 import NoteModal from '@/components/attendance/note-modal';
 import QuickSummariesTable from '@/components/schedule/quick-summaries-table';
+import { SvgBarChart, SvgPieChart } from '@/components/ui/charts';
 
 import { useToast } from '@/components/ui/toast-provider';
 import {
@@ -39,6 +40,13 @@ import {
 } from '@/lib/authz/authorization-adapter';
 
 const ALL_TABS = ['summary', 'quick_summaries'];
+
+const ATTENDANCE_PIE_COLORS = {
+  on_time: '#10b981',
+  late: '#f59e0b',
+  early_leave: '#fb7185',
+  anomaly: '#a78bfa',
+};
 
 const toSafeNumber = (value) => {
   const parsed = Number(value);
@@ -204,6 +212,16 @@ export default function AttendancePage() {
     cumulative_summary: null,
     prediction_context: null,
   });
+  const [interactiveReport, setInteractiveReport] = useState({
+    filters: null,
+    series: { pie: [], bar: [] },
+    drilldown: { rows: [], total: 0 },
+    metadata: { totalRecords: 0, availableGroups: [], availableEmployees: [] },
+  });
+  const [drilldownState, setDrilldownState] = useState({
+    status: null,
+    group: null,
+  });
   const [groups, setGroups] = useState([]);
   const [loading, setLoading] = useState(false);
   const [editing, setEditing] = useState(null);
@@ -227,8 +245,10 @@ export default function AttendancePage() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const query = new URLSearchParams({ from, to });
+      const query = new URLSearchParams({ from, to, reporting: 'interactive' });
       if (groupId) query.set('group_id', groupId);
+      if (drilldownState.status) query.set('drilldown_status', drilldownState.status);
+      if (drilldownState.group) query.set('drilldown_group', drilldownState.group);
       const data = await requestJson(`/api/attendance?${query.toString()}`);
       const nextRows = Array.isArray(data) ? data : Array.isArray(data?.rows) ? data.rows : [];
       setRows(nextRows);
@@ -246,9 +266,46 @@ export default function AttendancePage() {
             ? data.prediction_context
             : null,
       });
+      setInteractiveReport(
+        !Array.isArray(data) && data?.interactive_report && typeof data.interactive_report === 'object'
+          ? {
+              filters: data.interactive_report.filters || null,
+              series: {
+                pie: Array.isArray(data.interactive_report?.series?.pie)
+                  ? data.interactive_report.series.pie
+                  : [],
+                bar: Array.isArray(data.interactive_report?.series?.bar)
+                  ? data.interactive_report.series.bar
+                  : [],
+              },
+              drilldown: {
+                rows: Array.isArray(data.interactive_report?.drilldown?.rows)
+                  ? data.interactive_report.drilldown.rows
+                  : [],
+                total: toSafeNumber(data.interactive_report?.drilldown?.total),
+              },
+              metadata: data.interactive_report.metadata || {
+                totalRecords: 0,
+                availableGroups: [],
+                availableEmployees: [],
+              },
+            }
+          : {
+              filters: null,
+              series: { pie: [], bar: [] },
+              drilldown: { rows: [], total: 0 },
+              metadata: { totalRecords: 0, availableGroups: [], availableEmployees: [] },
+            }
+      );
     } catch (error) {
       setRows([]);
       setScopePayload({ cumulative_summary: null, prediction_context: null });
+      setInteractiveReport({
+        filters: null,
+        series: { pie: [], bar: [] },
+        drilldown: { rows: [], total: 0 },
+        metadata: { totalRecords: 0, availableGroups: [], availableEmployees: [] },
+      });
       warning(
         error.message || t('reportPage.errors.fetchFailed'),
         t('reportPage.errors.requestFailed')
@@ -256,7 +313,7 @@ export default function AttendancePage() {
     } finally {
       setLoading(false);
     }
-  }, [from, to, groupId, warning, t]);
+  }, [drilldownState.group, drilldownState.status, from, to, groupId, warning, t]);
 
   const loadQuickSummaries = useCallback(async () => {
     setQuickSummariesLoading(true);
@@ -574,6 +631,83 @@ export default function AttendancePage() {
       },
     };
   }, [isAdmin, rows, employeeFilter, scopePayload]);
+
+  const pieSeries = useMemo(
+    () =>
+      (Array.isArray(interactiveReport?.series?.pie) ? interactiveReport.series.pie : []).map(
+        (item, index) => ({
+          ...item,
+          label: String(item?.name || item?.key || `Series ${index + 1}`),
+          value: toSafeNumber(item?.value),
+          color:
+            ATTENDANCE_PIE_COLORS[String(item?.key || '').toLowerCase()] ||
+            item?.color ||
+            '#22d3ee',
+        })
+      ),
+    [interactiveReport]
+  );
+
+  const pieTotal = useMemo(
+    () => pieSeries.reduce((sum, item) => sum + toSafeNumber(item.value), 0),
+    [pieSeries]
+  );
+
+  const barRows = useMemo(() => {
+    return (Array.isArray(interactiveReport?.series?.bar) ? interactiveReport.series.bar : []).map(
+      (item, index) => ({
+        ...item,
+        id: item?.category || `group-${index}`,
+        label: String(item?.category || `Group ${index + 1}`),
+        value: toSafeNumber(item?.total),
+        color: item?.color || '#22d3ee',
+      })
+    );
+  }, [interactiveReport]);
+
+  const barMax = useMemo(
+    () => Math.max(...barRows.map((row) => row.value), 1),
+    [barRows]
+  );
+
+  const barHasUniformTarget = useMemo(() => {
+    const targets = barRows
+      .map((row) => toSafeNumber(row?.prediction_context?.minimum_hours))
+      .filter((v) => v > 0);
+    if (targets.length === 0) return false;
+    return targets.every((v) => v === targets[0]);
+  }, [barRows]);
+
+  const barUniformTargetValue = useMemo(() => {
+    if (!barHasUniformTarget) return null;
+    const first = barRows.find((row) => toSafeNumber(row?.prediction_context?.minimum_hours) > 0);
+    return first ? toSafeNumber(first.prediction_context.minimum_hours) : null;
+  }, [barRows, barHasUniformTarget]);
+
+  const drilldownRows = useMemo(
+    () => (Array.isArray(interactiveReport?.drilldown?.rows) ? interactiveReport.drilldown.rows : []),
+    [interactiveReport]
+  );
+
+  const handlePieClick = useCallback((item) => {
+    const nextKey = item?.key || null;
+    setDrilldownState((current) => ({
+      ...current,
+      status: current.status === nextKey ? null : nextKey,
+    }));
+  }, []);
+
+  const handleBarClick = useCallback((item) => {
+    const nextGroup = item?.label || item?.category || null;
+    setDrilldownState((current) => ({
+      ...current,
+      group: current.group === nextGroup ? null : nextGroup,
+    }));
+  }, []);
+
+  const clearDrilldownFilters = useCallback(() => {
+    setDrilldownState({ status: null, group: null });
+  }, []);
 
   const pageMeta = (total) => {
     const pages = Math.max(1, Math.ceil(total / rowsPerPage));
@@ -969,24 +1103,6 @@ export default function AttendancePage() {
           .replace('{{total}}', String(meta.total))}
       </div>
       <div className="flex items-center gap-2">
-        <label htmlFor="attendance-rows" className="ui-control-label">
-          {t('attendanceShared.rows')}
-        </label>
-        <select
-          id="attendance-rows"
-          value={rowsPerPage}
-          onChange={(event) => {
-            setRowsPerPage(Number(event.target.value));
-            resetPages();
-          }}
-          className="ui-control-select !w-auto min-h-0 py-1 pl-2 pr-8 text-xs"
-        >
-          {PAGE_SIZE_OPTIONS.map((size) => (
-            <option key={size} value={size}>
-              {size}
-            </option>
-          ))}
-        </select>
         <button
           type="button"
           onClick={() => setPage((prev) => Math.max(1, prev - 1))}
@@ -1083,55 +1199,148 @@ export default function AttendancePage() {
       <AttendanceFilters
         from={from}
         to={to}
-        count={
-          activeTab === 'quick_summaries'
-            ? quickSummaryEmployees.length
-            : filteredSummaryRows.length
-        }
-        anomalyCount={countAnomalies(filteredSummaryRows)}
+        count={filteredRows.length}
+        anomalyCount={countAnomalies(filteredRows)}
         groupId={groupId}
         groups={groups}
         employeeId={employeeFilter}
         employees={employeeOptions}
         incompleteOnly={incompleteOnly}
-        onFromChange={(value) => {
-          setFrom(value);
+        rowsPerPage={rowsPerPage}
+        rowsPerPageOptions={PAGE_SIZE_OPTIONS}
+        onFromChange={setFrom}
+        onToChange={setTo}
+        onGroupChange={setGroupId}
+        onEmployeeChange={setEmployeeFilter}
+        onIncompleteOnlyChange={setIncompleteOnly}
+        onRowsPerPageChange={(nextRowsPerPage) => {
+          setRowsPerPage(nextRowsPerPage);
           resetPages();
         }}
-        onToChange={(value) => {
-          setTo(value);
-          resetPages();
-        }}
-        onGroupChange={(value) => {
-          setGroupId(value);
-          resetPages();
-        }}
-        onEmployeeChange={(value) => {
-          setEmployeeFilter(value);
-          resetPages();
-        }}
-        onIncompleteOnlyChange={(checked) => {
-          setIncompleteOnly(checked);
-          resetPages();
-        }}
-        onSetRange={(unit) => {
-          setRange(unit);
-          resetPages();
-        }}
+        onSetRange={handleSetRange}
       />
+
+
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+        <section className="ui-card-shell p-4">
+          <div className="mb-4 flex items-center gap-2">
+            <PieChart className="h-4 w-4 text-cyan-300" />
+            <h2 className="text-sm font-semibold text-foreground">{t('attendancePage.interactive.pieTitle')}</h2>
+          </div>
+          <div className="grid gap-4 sm:grid-cols-[180px,1fr] sm:items-center">
+            <div className="relative mx-auto h-40 w-40" aria-label={t('attendancePage.interactive.pieTitle')} role="img">
+              <SvgPieChart data={pieSeries} onSegmentClick={handlePieClick} size={160} />
+              <div className="pointer-events-none absolute inset-0 m-auto flex h-24 w-24 items-center justify-center rounded-full border border-border bg-background text-center">
+                <div>
+                  <p className="text-[10px] uppercase tracking-widest text-muted-foreground">{t('attendancePage.interactive.pieRowsLabel')}</p>
+                  <p className="font-mono text-xl font-bold text-foreground">{pieTotal}</p>
+                </div>
+              </div>
+            </div>
+            <div className="space-y-2">
+              {pieSeries.length === 0 ? (
+                <p className="text-xs text-muted-foreground">{t('attendancePage.interactive.pieEmpty')}</p>
+              ) : (
+                pieSeries.map((item) => {
+                  const isSelected = drilldownState.status === item.key;
+                  const isFaded = drilldownState.status && drilldownState.status !== item.key;
+                  return (
+                    <button
+                      key={item.key}
+                      type="button"
+                      onClick={() => handlePieClick(item)}
+                      className={`ui-card-muted flex w-full items-center justify-between px-3 py-2 text-xs text-left transition ${isSelected ? 'ring-1 ring-border' : ''} ${isFaded ? 'opacity-40' : 'opacity-100'}`}
+                    >
+                      <span className="flex items-center gap-2 text-foreground">
+                        <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: item.color }} />
+                        {String(item.label || item.key)}
+                      </span>
+                      <span className="font-mono text-sm text-foreground">{item.value}</span>
+                    </button>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        </section>
+
+        <section className="ui-card-shell p-4">
+          <div className="mb-4 flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <BarChart3 className="h-4 w-4 text-cyan-300" />
+              <h2 className="text-sm font-semibold text-foreground">{t('attendancePage.interactive.barTitle')}</h2>
+            </div>
+            {(drilldownState.status || drilldownState.group) && (
+              <button type="button" onClick={clearDrilldownFilters} className="ui-btn-secondary min-h-0 px-2 py-1 text-xs">
+                {t('attendancePage.interactive.clearDrilldown')}
+              </button>
+            )}
+          </div>
+          <div className="space-y-4">
+            <div className="h-[220px]">
+              <SvgBarChart
+                data={barRows}
+                onBarClick={handleBarClick}
+                targetLine={barHasUniformTarget ? barUniformTargetValue : null}
+              />
+            </div>
+            {barRows.length === 0 ? (
+              <p className="text-xs text-muted-foreground">{t('attendancePage.interactive.barEmpty')}</p>
+            ) : (
+              barRows.map((row) => {
+                const isSelected = drilldownState.group === row.label;
+                const isFaded = drilldownState.group && drilldownState.group !== row.label;
+                const minimumHours = toSafeNumber(row?.prediction_context?.minimum_hours);
+                const targetPct = row.value > 0 && minimumHours > 0 ? Math.min(100, (minimumHours / row.value) * 100) : 0;
+                return (
+                  <button
+                    key={row.id}
+                    type="button"
+                    onClick={() => handleBarClick(row)}
+                    className={`ui-card-muted flex w-full flex-col gap-2 px-3 py-3 text-left transition ${isSelected ? 'ring-1 ring-border' : ''} ${isFaded ? 'opacity-40' : 'opacity-100'}`}
+                  >
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="font-medium text-foreground">{row.label}</span>
+                      <span className="font-mono text-foreground">{row.value}</span>
+                    </div>
+                    <div className="relative h-2 overflow-hidden rounded-full bg-muted">
+                      <div className="h-full rounded-full bg-cyan-400/70" style={{ width: `${barMax > 0 ? Math.min(100, (row.value / barMax) * 100) : 0}%` }} />
+                      {targetPct > 0 && (
+                        <span
+                          className="absolute inset-y-0 w-px bg-amber-300"
+                          style={{ left: `${targetPct}%` }}
+                          title={`Target: ${minimumHours}h`}
+                        />
+                      )}
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
+                      <span>{row?.prediction_context?.year_month || '-'}</span>
+                      <span>·</span>
+                      <span>{minimumHours > 0 ? `${minimumHours}h` : '-'}</span>
+                      <span>·</span>
+                      <span>{row?.prediction_context?.target_source || '-'}</span>
+                      {row?.prediction_context?.has_mixed_targets ? <span>· {t('attendancePage.interactive.mixedTarget')}</span> : null}
+                    </div>
+                  </button>
+                );
+              })
+            )}
+          </div>
+        </section>
+      </div>
 
       {isLeader && (
         <section className="ui-card-shell p-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <p className="text-[11px] font-mono uppercase tracking-wider text-sky-400">
-                Schedule Planning
+                {t('attendancePage.schedulePlanning.eyebrow')}
               </p>
               <h2 className="mt-1 text-sm font-semibold text-foreground">
-                Manage current and upcoming month schedules
+                {t('attendancePage.schedulePlanning.title')}
               </h2>
               <p className="mt-1 text-xs text-muted-foreground">
-                Leader scope includes planning and schedule management for current + upcoming month.
+                {t('attendancePage.schedulePlanning.description')}
               </p>
             </div>
             <div className="flex flex-wrap gap-2">
@@ -1139,13 +1348,13 @@ export default function AttendancePage() {
                 href="/schedule"
                 className="ui-btn-secondary border-sky-500/30 bg-sky-500/10 text-sky-300 hover:bg-sky-500/20"
               >
-                Current Month Plan
+                {t('attendancePage.schedulePlanning.currentMonth')}
               </Link>
               <Link
                 href="/schedule?month=next"
                 className="ui-btn-secondary border-violet-500/30 bg-violet-500/10 text-violet-300 hover:bg-violet-500/20"
               >
-                Upcoming Month Plan
+                {t('attendancePage.schedulePlanning.upcomingMonth')}
               </Link>
             </div>
           </div>
@@ -1193,20 +1402,24 @@ export default function AttendancePage() {
                     {toSafeNumber(roleScopeSummary.cumulative.early_leave_days)}
                   </p>
                 </div>
-                <div className="ui-card-muted p-2">
-                  <p className="text-muted-foreground">{t('attendancePage.roleScope.reviewed')}</p>
-                  <p className="mt-1 font-mono text-emerald-300">
-                    {toSafeNumber(roleScopeSummary.cumulative.reviewed_days)}
-                  </p>
-                </div>
-                <div className="ui-card-muted p-2">
-                  <p className="text-muted-foreground">
-                    {t('attendancePage.roleScope.pendingReview')}
-                  </p>
-                  <p className="mt-1 font-mono text-amber-300">
-                    {toSafeNumber(roleScopeSummary.cumulative.pending_review_days)}
-                  </p>
-                </div>
+                {isAdmin && (
+                  <>
+                    <div className="ui-card-muted p-2">
+                      <p className="text-muted-foreground">{t('attendancePage.roleScope.reviewed')}</p>
+                      <p className="mt-1 font-mono text-emerald-300">
+                        {toSafeNumber(roleScopeSummary.cumulative.reviewed_days)}
+                      </p>
+                    </div>
+                    <div className="ui-card-muted p-2">
+                      <p className="text-muted-foreground">
+                        {t('attendancePage.roleScope.pendingReview')}
+                      </p>
+                      <p className="mt-1 font-mono text-amber-300">
+                        {toSafeNumber(roleScopeSummary.cumulative.pending_review_days)}
+                      </p>
+                    </div>
+                  </>
+                )}
                 <div className="ui-card-muted col-span-2 p-2">
                   <p className="text-muted-foreground">
                     {t('attendancePage.roleScope.avgDuration')}
@@ -1231,6 +1444,26 @@ export default function AttendancePage() {
             <h2 className="mt-1 text-sm font-semibold text-foreground">
               {t('attendancePage.prediction.title')}
             </h2>
+            {isLeader && (
+              <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                <Link href="/schedule" className="ui-card-muted p-3 transition-colors hover:border-teal-400/30 hover:bg-teal-500/5">
+                  <p className="text-[11px] uppercase tracking-wide text-teal-400">
+                    {t('attendancePage.header.label')}
+                  </p>
+                  <p className="mt-1 text-sm font-semibold text-foreground">Current month planning</p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Open group planning grid and manage current month assignments.
+                  </p>
+                </Link>
+                <Link href="/schedule?month=next" className="ui-card-muted p-3 transition-colors hover:border-sky-400/30 hover:bg-sky-500/5">
+                  <p className="text-[11px] uppercase tracking-wide text-sky-300">Upcoming month</p>
+                  <p className="mt-1 text-sm font-semibold text-foreground">Next month planning</p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Prepare upcoming month schedule without opening admin review tools.
+                  </p>
+                </Link>
+              </div>
+            )}
             {!roleScopeSummary?.prediction?.hasData ? (
               <p className="mt-3 text-xs text-muted-foreground">
                 {t('attendancePage.prediction.empty')}
@@ -1295,15 +1528,65 @@ export default function AttendancePage() {
       </div>
 
       {activeTab === 'summary' && (
-        <div className="ui-table-shell">
-          <AttendanceTable
-            loading={loading}
-            rows={pagedSummaryRows}
-            holidayMap={holidayMap}
-            onEdit={canEditNotes ? setEditing : null}
-            showReviewDetails={isAdmin}
-          />
-          {renderPager(summaryPage, setSummaryPage, summaryMeta)}
+        <div className="space-y-4">
+          <section className="ui-card-shell p-4">
+            <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
+              <div>
+                <h2 className="text-sm font-semibold text-foreground">{t('attendancePage.interactive.drilldownHeading')}</h2>
+                <p className="text-xs text-muted-foreground">
+                  {t('attendancePage.interactive.drilldownShowing')
+                    .replace('{{count}}', String(drilldownRows.length))
+                    .replace('{{total}}', String(toSafeNumber(interactiveReport?.drilldown?.total || drilldownRows.length)))}
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2 text-[11px] text-muted-foreground">
+                {drilldownState.status ? <span className="ui-card-muted px-2 py-1">{t('attendancePage.interactive.drilldownStatus').replace('{{value}}', drilldownState.status)}</span> : null}
+                {drilldownState.group ? <span className="ui-card-muted px-2 py-1">{t('attendancePage.interactive.drilldownGroup').replace('{{value}}', drilldownState.group)}</span> : null}
+              </div>
+            </div>
+            {drilldownRows.length === 0 ? (
+              <p className="text-xs text-muted-foreground">{t('attendancePage.interactive.drilldownEmpty')}</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm text-foreground">
+                  <thead>
+                    <tr className="ui-table-head text-left">
+                      <th className="table-head-cell whitespace-nowrap px-4 py-3">{t('attendancePage.interactive.colDate')}</th>
+                      <th className="table-head-cell whitespace-nowrap px-4 py-3">{t('attendancePage.interactive.colEmployee')}</th>
+                      <th className="table-head-cell whitespace-nowrap px-4 py-3">{t('attendancePage.interactive.colGroup')}</th>
+                      <th className="table-head-cell whitespace-nowrap px-4 py-3">{t('attendancePage.interactive.colStatus')}</th>
+                      <th className="table-head-cell whitespace-nowrap px-4 py-3">{t('attendancePage.interactive.colSchedule')}</th>
+                      <th className="table-head-cell whitespace-nowrap px-4 py-3">{t('attendancePage.interactive.colActual')}</th>
+                      <th className="table-head-cell whitespace-nowrap px-4 py-3">{t('attendancePage.interactive.colScans')}</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border/70">
+                    {drilldownRows.map((row, index) => (
+                      <tr key={`${row.employee}-${row.date}-${index}`} className="ui-table-row">
+                        <td className="px-4 py-3 font-mono text-xs text-foreground">{String(row.date || '-')}</td>
+                        <td className="px-4 py-3 text-xs text-foreground">{String(row.employee || '-')}</td>
+                        <td className="px-4 py-3 text-xs text-muted-foreground">{String(row.group || '-')}</td>
+                        <td className="px-4 py-3 text-xs text-foreground">{String(row.status || '-')}</td>
+                        <td className="px-4 py-3 font-mono text-xs text-muted-foreground">{String(row.schedule || '-')}</td>
+                        <td className="px-4 py-3 font-mono text-xs text-muted-foreground">{String(row.actual || '-')}</td>
+                        <td className="px-4 py-3 font-mono text-xs text-foreground">{toSafeNumber(row.scans)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </section>
+          <div className="ui-table-shell">
+            <AttendanceTable
+              loading={loading}
+              rows={pagedSummaryRows}
+              holidayMap={holidayMap}
+              onEdit={canEditNotes ? setEditing : null}
+              showReviewDetails={isAdmin}
+            />
+            {renderPager(summaryPage, setSummaryPage, summaryMeta)}
+          </div>
         </div>
       )}
 

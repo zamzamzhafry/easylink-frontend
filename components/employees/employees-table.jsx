@@ -2,12 +2,7 @@
 
 import { AlertCircle, CheckCircle2, Pencil, Trash2 } from 'lucide-react';
 import { useAppLocale } from '@/components/app-shell';
-import {
-  TableEmptyRow,
-  TableHeadRow,
-  TableLoadingRow,
-  TableShell,
-} from '@/components/ui/table-shell';
+import { TableEmptyRow, TableHeadRow, TableLoadingRow } from '@/components/ui/table-shell';
 import { getUIText } from '@/lib/localization/ui-texts';
 
 export default function EmployeesTable({ loading, rows, onEdit, onDelete }) {
@@ -93,11 +88,11 @@ export default function EmployeesTable({ loading, rows, onEdit, onDelete }) {
                   </td>
                   <td className="table-cell px-4 py-3">
                     {hasName ? (
-                      <span className="inline-flex items-center gap-1 text-xs text-emerald-600 dark:text-emerald-300">
+                      <span className="inline-flex items-center gap-1 text-xs text-emerald-700 dark:text-emerald-300">
                         <CheckCircle2 className="h-3 w-3" /> {t('employeesTable.linked')}
                       </span>
                     ) : (
-                      <span className="inline-flex items-center gap-1 text-xs text-amber-600 dark:text-amber-300">
+                      <span className="inline-flex items-center gap-1 text-xs text-amber-700 dark:text-amber-300">
                         <AlertCircle className="h-3 w-3" /> {t('employeesTable.unlinked')}
                       </span>
                     )}
@@ -115,13 +110,23 @@ export default function EmployeesTable({ loading, rows, onEdit, onDelete }) {
                   </td>
                   <td className="table-cell px-4 py-3">
                     <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => onEdit(employee)}
-                        className="btn-outline min-h-0 px-3 py-1.5 text-xs"
-                      >
-                        <Pencil className="h-3 w-3" /> {t('employeesTable.actions.edit')}
-                      </button>
+                    <button
+                      type="button"
+                      onClick={() => onEdit(employee)}
+                      className="ui-action-icon ui-action-icon--primary"
+                      title={t('employeesTable.editAction')}
+                    >
+                      <Pencil className="h-3 w-3" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleDelete(employee)}
+                      className="ui-action-icon ui-action-icon--danger"
+                      title={t('employeesTable.deleteAction')}
+                    >
+                      <Trash2 className="h-3 w-3" />
+                    </button>
+
                       <button
                         type="button"
                         onClick={() => handleDelete(employee)}

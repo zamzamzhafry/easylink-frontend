@@ -147,6 +147,7 @@ export default function MachinePage() {
   const [confirmInput, setConfirmInput] = useState('');
   const [isPageVisible, setIsPageVisible] = useState(true);
   const isAdmin = Boolean(currentUser?.is_admin);
+  const canPollMachineQueue = isAdmin && isPageVisible;
   const machineHealthStatus = String(
     machineHealth?.status || (machineHealthError ? 'offline' : 'checking')
   );
@@ -443,7 +444,7 @@ export default function MachinePage() {
   }, []);
 
   useEffect(() => {
-    if (!isAdmin || !isPageVisible) return;
+    if (!canPollMachineQueue) return;
     void refreshMachineQueue();
 
     const timer = setInterval(() => {
@@ -451,14 +452,14 @@ export default function MachinePage() {
     }, 10000);
 
     return () => clearInterval(timer);
-  }, [isAdmin, isPageVisible, refreshMachineQueue]);
+  }, [canPollMachineQueue, refreshMachineQueue]);
 
   useEffect(() => {
     if (!currentUser) return;
     void refreshMachineStatus();
   }, [currentUser, refreshMachineStatus]);
   useEffect(() => {
-    if (!isAdmin || !isPageVisible || !activeMachineJobId) return;
+    if (!canPollMachineQueue || !activeMachineJobId) return;
 
     let cancelled = false;
     const poll = async () => {
@@ -478,7 +479,7 @@ export default function MachinePage() {
       cancelled = true;
       clearInterval(timer);
     };
-  }, [activeMachineJobId, isAdmin, isPageVisible, refreshMachineQueue]);
+  }, [activeMachineJobId, canPollMachineQueue, refreshMachineQueue]);
 
   useEffect(() => {
     if (!isAdmin || !isPageVisible || !activeBatchId) return;

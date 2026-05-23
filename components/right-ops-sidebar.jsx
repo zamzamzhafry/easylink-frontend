@@ -9,8 +9,6 @@ import { getUIText } from '@/lib/localization/ui-texts';
 import { requestJson } from '@/lib/request-json';
 import { cn } from '@/lib/utils';
 
-const REFRESH_MS = 15000;
-
 function todayIso() {
   const now = new Date();
   const year = now.getFullYear();
@@ -75,19 +73,29 @@ function QueueList({ rows, emptyLabel = 'No jobs', showMoreLabel = 'Show more' }
         );
       })}
       {hasMore ? (
-        <button
-          type="button"
-          onClick={() => setVisibleCount((prev) => prev + 6)}
-          className="ui-btn-secondary min-h-0 w-full px-2 py-1 text-[11px]"
-        >
-          {showMoreLabel}
-        </button>
+          <button
+            type="button"
+            onClick={() => setVisibleCount((count) => count + 6)}
+            className="btn-outline min-h-0 w-full px-2 py-1 text-[11px]"
+          >
+            {showMoreLabel}
+          </button>
+
       ) : null}
     </div>
   );
 }
 
-function LazyAccordionSection({ id, title, summary, open, onToggle, children }) {
+function LazyAccordionSection({
+  id,
+  title,
+  summary,
+  open,
+  onToggle,
+  children,
+  hideLabel,
+  showLabel,
+}) {
   return (
     <section className="ui-card-muted p-3">
       <div className="flex items-center justify-between gap-2">
@@ -97,12 +105,12 @@ function LazyAccordionSection({ id, title, summary, open, onToggle, children }) 
           <button
             type="button"
             onClick={onToggle}
-            className="ui-btn-secondary min-h-0 px-2 py-1 text-[10px]"
+            className="btn-outline min-h-0 px-2 py-1 text-[10px]"
             aria-expanded={open}
             aria-controls={id}
-            aria-label={`${open ? 'Collapse' : 'Expand'} ${title}`}
+            aria-label={`${open ? hideLabel : showLabel} ${title}`}
           >
-            {open ? 'Hide' : 'Show'}
+            {open ? hideLabel : showLabel}
           </button>
         </div>
       </div>
@@ -118,7 +126,8 @@ function LazyAccordionSection({ id, title, summary, open, onToggle, children }) 
 export default function RightOpsSidebar({ currentUser, collapsed = false, onToggle }) {
   const { locale } = useAppLocale();
   const resolvedLocale = locale === 'id' ? 'id' : 'en';
-  const t = (path) => getUIText(path, resolvedLocale);
+  const localeKey = resolvedLocale;
+  const t = useCallback((path) => getUIText(path, localeKey), [localeKey]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [scanlogQueue, setScanlogQueue] = useState({ concurrency: 1, active: 0, pending: 0 });
@@ -133,6 +142,17 @@ export default function RightOpsSidebar({ currentUser, collapsed = false, onTogg
     machine: false,
     preview: false,
   });
+  const actionTexts = useMemo(
+    () => ({
+      show: t('rightOpsSidebar.actions.show'),
+      hide: t('rightOpsSidebar.actions.hide'),
+      refresh: t('rightOpsSidebar.actions.refresh'),
+      expandSidebar: t('rightOpsSidebar.actions.expandSidebar'),
+      collapseSidebar: t('rightOpsSidebar.actions.collapseSidebar'),
+      closeOverlay: t('rightOpsSidebar.actions.closeOverlay'),
+    }),
+    [t]
+  );
 
   const isAdmin = Boolean(currentUser?.is_admin);
   const needsScanlogDetails =
@@ -199,10 +219,7 @@ export default function RightOpsSidebar({ currentUser, collapsed = false, onTogg
     if (!isAdmin) return;
 
     void refreshData();
-    const timer = setInterval(() => {
-      void refreshData();
-    }, REFRESH_MS);
-    return () => clearInterval(timer);
+    return undefined;
   }, [isAdmin, refreshData]);
 
   const debugPreview = useMemo(
@@ -219,15 +236,14 @@ export default function RightOpsSidebar({ currentUser, collapsed = false, onTogg
   if (collapsed) {
     return (
       <div className="pointer-events-none fixed bottom-6 right-6 z-40 hidden xl:block">
-        <button
-          type="button"
-          onClick={() => onToggle?.()}
-          className="pointer-events-auto relative inline-flex h-12 w-12 items-center justify-center rounded-full border border-amber-500/40 bg-slate-950/90 text-amber-200 shadow-lg shadow-slate-950/50 transition-colors hover:bg-slate-900"
-          aria-label={getUIText('rightOpsSidebar.reviewAria', resolvedLocale)
-            .replace('{{pending}}', String(pendingReviewCount))
-            .concat('. Expand right sidebar')}
-          aria-expanded={false}
-        >
+          <button
+            type="button"
+            onClick={() => onToggle?.()}
+            className="pointer-events-auto relative inline-flex h-12 w-12 items-center justify-center rounded-full border border-amber-500/40 bg-slate-950/90 text-amber-200 shadow-lg shadow-slate-950/50 transition-colors hover:bg-slate-900"
+            aria-label={`${getUIText('rightOpsSidebar.reviewAria', resolvedLocale).replace('{{pending}}', String(pendingReviewCount))}. ${actionTexts.expandSidebar}`}
+            aria-expanded={false}
+          >
+
           <Bell className={cn('h-5 w-5', pendingReviewCount > 0 && 'bell-ring-subtle')} />
           <span className="absolute -right-1 -top-1 min-w-[1.25rem] rounded-full border border-amber-300/40 bg-amber-500 px-1 py-0.5 text-center text-[10px] font-semibold leading-none text-slate-950">
             {pendingReviewCount > 99 ? '99+' : pendingReviewCount}
@@ -243,7 +259,7 @@ export default function RightOpsSidebar({ currentUser, collapsed = false, onTogg
         type="button"
         onClick={() => onToggle?.()}
         className="fixed inset-0 z-30 hidden bg-black/35 backdrop-blur-[1px] xl:block"
-        aria-label="Close right sidebar overlay"
+        aria-label={actionTexts.closeOverlay}
       />
       <aside
         className={cn(
@@ -269,18 +285,18 @@ export default function RightOpsSidebar({ currentUser, collapsed = false, onTogg
             <button
               type="button"
               onClick={() => void refreshData()}
-              className="ui-btn-secondary min-h-0 p-2"
-              aria-label="Refresh right sidebar"
+              className="btn-outline min-h-0 p-2"
+              aria-label={actionTexts.refresh}
             >
               <RefreshCw className={cn('h-4 w-4', loading && 'animate-spin')} />
             </button>
             <button
               type="button"
               onClick={() => onToggle?.()}
-              className="ui-btn-secondary min-h-0 p-2"
-              aria-label={collapsed ? 'Expand right sidebar' : 'Collapse right sidebar'}
-              aria-expanded={!collapsed}
+              className="btn-outline min-h-0 p-2"
+              aria-label={collapsed ? actionTexts.expandSidebar : actionTexts.collapseSidebar}
             >
+
               {collapsed ? (
                 <ChevronLeft className="h-4 w-4" />
               ) : (
@@ -332,6 +348,8 @@ export default function RightOpsSidebar({ currentUser, collapsed = false, onTogg
               .replace('{{pending}}', String(scanlogQueue.pending))}
             open={expandedSections.scanlog}
             onToggle={() => toggleSection('scanlog')}
+            hideLabel={actionTexts.hide}
+            showLabel={actionTexts.show}
           >
             <QueueList
               rows={scanlogRows}
@@ -350,6 +368,8 @@ export default function RightOpsSidebar({ currentUser, collapsed = false, onTogg
             }
             open={expandedSections.migration}
             onToggle={() => toggleSection('migration')}
+            hideLabel={actionTexts.hide}
+            showLabel={actionTexts.show}
           >
             <div className="grid grid-cols-1 gap-2 text-[11px] text-muted-foreground">
               <div className="rounded-lg border border-border bg-background/60 px-2 py-1">
@@ -379,6 +399,8 @@ export default function RightOpsSidebar({ currentUser, collapsed = false, onTogg
               .replace('{{pending}}', String(machineQueue.pending))}
             open={expandedSections.machine}
             onToggle={() => toggleSection('machine')}
+            hideLabel={actionTexts.hide}
+            showLabel={actionTexts.show}
           >
             <QueueList
               rows={machineRows}
@@ -392,6 +414,8 @@ export default function RightOpsSidebar({ currentUser, collapsed = false, onTogg
             title={t('rightOpsSidebar.sections.preview')}
             open={expandedSections.preview}
             onToggle={() => toggleSection('preview')}
+            hideLabel={actionTexts.hide}
+            showLabel={actionTexts.show}
           >
             <pre className="max-h-56 overflow-auto rounded-lg border border-border bg-background p-2 text-[11px] text-foreground">
               {JSON.stringify(debugPreview, null, 2)}

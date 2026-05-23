@@ -2,19 +2,15 @@
 
 import { AlertTriangle, CheckCircle2, Clock, Pencil } from 'lucide-react';
 import Link from 'next/link';
+import { memo, useCallback, useMemo } from 'react';
 import { useAppLocale } from '@/components/app-shell';
-import {
-  TableEmptyRow,
-  TableHeadRow,
-  TableLoadingRow,
-  TableShell,
-} from '@/components/ui/table-shell';
+import { TableEmptyRow, TableHeadRow, TableLoadingRow } from '@/components/ui/table-shell';
 import { STATUS_MAP } from '@/lib/attendance-helpers';
 import { getUIText } from '@/lib/localization/ui-texts';
 import { compactDateDayLabel } from '@/lib/schedule-helpers';
 import { shiftClassName } from '@/lib/shift-helpers';
 
-export default function AttendanceTable({
+function AttendanceTable({
   loading,
   rows,
   onEdit,
@@ -23,24 +19,28 @@ export default function AttendanceTable({
 }) {
   const { locale } = useAppLocale();
   const resolvedLocale = locale === 'id' ? 'id' : 'en';
-  const t = (path) => getUIText(path, resolvedLocale);
-  const tableHeaders = [
-    { key: 'date', label: t('attendancePage.table.date') },
-    { key: 'name', label: t('attendancePage.table.name') },
-    { key: 'group', label: t('attendancePage.table.group') },
-    { key: 'shift', label: t('attendancePage.table.shift') },
-    { key: 'in', label: t('attendancePage.table.in') },
-    { key: 'out', label: t('attendancePage.table.out') },
-    { key: 'duration', label: t('attendancePage.table.duration') },
-    { key: 'status', label: t('attendancePage.table.status') },
-    ...(showReviewDetails
-      ? [
-          { key: 'review', label: t('attendancePage.table.review') },
-          { key: 'note', label: t('attendancePage.table.note') },
-          { key: 'action', label: '' },
-        ]
-      : []),
-  ];
+  const localeKey = resolvedLocale;
+  const t = useCallback((path) => getUIText(path, localeKey), [localeKey]);
+  const tableHeaders = useMemo(
+    () => [
+      { key: 'date', label: t('attendancePage.table.date') },
+      { key: 'name', label: t('attendancePage.table.name') },
+      { key: 'group', label: t('attendancePage.table.group') },
+      { key: 'shift', label: t('attendancePage.table.shift') },
+      { key: 'in', label: t('attendancePage.table.in') },
+      { key: 'out', label: t('attendancePage.table.out') },
+      { key: 'duration', label: t('attendancePage.table.duration') },
+      { key: 'status', label: t('attendancePage.table.status') },
+      ...(showReviewDetails
+        ? [
+            { key: 'review', label: t('attendancePage.table.review') },
+            { key: 'note', label: t('attendancePage.table.note') },
+            { key: 'action', label: '' },
+          ]
+        : []),
+    ],
+    [showReviewDetails, t]
+  );
   const colSpan = tableHeaders.length;
 
   const normalizeDateKey = (value) => {
@@ -249,3 +249,5 @@ export default function AttendanceTable({
     </div>
   );
 }
+
+export default memo(AttendanceTable);

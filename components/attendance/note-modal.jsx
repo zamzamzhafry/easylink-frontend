@@ -101,7 +101,7 @@ export default function NoteModal({ row, onClose, onSave }) {
               className={inputClass}
             />
           </div>
-          <label className="mt-6 inline-flex items-center gap-2 text-xs text-muted-foreground">
+          <label className="mt-6 inline-flex min-h-[2.5rem] items-center gap-2 rounded-lg border border-border/70 bg-muted/45 px-3 py-1.5 text-xs text-muted-foreground">
             <input
               type="checkbox"
               checked={manualApproved}

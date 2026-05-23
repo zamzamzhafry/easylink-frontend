@@ -90,24 +90,24 @@
 
 /* Theme system: dark/light with green-orange tones */
 html[data-theme='light'] {
-  --background: 210 20% 98%;
+  --background: 142 24% 97%;
   --foreground: 222 47% 11%;
-  --card: 0 0% 100%;
+  --card: 120 20% 99%;
   --card-foreground: 220 16% 15%;
-  --popover: 0 0% 100%;
+  --popover: 120 20% 99%;
   --popover-foreground: 220 16% 15%;
   --primary: 158 67% 35%;
   --primary-foreground: 0 0% 100%;
-  --secondary: 45 100% 96%;
+  --secondary: 48 86% 95%;
   --secondary-foreground: 220 16% 15%;
-  --muted: 145 28% 94%;
-  --muted-foreground: 220 9% 42%;
+  --muted: 140 22% 93%;
+  --muted-foreground: 220 10% 38%;
   --accent: 28 95% 55%;
   --accent-foreground: 0 0% 100%;
   --destructive: 0 84% 60%;
   --destructive-foreground: 0 0% 100%;
-  --border: 145 22% 84%;
-  --input: 145 22% 84%;
+  --border: 145 20% 81%;
+  --input: 145 20% 81%;
   --ring: 158 67% 35%;
 }
 
@@ -138,37 +138,6 @@ html[data-theme='light'] .theme-root::before {
     linear-gradient(to bottom, rgb(236 253 245) 0%, rgb(250 252 249) 58%, rgb(254 243 199) 100%);
 }
 
-/* Light mode overrides for existing slate-heavy utility classes */
-html[data-theme='light'] .bg-slate-950 {
-  background-color: rgb(247 252 249) !important;
-}
-html[data-theme='light'] .bg-slate-900 {
-  background-color: rgb(250 252 249 / 0.94) !important;
-}
-html[data-theme='light'] .bg-slate-800 {
-  background-color: rgb(240 253 244 / 0.88) !important;
-}
-html[data-theme='light'] .border-slate-900,
-html[data-theme='light'] .border-slate-800,
-html[data-theme='light'] .border-slate-700 {
-  border-color: rgb(190 242 218 / 0.9) !important;
-}
-html[data-theme='light'] .text-white {
-  color: rgb(15 23 42) !important;
-}
-html[data-theme='light'] .text-slate-100 {
-  color: rgb(30 41 59) !important;
-}
-html[data-theme='light'] .text-slate-200 {
-  color: rgb(51 65 85) !important;
-}
-html[data-theme='light'] .text-slate-300 {
-  color: rgb(71 85 105) !important;
-}
-html[data-theme='light'] .text-slate-400,
-html[data-theme='light'] .text-slate-500 {
-  color: rgb(71 85 105) !important;
-}
 
 html[data-theme='light'] .data-row:hover td {
   background-color: rgb(220 252 231 / 0.62);
@@ -209,59 +178,55 @@ html[data-theme='light'] .app-sidebar {
 }
 
 html[data-theme='light'] .app-sidebar-header,
-html[data-theme='light'] .app-sidebar-footer {
+html[data-theme='light'] .app-sidebar-footer,
+html[data-theme='light'] .app-sidebar-section,
+html[data-theme='light'] .app-sidebar-userbox,
+html[data-theme='light'] .app-shell-status {
   border-color: rgb(203 213 225 / 0.8);
 }
 
 html[data-theme='light'] .app-sidebar-toggle,
 html[data-theme='light'] .app-sidebar-theme-btn,
-html[data-theme='light'] .app-sidebar-logout {
-  border-color: rgb(186 230 253 / 0.95) !important;
+html[data-theme='light'] .app-sidebar-logout,
+html[data-theme='light'] .app-sidebar-section,
+html[data-theme='light'] .app-sidebar-userbox,
+html[data-theme='light'] .app-shell-status {
   background: rgb(250 252 249 / 0.92);
-  color: rgb(30 41 59) !important;
+  color: rgb(30 41 59);
+}
+
+html[data-theme='light'] .app-sidebar-toggle,
+html[data-theme='light'] .app-sidebar-theme-btn,
+html[data-theme='light'] .app-sidebar-logout {
+  border-color: rgb(186 230 253 / 0.95);
 }
 
 html[data-theme='light'] .app-sidebar-toggle:hover,
 html[data-theme='light'] .app-sidebar-theme-btn:hover,
 html[data-theme='light'] .app-sidebar-logout:hover {
-  border-color: rgb(45 212 191 / 0.9) !important;
-  color: rgb(15 118 110) !important;
+  border-color: rgb(45 212 191 / 0.9);
+  color: rgb(15 118 110);
   background: rgb(240 253 250);
 }
 
-html[data-theme='light'] .app-sidebar-section {
-  border-color: rgb(203 213 225 / 0.8) !important;
-  background: rgb(248 252 249 / 0.9) !important;
-}
-
-html[data-theme='light'] .app-sidebar-section-toggle {
-  color: rgb(71 85 105) !important;
-}
-
+html[data-theme='light'] .app-sidebar-section-toggle,
 html[data-theme='light'] .app-sidebar-link {
-  color: rgb(71 85 105) !important;
+  color: rgb(71 85 105);
 }
 
 html[data-theme='light'] .app-sidebar-link:hover {
-  background: rgb(240 249 255) !important;
-  color: rgb(14 116 144) !important;
+  background: rgb(240 249 255);
+  color: rgb(14 116 144);
 }
 
 html[data-theme='light'] .app-sidebar-link-active {
-  border-color: rgb(45 212 191 / 0.45) !important;
-  background: linear-gradient(90deg, rgb(204 251 241) 0%, rgb(224 242 254) 100%) !important;
-  color: rgb(15 118 110) !important;
+  border-color: rgb(45 212 191 / 0.45);
+  background: linear-gradient(90deg, rgb(204 251 241) 0%, rgb(224 242 254) 100%);
+  color: rgb(15 118 110);
 }
 
 html[data-theme='light'] .app-sidebar-userbox {
-  border-color: rgb(203 213 225 / 0.8) !important;
-  background: rgb(248 250 252 / 0.95) !important;
-}
-
-html[data-theme='light'] .app-shell-status {
-  border-color: rgb(186 230 253 / 0.8) !important;
-  background: rgb(250 252 249 / 0.92) !important;
-  color: rgb(30 41 59) !important;
+  background: rgb(248 250 252 / 0.95);
 }
 
 /* Toast theme polish */
@@ -494,59 +459,40 @@ html[data-theme='light'] .toast-close:hover {
     box-shadow: -10px 0 32px rgb(15 23 42 / 0.06);
   }
 
-  .panel-card {
-    /* biome-ignore lint/suspicious/noUnknownAtRules: Tailwind directives are valid in PostCSS pipeline */
-    @apply ui-card-shell;
-  }
-
-  .table-shell {
-    /* biome-ignore lint/suspicious/noUnknownAtRules: Tailwind directives are valid in PostCSS pipeline */
-    @apply ui-table-shell;
-  }
-
-  .table-head-cell {
-    /* biome-ignore lint/suspicious/noUnknownAtRules: Tailwind directives are valid in PostCSS pipeline */
-    @apply ui-table-head-cell;
-  }
-
-  .table-cell {
-    /* biome-ignore lint/suspicious/noUnknownAtRules: Tailwind directives are valid in PostCSS pipeline */
-    @apply ui-table-cell;
-  }
-
   .table-cell-muted {
-    /* biome-ignore lint/suspicious/noUnknownAtRules: Tailwind directives are valid in PostCSS pipeline */
-    @apply ui-table-cell-muted;
+    color: hsl(var(--muted-foreground));
   }
 
-  .control-input {
-    /* biome-ignore lint/suspicious/noUnknownAtRules: Tailwind directives are valid in PostCSS pipeline */
-    @apply ui-control-input;
+  .ui-action-icon {
+    display: inline-flex;
+    min-height: 2rem;
+    min-width: 2rem;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid hsl(var(--border) / 0.7);
+    border-radius: calc(var(--radius) - 0.1rem);
+    background: hsl(var(--muted) / 0.45);
+    color: hsl(var(--muted-foreground));
+    transition:
+      background-color 150ms ease,
+      border-color 150ms ease,
+      color 150ms ease,
+      box-shadow 150ms ease;
   }
 
-  .control-select {
-    /* biome-ignore lint/suspicious/noUnknownAtRules: Tailwind directives are valid in PostCSS pipeline */
-    @apply ui-control-select;
+  .ui-action-icon:hover {
+    background: hsl(var(--muted) / 0.8);
+    color: hsl(var(--foreground));
   }
 
-  .pill-button {
-    /* biome-ignore lint/suspicious/noUnknownAtRules: Tailwind directives are valid in PostCSS pipeline */
-    @apply inline-flex items-center justify-center gap-2 rounded-full px-4 py-2 text-sm font-medium transition-colors;
+  .ui-action-icon--primary:hover {
+    border-color: hsl(var(--primary) / 0.35);
+    color: hsl(var(--primary));
   }
 
-  .btn-action {
-    /* biome-ignore lint/suspicious/noUnknownAtRules: Tailwind directives are valid in PostCSS pipeline */
-    @apply ui-btn-primary;
-  }
-
-  .btn-outline {
-    /* biome-ignore lint/suspicious/noUnknownAtRules: Tailwind directives are valid in PostCSS pipeline */
-    @apply ui-btn-secondary;
-  }
-
-  .btn-danger {
-    /* biome-ignore lint/suspicious/noUnknownAtRules: Tailwind directives are valid in PostCSS pipeline */
-    @apply inline-flex items-center justify-center gap-2 rounded-md bg-destructive text-destructive-foreground hover:bg-destructive/90 px-4 py-2 text-sm font-medium transition-colors shadow-sm;
+  .ui-action-icon--danger:hover {
+    border-color: hsl(var(--destructive) / 0.35);
+    color: hsl(var(--destructive));
   }
 
   /* Reusable semantic primitives for reporting/attendance/machine pages */
@@ -820,71 +766,44 @@ html[data-theme='light'] .toast-close:hover {
 
 /* ─── Semantic component classes (TASK-18) ─────────────────────────────── */
 @layer components {
-  /* Layout */
   .panel-card {
-    @apply rounded-lg border border-slate-700/50 bg-slate-900/60 p-4;
-  }
-  html[data-theme='light'] .panel-card {
-    @apply border-slate-200 bg-white/80;
+    @apply ui-card-shell;
   }
 
-  /* Table shell */
   .table-shell {
-    @apply w-full overflow-x-auto rounded-lg border border-slate-700/50;
-  }
-  html[data-theme='light'] .table-shell {
-    @apply border-slate-200;
+    @apply ui-table-shell;
   }
 
-  /* Table head cell */
   .table-head-cell {
-    @apply px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-slate-400 whitespace-nowrap;
-  }
-  html[data-theme='light'] .table-head-cell {
-    @apply text-slate-600;
+    @apply ui-table-head-cell;
   }
 
-  /* Table body cell */
   .table-cell {
-    @apply px-3 py-2 text-sm text-slate-300 whitespace-nowrap;
-  }
-  html[data-theme='light'] .table-cell {
-    @apply text-slate-700;
+    @apply ui-table-cell;
   }
 
-  /* Form controls */
   .control-input {
-    @apply rounded-md border border-slate-600 bg-slate-800 px-3 py-1.5 text-sm text-slate-200 placeholder-slate-500 focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500;
-  }
-  html[data-theme='light'] .control-input {
-    @apply border-slate-300 bg-white text-slate-800 placeholder-slate-400 focus:border-teal-600 focus:ring-teal-600;
+    @apply ui-control-input;
   }
 
   .control-select {
-    @apply rounded-md border border-slate-600 bg-slate-800 px-3 py-1.5 text-sm text-slate-200 focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500;
-  }
-  html[data-theme='light'] .control-select {
-    @apply border-slate-300 bg-white text-slate-800 focus:border-teal-600 focus:ring-teal-600;
+    @apply ui-control-select;
   }
 
-  /* Buttons */
   .pill-button {
-    @apply inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium transition-colors;
+    @apply inline-flex min-h-[2.5rem] items-center justify-center gap-2 rounded-full border border-border/70 bg-muted/45 px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-muted/70;
   }
 
   .btn-action {
-    @apply inline-flex items-center gap-1.5 rounded-md bg-teal-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-teal-500 disabled:opacity-50 transition-colors;
+    @apply ui-btn-primary;
   }
 
   .btn-outline {
-    @apply inline-flex items-center gap-1.5 rounded-md border border-slate-600 px-3 py-1.5 text-sm font-medium text-slate-300 hover:border-slate-400 hover:text-slate-100 disabled:opacity-50 transition-colors;
-  }
-  html[data-theme='light'] .btn-outline {
-    @apply border-slate-300 text-slate-700 hover:border-slate-500 hover:text-slate-900;
+    @apply ui-btn-secondary;
   }
 
   .btn-danger {
-    @apply inline-flex items-center gap-1.5 rounded-md bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-500 disabled:opacity-50 transition-colors;
+    @apply inline-flex min-h-[2.5rem] items-center justify-center gap-2 rounded-md border border-destructive/30 bg-destructive/90 px-4 py-2 text-sm font-medium text-destructive-foreground shadow-sm transition-colors hover:bg-destructive;
   }
 }
 /* ─────────────────────────────────────────────────────────────────────────── */
