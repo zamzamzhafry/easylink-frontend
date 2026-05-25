@@ -6,32 +6,39 @@ echo ============================================
 echo.
 
 :: Config
-set FSERVICE_DIR=%~dp0..\fservice-bundle
-set PHP_PORT=9090
-set FSERVICE_HOST=localhost
-set FSERVICE_PORT=8090
-set FSERVICE_SN=Fio66208021230737
-set DB_HOST=192.168.1.129
-set DB_PORT=3306
-set DB_USER=easylink_sync
-set DB_PASS=EasyLink2026!
-set DB_NAME=demo_easylinksdk
+set "FSERVICE_DIR=%~dp0..\fservice-bundle"
+set "PHP_PORT=9090"
+set "FSERVICE_HOST=localhost"
+set "FSERVICE_PORT=8090"
+set "FSERVICE_SN=Fio66208021230737"
+set "DB_HOST=127.0.0.1"
+set "DB_PORT=3306"
+set "DB_USER=root"
+set "DB_PASS="
+set "DB_NAME=demo_easylinksdk"
+set "PHP_EXE=C:\laragon\bin\php\php-8.3.30-Win32-vs16-x64\php.exe"
 
 :: Find PHP
-where php >nul 2>&1
-if %errorlevel% neq 0 (
-    if exist "C:\xampp\php\php.exe" (
-        set PHP=C:\xampp\php\php.exe
-    ) else if exist "C:\php\php.exe" (
-        set PHP=C:\php\php.exe
-    ) else (
-        echo [ERROR] PHP not found. Install PHP or add to PATH.
-        pause
-        exit /b 1
-    )
+if exist "%PHP_EXE%" (
+    set "PHP=%PHP_EXE%"
 ) else (
-    set PHP=php
+    where php >nul 2>&1
+    if %errorlevel% neq 0 (
+        if exist "C:\php\php.exe" (
+            set "PHP=C:\php\php.exe"
+        ) else (
+            echo [ERROR] PHP not found. Expected Laragon PHP at:
+            echo         %PHP_EXE%
+            echo         Or a php.exe available on PATH.
+            pause
+            exit /b 1
+        )
+    ) else (
+        set "PHP=php"
+    )
 )
+
+echo [0/4] Using PHP: %PHP%
 
 echo [1/4] Checking FService...
 tasklist /FI "IMAGENAME eq FService.exe" 2>NUL | find /I "FService.exe" >NUL

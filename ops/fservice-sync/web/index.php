@@ -5,10 +5,10 @@
  */
 
 // --- DB Config ---------------------------------------------------------------
-$DB_HOST = getenv('DB_HOST') ?: '192.168.1.129';
+$DB_HOST = getenv('DB_HOST') ?: '127.0.0.1';
 $DB_PORT = getenv('DB_PORT') ?: '3306';
-$DB_USER = getenv('DB_USER') ?: 'easylink_sync';
-$DB_PASS = getenv('DB_PASS') ?: 'EasyLink2026!';
+$DB_USER = getenv('DB_USER') ?: 'root';
+$DB_PASS = getenv('DB_PASS') ?: '';
 $DB_NAME = getenv('DB_NAME') ?: 'demo_easylinksdk';
 $TIMEOUT = 120;
 

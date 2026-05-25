@@ -28,10 +28,10 @@ define('FSERVICE_HOST', getenv('FSERVICE_HOST') ?: 'localhost');
 define('FSERVICE_PORT', getenv('FSERVICE_PORT') ?: '8090');
 define('FSERVICE_SN',   getenv('FSERVICE_SN')   ?: 'Fio66208021230737');
 
-define('DB_HOST', getenv('DB_HOST') ?: '192.168.1.129');
+define('DB_HOST', getenv('DB_HOST') ?: '127.0.0.1');
 define('DB_PORT', getenv('DB_PORT') ?: '3306');
-define('DB_USER', getenv('DB_USER') ?: 'easylink_sync');
-define('DB_PASS', getenv('DB_PASS') ?: 'EasyLink2026!');
+define('DB_USER', getenv('DB_USER') ?: 'root');
+define('DB_PASS', getenv('DB_PASS') ?: '');
 define('DB_NAME', getenv('DB_NAME') ?: 'demo_easylinksdk');
 
 define('PAGING_LIMIT', 100);
