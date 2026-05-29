@@ -133,26 +133,21 @@ function sync_users(PDO $pdo): int {
 // --- Scanlog Sync ------------------------------------------------------------
 
 function sync_scanlogs(PDO $pdo, bool $fullMode = false): int {
-    $endpoint = $fullMode ? '/scanlog/all/paging' : '/scanlog/new';
+    // --- Phase 1: try /scanlog/new first ---
+    $endpoint = '/scanlog/new';
     echo "[INFO] Pulling scanlogs from bridge ($endpoint)...\n";
-
-    $isSession = true;
-    $total = 0;
 
     $stmt = $pdo->prepare("
         INSERT IGNORE INTO tb_scanlog (sn, scan_date, pin, verifymode, iomode, workcode)
         VALUES (:sn, :scan_date, :pin, :verifymode, :iomode, :workcode)
     ");
 
-    while ($isSession) {
-        $fields = ['limit' => PAGING_LIMIT];
-        $result = bridge_post($endpoint, $fields);
+    $total = 0;
 
-        if (!$result || empty($result['Result'])) {
-            echo "[WARN] Scanlog pull returned Result=false or empty\n";
-            break;
-        }
+    // Try /scanlog/new first (incremental)
+    $result = bridge_post($endpoint, ['limit' => PAGING_LIMIT]);
 
+    if ($result && !empty($result['Result'])) {
         $rows = $result['Data'] ?? [];
         foreach ($rows as $row) {
             $stmt->execute([
@@ -165,11 +160,50 @@ function sync_scanlogs(PDO $pdo, bool $fullMode = false): int {
             ]);
             $total++;
         }
-
-        $isSession = !empty($result['IsSession']);
+        echo "[INFO] Incremental sync got $total records\n";
     }
 
-    echo "[INFO] Scanlogs synced: $total\n";
+    // --- Phase 2: fallback to /scanlog/all/paging if needed ---
+    if ($fullMode || $total === 0) {
+        if ($total === 0) {
+            echo "[WARN] No new scanlogs from /scanlog/new — falling back to /scanlog/all/paging\n";
+        }
+
+        $endpoint = '/scanlog/all/paging';
+        echo "[INFO] Pulling ALL scanlogs from bridge ($endpoint)...\n";
+
+        $isSession = true;
+        $pageTotal = 0;
+
+        while ($isSession) {
+            $result = bridge_post($endpoint, ['limit' => PAGING_LIMIT]);
+
+            if (!$result || empty($result['Result'])) {
+                echo "[WARN] Scanlog all/paging returned Result=false or empty\n";
+                break;
+            }
+
+            $rows = $result['Data'] ?? [];
+            foreach ($rows as $row) {
+                $stmt->execute([
+                    ':sn'         => $row['SN'] ?? FSERVICE_SN,
+                    ':scan_date'  => $row['ScanDate'] ?? '',
+                    ':pin'        => $row['PIN'] ?? '',
+                    ':verifymode' => (int)($row['VerifyMode'] ?? 0),
+                    ':iomode'     => (int)($row['IOMode'] ?? 0),
+                    ':workcode'   => $row['WorkCode'] ?? '0',
+                ]);
+                $pageTotal++;
+            }
+
+            $isSession = !empty($result['IsSession']);
+        }
+
+        echo "[INFO] All scanlogs synced: $pageTotal records\n";
+        $total += $pageTotal;
+    }
+
+    echo "[INFO] Total scanlogs synced: $total\n";
     return $total;
 }
 
