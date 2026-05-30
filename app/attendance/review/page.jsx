@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AlertTriangle, EyeOff, Filter, ShieldCheck, UserRoundSearch } from 'lucide-react';
+import { AlertTriangle, EyeOff, Filter, RefreshCcw, ShieldCheck, UserRoundSearch } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useAppLocale } from '@/components/app-shell';
 import {
@@ -64,6 +64,8 @@ const ANOMALY_FILTER_DEFAULT = {
   anomaly: true,
 };
 
+const FOCUS_REFRESH_THROTTLE_MS = 15_000;
+
 function resolvePresetRange(rangeKey) {
   return {
     from: startOfRange(rangeKey),
@@ -102,6 +104,8 @@ export default function AttendanceReviewPage() {
   const resolvedLocale = locale === 'id' ? 'id' : 'en';
   const T = useCallback((path) => getUIText(path, resolvedLocale), [resolvedLocale]);
   const { user: currentUser, loading: authLoading } = useAuthSession();
+  const warningRef = useRef(warning);
+  const lastRefreshAtRef = useRef(0);
   const [groups, setGroups] = useState([]);
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -116,6 +120,10 @@ export default function AttendanceReviewPage() {
   const [mutationDrafts, setMutationDrafts] = useState({});
 
   const isAdmin = Boolean(currentUser?.is_admin);
+
+  useEffect(() => {
+    warningRef.current = warning;
+  }, [warning]);
 
   useEffect(() => {
     if (authLoading) return;
@@ -145,12 +153,12 @@ export default function AttendanceReviewPage() {
       setRows(Array.isArray(data?.rows) ? data.rows : []);
       setHasHiddenTable(Boolean(data?.has_hidden_table));
     } catch (error) {
-      warning(error.message || 'Failed to load attendance review.', 'Review fetch failed');
+      warningRef.current(error.message || 'Failed to load attendance review.', 'Review fetch failed');
       setRows([]);
     } finally {
       setLoading(false);
     }
-  }, [from, to, groupId, pinFilter, warning]);
+  }, [from, to, groupId, pinFilter]);
 
   useEffect(() => {
     loadGroups();
@@ -162,6 +170,32 @@ export default function AttendanceReviewPage() {
       loadRows();
     }, 300);
     return () => clearTimeout(debounceRef.current);
+  }, [loadRows]);
+
+  useEffect(() => {
+    const refreshOnFocus = () => {
+      if (document.visibilityState !== 'visible') return;
+      const now = Date.now();
+      if (now - lastRefreshAtRef.current < FOCUS_REFRESH_THROTTLE_MS) return;
+      lastRefreshAtRef.current = now;
+      void loadRows();
+    };
+
+    const refreshOnVisible = () => {
+      if (document.visibilityState !== 'visible') return;
+      const now = Date.now();
+      if (now - lastRefreshAtRef.current < FOCUS_REFRESH_THROTTLE_MS) return;
+      lastRefreshAtRef.current = now;
+      void loadRows();
+    };
+
+    window.addEventListener('focus', refreshOnFocus);
+    document.addEventListener('visibilitychange', refreshOnVisible);
+
+    return () => {
+      window.removeEventListener('focus', refreshOnFocus);
+      document.removeEventListener('visibilitychange', refreshOnVisible);
+    };
   }, [loadRows]);
 
   const profileOptions = useMemo(() => {
@@ -355,10 +389,24 @@ export default function AttendanceReviewPage() {
             />
           </label>
 
-          <div className="flex items-end">
+          <div className="flex items-end gap-2">
             <button
               type="button"
-              onClick={loadRows}
+              onClick={() => {
+                lastRefreshAtRef.current = Date.now();
+                void loadRows();
+              }}
+              disabled={loading}
+              className="inline-flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-xs text-slate-200 hover:border-slate-500 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <RefreshCcw className="h-3.5 w-3.5" /> {T('refresh')}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                lastRefreshAtRef.current = Date.now();
+                void loadRows();
+              }}
               className="inline-flex items-center gap-2 rounded-lg border border-teal-500/30 bg-teal-500/10 px-3 py-2 text-xs text-teal-300 hover:bg-teal-500/20"
             >
               <Filter className="h-3.5 w-3.5" /> {T('attendanceReviewPage.filters.apply')}

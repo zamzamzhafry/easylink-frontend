@@ -1,6 +1,6 @@
 'use client';
 
-import { CalendarDays } from 'lucide-react';
+import { CalendarDays, RefreshCcw } from 'lucide-react';
 import { useAppLocale } from '@/components/app-shell';
 import { PRESET_RANGE } from '@/lib/attendance-helpers';
 import { getUIText } from '@/lib/localization/ui-texts';
@@ -24,6 +24,8 @@ export default function AttendanceFilters({
   onIncompleteOnlyChange,
   onRowsPerPageChange,
   onSetRange,
+  onRefresh,
+  refreshDisabled = false,
 }) {
   const { locale } = useAppLocale();
   const resolvedLocale = locale === 'id' ? 'id' : 'en';
@@ -44,6 +46,15 @@ export default function AttendanceFilters({
           <span>{summaryText}</span>
         </div>
         <div className="ml-auto flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => onRefresh?.()}
+            disabled={refreshDisabled}
+            className="pill-button inline-flex items-center gap-2 px-3 py-1.5 text-xs disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            <RefreshCcw className="h-3.5 w-3.5" />
+            {t('refresh')}
+          </button>
           {[
             ['today', PRESET_RANGE.today],
             ['week', PRESET_RANGE.week],

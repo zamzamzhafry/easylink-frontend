@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { BarChart3, Download, FileSpreadsheet, PieChart, Printer } from 'lucide-react';
 import { useAppLocale } from '@/components/app-shell';
 import AttendanceFilters from '@/components/attendance/attendance-filters';
@@ -47,6 +47,8 @@ const ATTENDANCE_PIE_COLORS = {
   early_leave: '#fb7185',
   anomaly: '#a78bfa',
 };
+
+const FOCUS_REFRESH_THROTTLE_MS = 15_000;
 
 const toSafeNumber = (value) => {
   const parsed = Number(value);
@@ -230,6 +232,17 @@ export default function AttendancePage() {
   const [summaryPage, setSummaryPage] = useState(1);
   const [rowsPerPage, setRowsPerPage] = useState(20);
   const displayLocale = resolvedLocale === 'id' ? 'id-ID' : 'en-US';
+  const warningRef = useRef(warning);
+  const tRef = useRef(t);
+  const lastRefreshAtRef = useRef(0);
+
+  useEffect(() => {
+    warningRef.current = warning;
+  }, [warning]);
+
+  useEffect(() => {
+    tRef.current = t;
+  }, [t]);
 
   const attendanceScope = getAttendanceScope(currentUser);
   const isAdmin = canAccessRawAttendance(currentUser);
@@ -306,14 +319,14 @@ export default function AttendancePage() {
         drilldown: { rows: [], total: 0 },
         metadata: { totalRecords: 0, availableGroups: [], availableEmployees: [] },
       });
-      warning(
-        error.message || t('reportPage.errors.fetchFailed'),
-        t('reportPage.errors.requestFailed')
+      warningRef.current(
+        error.message || tRef.current('reportPage.errors.fetchFailed'),
+        tRef.current('reportPage.errors.requestFailed')
       );
     } finally {
       setLoading(false);
     }
-  }, [drilldownState.group, drilldownState.status, from, to, groupId, warning, t]);
+  }, [drilldownState.group, drilldownState.status, from, to, groupId]);
 
   const loadQuickSummaries = useCallback(async () => {
     setQuickSummariesLoading(true);
@@ -345,6 +358,15 @@ export default function AttendancePage() {
     }
   }, [from, to, groupId]);
 
+  const refreshActiveTab = useCallback(async () => {
+    lastRefreshAtRef.current = Date.now();
+    if (activeTab === 'quick_summaries') {
+      await loadQuickSummaries();
+      return;
+    }
+    await load();
+  }, [activeTab, load, loadQuickSummaries]);
+
   const loadGroups = useCallback(async () => {
     if (!isAdmin && currentUser?.groups) {
       setGroups(
@@ -375,6 +397,30 @@ export default function AttendancePage() {
     if (activeTab !== 'quick_summaries') return;
     loadQuickSummaries();
   }, [activeTab, loadQuickSummaries]);
+
+  useEffect(() => {
+    const handleWindowFocusRefresh = () => {
+      if (document.visibilityState !== 'visible') return;
+      const now = Date.now();
+      if (now - lastRefreshAtRef.current < FOCUS_REFRESH_THROTTLE_MS) return;
+      void refreshActiveTab();
+    };
+
+    const handleVisibilityRefresh = () => {
+      if (document.visibilityState !== 'visible') return;
+      const now = Date.now();
+      if (now - lastRefreshAtRef.current < FOCUS_REFRESH_THROTTLE_MS) return;
+      void refreshActiveTab();
+    };
+
+    window.addEventListener('focus', handleWindowFocusRefresh);
+    document.addEventListener('visibilitychange', handleVisibilityRefresh);
+
+    return () => {
+      window.removeEventListener('focus', handleWindowFocusRefresh);
+      document.removeEventListener('visibilitychange', handleVisibilityRefresh);
+    };
+  }, [refreshActiveTab]);
 
   useEffect(() => {
     const years = buildYearRange(from, to);
@@ -1199,8 +1245,8 @@ export default function AttendancePage() {
       <AttendanceFilters
         from={from}
         to={to}
-        count={filteredRows.length}
-        anomalyCount={countAnomalies(filteredRows)}
+        count={filteredSummaryRows.length}
+        anomalyCount={countAnomalies(filteredSummaryRows)}
         groupId={groupId}
         groups={groups}
         employeeId={employeeFilter}
@@ -1218,6 +1264,10 @@ export default function AttendancePage() {
           resetPages();
         }}
         onSetRange={handleSetRange}
+        onRefresh={() => {
+          void refreshActiveTab();
+        }}
+        refreshDisabled={loading || quickSummariesLoading}
       />
 
 
