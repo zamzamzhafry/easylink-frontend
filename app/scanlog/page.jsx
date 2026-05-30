@@ -101,12 +101,12 @@ export default function ScanlogPage() {
   const [from, setFrom] = useState(daysAgo(6));
   const [to, setTo] = useState(todayIso());
   const [pinFilter, setPinFilter] = useState('');
-  const [source, setSource] = useState('legacy');
+  const [source, setSource] = useState('canonical');
   const [appliedFilters, setAppliedFilters] = useState(() => ({
     from: daysAgo(6),
     to: todayIso(),
     pin: '',
-    source: 'legacy',
+    source: 'canonical',
   }));
   const [reloadToken, setReloadToken] = useState(0);
 
@@ -234,7 +234,7 @@ export default function ScanlogPage() {
             <p className="mt-1 text-[11px] text-slate-500">
               Data source:{' '}
               <span className="font-semibold text-teal-300">
-                {source === 'safe' ? 'Safe Immutable Store' : 'Legacy Scanlog Table'}
+                {source === 'canonical' ? 'Canonical Linux Store' : 'Legacy Scanlog Table'}
               </span>
             </p>
           </div>
@@ -377,8 +377,8 @@ export default function ScanlogPage() {
                 }}
                 className="rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-white focus:border-teal-500 focus:outline-none"
               >
-                <option value="legacy">Legacy (tb_scanlog)</option>
-                <option value="safe">Safe Store (tb_scanlog_safe_events)</option>
+                <option value="canonical">Canonical Linux Store (tb_scanlog_safe_events)</option>
+                <option value="legacy">Legacy Scanlog Table (tb_scanlog)</option>
               </select>
             </div>
 

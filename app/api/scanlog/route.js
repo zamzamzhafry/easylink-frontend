@@ -10,6 +10,7 @@ import {
   computePaginationMeta,
   parsePaginationParams,
 } from '@/lib/pagination';
+import { buildScanlogReadBoundary, resolveScanlogReadSource } from '@/lib/scanlog-read-source';
 
 const VERIFY_LABEL = {
   1: 'Fingerprint',
@@ -51,7 +52,7 @@ async function tableExists(tableName) {
 
 // ─────────────────────────────────────────────
 // GET /api/scanlog
-// Query params: from, to, pin (filter), limit, page, source=(legacy|safe)
+// Query params: from, to, pin (filter), limit, page, source=(legacy|safe|canonical)
 // Returns raw scanlog rows — NO karyawan join
 // ─────────────────────────────────────────────
 export async function GET(request) {
@@ -69,13 +70,16 @@ export async function GET(request) {
     maxLimit: 5000,
   });
   const download = searchParams.get('download') === '1';
-  const source =
-    (searchParams.get('source') || 'legacy').toLowerCase() === 'safe' ? 'safe' : 'legacy';
 
   const hasSafeTable = await tableExists('tb_scanlog_safe_events');
-  const useSafe = source === 'safe' && hasSafeTable;
-  const timeColumn = useSafe ? 'sl.scan_at' : 'sl.scan_date';
-  const baseTable = useSafe ? 'tb_scanlog_safe_events' : 'tb_scanlog';
+  const hasLegacyTable = await tableExists('tb_scanlog');
+  const sourceState = resolveScanlogReadSource(searchParams.get('source'), {
+    hasSafeTable,
+    hasLegacyTable,
+  });
+  const boundary = buildScanlogReadBoundary(sourceState);
+  const timeColumn = sourceState.useCanonical ? 'sl.scan_at' : 'sl.scan_date';
+  const baseTable = sourceState.baseTable;
 
   const whereClauses = [];
   const params = [];
@@ -161,7 +165,8 @@ export async function GET(request) {
       limit: meta.limit,
       itemKey: 'records',
       extra: {
-        source: useSafe ? 'safe' : 'legacy',
+        source: sourceState.resolvedSource,
+        boundary,
       },
     })
   );

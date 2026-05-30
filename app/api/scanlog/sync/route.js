@@ -12,6 +12,7 @@ import {
   parsePaginationParams,
 } from '@/lib/pagination';
 import { getMigrationGateStatus } from '@/lib/flags/migration-flags';
+import { SCANLOG_CANONICAL_SOURCE } from '@/lib/scanlog-read-source';
 
 function toBoundedInt(value, fallback, { min = 1, max = 100000 } = {}) {
   const parsed = Number.parseInt(String(value ?? ''), 10);
@@ -32,6 +33,14 @@ let queuePumping = false;
 
 const batchDetails = new Map();
 const MAX_BATCH_DETAILS = 100;
+const LEGACY_SYNC_BOUNDARY = {
+  direct_cutover_source: SCANLOG_CANONICAL_SOURCE,
+  resolved_source: 'legacy',
+  requested_source: 'legacy',
+  fallback_reason: 'legacy_sdk_pull_route',
+  legacy_sdk_pull_route: '/api/scanlog/sync',
+  legacy_sdk_pull_allowed: true,
+};
 
 function upsertBatchDetail(batchId, patch) {
   if (!batchId) return;
@@ -628,7 +637,7 @@ export async function GET(req) {
     }
 
     const report = await buildDeltaReport({ safeExists: true });
-    return NextResponse.json({ ok: true, migration, report });
+    return NextResponse.json({ ok: true, migration, report, boundary: LEGACY_SYNC_BOUNDARY });
   }
 
   const hasTable = await tableExists('tb_scanlog_safe_batches');
@@ -659,6 +668,7 @@ export async function GET(req) {
       ok: true,
       row,
       migration,
+      boundary: LEGACY_SYNC_BOUNDARY,
       queue: {
         concurrency: WORKER_CONCURRENCY,
         active: activeWorkers,
@@ -953,6 +963,7 @@ export async function POST(req) {
       ok: true,
       batch_id: batchId,
       source: result.source,
+      boundary: LEGACY_SYNC_BOUNDARY,
       status: batch?.status || 'success',
       request: {
         mode,
