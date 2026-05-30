@@ -211,3 +211,114 @@ Most likely causes:
 4. route files are missing on server checkout
 
 This handout is designed to prove which one.
+
+---
+
+## M. Human QA — App review checklist after deploy
+
+Run these checks in browser after Linux VM pull, rebuild, and PM2 restart.
+
+### 1. Login and shell sanity
+- Open app login page.
+- Log in with known working admin account.
+- Confirm app loads without immediate redirect loop.
+- Confirm sidebar renders normally.
+- Click 3-4 routes in sidebar and confirm no repeated forced logout.
+
+### 2. Attendance page crash check
+- Open `/attendance`.
+- Confirm page renders fully.
+- Confirm no browser crash / blank page / red error overlay.
+- Click date preset buttons:
+  - Today
+  - Week
+  - Month
+- Expected:
+  - page does not crash
+  - date range updates correctly
+  - results reload normally
+
+### 3. Attendance manual refresh check
+- On `/attendance`, click visible Refresh button once.
+- Expected:
+  - one normal reload
+  - no endless spinner
+  - no burst of repeated requests
+
+### 4. Performance page request-churn check
+- Open `/performance`.
+- Let page settle.
+- Switch to another tab/window, then return.
+- Refresh browser once.
+- Expected:
+  - page stays logged in
+  - no `Too many requests` error
+  - no repeated kick back to login
+  - page loads data normally
+
+### 5. Browser network spot-check
+In browser DevTools Network tab, watch these calls while testing `/attendance` and `/performance`:
+- `/api/auth/me`
+- `/api/attendance`
+- `/api/performance`
+- `/api/groups`
+
+Expected:
+- `/api/auth/me` should not spam repeatedly on `/performance`
+- requests should settle after initial load / explicit refresh
+- no rapid burst pattern like constant polling
+
+### 6. Leader schedule access review
+Log in with affected employee/leader account.
+- Open `/schedule`
+- Check whether schedule page is visible in sidebar
+- Try normal schedule actions expected for leader role
+
+Record exactly:
+- login identifier used
+- whether login used login ID, NIP, or legacy PIN path
+- whether `/schedule` opens
+- whether page is read-only or editable
+- any popup / 403 / redirect / hidden button behavior
+
+### 7. Capture `/api/auth/me` for failing leader account
+If leader scheduling still fails:
+- open DevTools Network
+- reload page
+- open `/api/auth/me` response
+- save/copy JSON response
+
+Need these fields from response:
+- `login_id`
+- `nip`
+- `role_key`
+- `is_leader`
+- `can_schedule`
+- `can_dashboard`
+- `groups`
+- `canonical_roles`
+
+---
+
+## N. What to send back for app QA troubleshooting
+
+Send these items back:
+
+1. Attendance result
+- did `/attendance` open successfully?
+- did preset buttons crash page or work?
+
+2. Performance result
+- did `/performance` load normally?
+- did session stay active?
+- any `Too many requests` message?
+
+3. Network evidence
+- screenshot or copied rows for `/api/auth/me` frequency
+- any failing `/api/attendance` or `/api/performance` requests
+
+4. Leader-account evidence
+- exact account used
+- exact blocked action
+- `/api/auth/me` JSON for that account
+- any `/api/schedule` 403 response body
