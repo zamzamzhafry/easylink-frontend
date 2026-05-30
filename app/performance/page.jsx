@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { Download, LineChart } from 'lucide-react';
 import { useToast } from '@/components/ui/toast-provider';
+import useAuthSession from '@/hooks/use-auth-session';
 import { requestJson } from '@/lib/request-json';
 import { PAGE_SIZE_OPTIONS } from '@/lib/constants';
 
@@ -43,7 +44,7 @@ function StatCard({ label, value, className }) {
 
 export default function PerformancePage() {
   const { warning } = useToast();
-  const [auth, setAuth] = useState(null);
+  const { user: authUser } = useAuthSession();
   const [groups, setGroups] = useState([]);
   const [from, setFrom] = useState(monthStart());
   const [to, setTo] = useState(isoDate());
@@ -54,29 +55,39 @@ export default function PerformancePage() {
   const [summaryPage, setSummaryPage] = useState(1);
   const [summaryLimit, setSummaryLimit] = useState(15);
 
-  const loadAuth = useCallback(async () => {
-    try {
-      const me = await requestJson('/api/auth/me');
-      const user = me?.user || null;
-      setAuth(user);
-
-      if (user?.is_admin) {
-        const groupData = await requestJson('/api/groups');
-        setGroups(Array.isArray(groupData?.groups) ? groupData.groups : []);
-      } else {
-        setGroups(
-          (user?.groups || []).map((item) => ({ id: item.group_id, nama_group: item.nama_group }))
-        );
-      }
-    } catch {
-      setAuth(null);
-      setGroups([]);
-    }
-  }, []);
-
   useEffect(() => {
-    loadAuth();
-  }, [loadAuth]);
+    let cancelled = false;
+
+    if (!authUser) {
+      setGroups([]);
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    if (!authUser.is_admin) {
+      setGroups(
+        (authUser.groups || []).map((item) => ({ id: item.group_id, nama_group: item.nama_group }))
+      );
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    requestJson('/api/groups')
+      .then((groupData) => {
+        if (cancelled) return;
+        setGroups(Array.isArray(groupData?.groups) ? groupData.groups : []);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setGroups([]);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [authUser]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -562,7 +573,8 @@ export default function PerformancePage() {
         </div>
       </div>
 
-      {!auth && <p className="text-xs text-rose-400">Session not loaded. Please re-login.</p>}
+          {!authUser && <p className="text-xs text-rose-400">Session not loaded. Please re-login.</p>}
+
     </div>
   );
 }
