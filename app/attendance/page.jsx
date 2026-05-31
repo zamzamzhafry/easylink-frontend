@@ -461,7 +461,7 @@ export default function AttendancePage() {
     };
   }, [from, to]);
 
-  const setRange = (unit) => {
+  const handleSetRange = useCallback((unit) => {
     if (unit === 'today') {
       const today = isoDate();
       setFrom(today);
@@ -471,7 +471,7 @@ export default function AttendancePage() {
 
     setFrom(startOfRange(unit));
     setTo(endOfRange(unit));
-  };
+  }, []);
 
   const saveNote = async ({ status, catatan, manual_hours, manual_approved }) => {
     if (!editing) return false;
