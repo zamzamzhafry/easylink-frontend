@@ -8,7 +8,7 @@ type RateLimitEntry = { count: number; resetAt: number };
 const rateLimitStore = new Map<string, RateLimitEntry>();
 
 const RATE_LIMIT_WINDOW_MS = 60_000; // 1 minute
-const RATE_LIMIT_MAX_AUTH = 10; // max 10 auth attempts per minute
+const RATE_LIMIT_MAX_AUTH = 30; // max 30 auth attempts per minute
 const RATE_LIMIT_MAX_API = 120; // max 120 API calls per minute
 
 function getClientIp(request: NextRequest): string {

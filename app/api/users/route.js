@@ -186,8 +186,20 @@ async function columnExists(tableName, columnName) {
   return exists;
 }
 
-function getDefaultTbUserSn() {
-  return normalizeIdentifier(process.env.EASYLINK_DEVICE_SN);
+let _cachedDefaultSn;
+async function getDefaultTbUserSn() {
+  const envSn = normalizeIdentifier(process.env.EASYLINK_DEVICE_SN);
+  if (envSn) return envSn;
+  if (_cachedDefaultSn !== undefined) return _cachedDefaultSn;
+  try {
+    const [rows] = await pool.query(
+      "SELECT sn, COUNT(*) AS cnt FROM tb_user WHERE sn IS NOT NULL AND sn != '' GROUP BY sn ORDER BY cnt DESC LIMIT 1"
+    );
+    _cachedDefaultSn = Array.isArray(rows) && rows.length > 0 ? rows[0].sn : '';
+  } catch {
+    _cachedDefaultSn = '';
+  }
+  return _cachedDefaultSn;
 }
 
 async function resolveEmployeeAuthByLoginId(connection, loginId) {
@@ -248,7 +260,7 @@ async function getTbUserScope() {
   return {
     hasTbUser,
     hasSn,
-    sn: getDefaultTbUserSn(),
+    sn: await getDefaultTbUserSn(),
   };
 }
 
@@ -329,7 +341,7 @@ export async function GET(request) {
     if (await tableExists('tb_user')) {
       const coveredPins = new Set(allRows.map((r) => String(r.pin)));
       const tbUserHasSn = await columnExists('tb_user', 'sn');
-      const defaultSn = getDefaultTbUserSn();
+      const defaultSn = await getDefaultTbUserSn();
       const snFilter = tbUserHasSn && defaultSn ? ' WHERE u.sn = ?' : '';
       const snParams = tbUserHasSn && defaultSn ? [defaultSn] : [];
       const [legacyRows] = await pool.query(
@@ -502,7 +514,7 @@ export async function POST(request) {
   const rfid = normalizeIdentifier(body.rfid);
   const nip = normalizeIdentifier(body.nip) || pin;
   const privilege = Number(body.privilege ?? 0);
-  const tbUserSn = normalizeIdentifier(body.sn) || getDefaultTbUserSn();
+  const tbUserSn = normalizeIdentifier(body.sn) || await getDefaultTbUserSn();
 
   if (!pin) return NextResponse.json({ ok: false, error: 'PIN is required' }, { status: 400 });
   if (!nama) return NextResponse.json({ ok: false, error: 'Name is required' }, { status: 400 });
@@ -656,7 +668,7 @@ export async function PUT(request) {
   }
 
   const pin = normalizeIdentifier(body.pin);
-  const tbUserSn = normalizeIdentifier(body.sn) || getDefaultTbUserSn();
+  const tbUserSn = normalizeIdentifier(body.sn) || await getDefaultTbUserSn();
   if (!pin) return NextResponse.json({ ok: false, error: 'PIN is required' }, { status: 400 });
 
   const nextNip = body.nip !== undefined ? normalizeIdentifier(body.nip) : undefined;
@@ -809,7 +821,7 @@ export async function PUT(request) {
 
     if (setClauses.length > 0) {
       if (Array.isArray(legacyUserRows) && legacyUserRows.length > 0) {
-        if (tbUserHasSn && !tbUserSn) {
+        if (tbUserHasSn && tbUserSn == null) {
           await connection.rollback();
           return NextResponse.json(
             { ok: false, error: 'tb_user requires SN. Set EASYLINK_DEVICE_SN or send body.sn.' },
@@ -831,7 +843,7 @@ export async function PUT(request) {
         const legacyPwd = String(body.pwd ?? '');
         const legacyRfid = String(body.rfid ?? '');
         const legacyPrivilege = Number(body.privilege ?? 0);
-        if (tbUserHasSn && !tbUserSn) {
+        if (tbUserHasSn && tbUserSn == null) {
           await connection.rollback();
           return NextResponse.json(
             { ok: false, error: 'tb_user requires SN. Set EASYLINK_DEVICE_SN or send body.sn.' },
@@ -905,7 +917,7 @@ export async function DELETE(request) {
   }
 
   const pin = normalizeIdentifier(body.pin);
-  const tbUserSn = normalizeIdentifier(body.sn) || getDefaultTbUserSn();
+  const tbUserSn = normalizeIdentifier(body.sn) || await getDefaultTbUserSn();
   if (!pin) return NextResponse.json({ ok: false, error: 'PIN is required' }, { status: 400 });
 
   // Protect deleting yourself

@@ -7,6 +7,7 @@ const SESSION_CACHE_TTL_MS = 30_000;
 let sessionCache = {
   user: null,
   error: '',
+  statusCode: 0,
   fetchedAt: 0,
 };
 
@@ -29,10 +30,11 @@ async function fetchAuthSession(force = false) {
         credentials: 'same-origin',
         cache: 'no-store',
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => null);
       sessionCache = {
-        user: data?.ok ? (data.user || null) : null,
-        error: data?.ok ? '' : data?.error || data?.message || '',
+        user: res.ok && data?.ok ? (data.user || null) : null,
+        error: res.ok && data?.ok ? '' : data?.error || data?.message || `HTTP ${res.status}`,
+        statusCode: res.status,
         fetchedAt: Date.now(),
       };
       return sessionCache;
@@ -40,6 +42,7 @@ async function fetchAuthSession(force = false) {
       sessionCache = {
         user: null,
         error: err?.message || 'Failed to load session',
+        statusCode: 0,
         fetchedAt: Date.now(),
       };
       return sessionCache;
@@ -51,16 +54,24 @@ async function fetchAuthSession(force = false) {
   return inflightSessionPromise;
 }
 
+/** Reset cache — call after login/logout to force fresh fetch. */
+export function resetSessionCache() {
+  sessionCache = { user: null, error: '', statusCode: 0, fetchedAt: 0 };
+  inflightSessionPromise = null;
+}
+
 export default function useAuthSession() {
   const [user, setUser] = useState(sessionCache.fetchedAt ? sessionCache.user : null);
   const [loading, setLoading] = useState(!sessionCache.fetchedAt);
   const [error, setError] = useState(sessionCache.fetchedAt ? sessionCache.error : '');
+  const [statusCode, setStatusCode] = useState(sessionCache.fetchedAt ? sessionCache.statusCode : 0);
 
   const load = useCallback(async (force = false) => {
     setLoading(true);
     const next = await fetchAuthSession(force);
     setUser(next.user || null);
     setError(next.error || '');
+    setStatusCode(next.statusCode || 0);
     setLoading(false);
     return next;
   }, []);
@@ -71,5 +82,5 @@ export default function useAuthSession() {
 
   const refresh = useCallback(() => load(true), [load]);
 
-  return { user, loading, error, refresh };
+  return { user, loading, error, statusCode, refresh };
 }

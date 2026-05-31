@@ -15,7 +15,7 @@ import RightOpsSidebar from '@/components/right-ops-sidebar';
 import Sidebar from '@/components/sidebar';
 import { getUIText } from '@/lib/localization/ui-texts';
 import { cn } from '@/lib/utils';
-import { requestJson } from '@/lib/request-json';
+import useAuthSession from '@/hooks/use-auth-session';
 
 const STORAGE_KEY = 'easylink_sidebar_collapsed';
 const RIGHT_SIDEBAR_STORAGE_KEY = 'easylink_right_sidebar_collapsed';
@@ -55,8 +55,9 @@ export default function AppShell({ children }) {
       return false;
     }
   });
-  const [authLoading, setAuthLoading] = useState(() => !isLoginPage);
-  const [authUser, setAuthUser] = useState(null);
+  const { user: hookUser, loading: hookLoading, statusCode: hookStatusCode } = useAuthSession();
+  const authUser = isLoginPage ? null : hookUser;
+  const authLoading = isLoginPage ? false : hookLoading;
   const [theme, setTheme] = useState('dark');
   const [locale, setLocale] = useState('en');
   const [remountKey, setRemountKey] = useState(0);
@@ -161,35 +162,13 @@ export default function AppShell({ children }) {
   }, [isLoginPage]);
 
   useEffect(() => {
-    let mounted = true;
-    if (isLoginPage) {
-      setAuthLoading(false);
-      setAuthUser(null);
-      return () => {
-        mounted = false;
-      };
+    if (isLoginPage || authLoading) return;
+    // Only redirect on confirmed 401 (not 429 or network errors)
+    if (!authUser && hookStatusCode === 401) {
+      const nextPath = pathname || '/';
+      router.replace(`/login?next=${encodeURIComponent(nextPath)}`);
     }
-
-    setAuthLoading(true);
-    requestJson('/api/auth/me')
-      .then((data) => {
-        if (!mounted) return;
-        setAuthUser(data?.user || null);
-      })
-      .catch(() => {
-        if (!mounted) return;
-        const nextPath = pathname || '/';
-        router.replace(`/login?next=${encodeURIComponent(nextPath)}`);
-      })
-      .finally(() => {
-        if (!mounted) return;
-        setAuthLoading(false);
-      });
-
-    return () => {
-      mounted = false;
-    };
-  }, [isLoginPage, pathname, router]);
+  }, [isLoginPage, authLoading, authUser, hookStatusCode, pathname, router]);
 
   useEffect(() => {
     if (isLoginPage || authLoading || !authUser || authUser.is_admin) {

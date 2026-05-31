@@ -5,6 +5,7 @@ import { Fingerprint, Lock, UserCircle2 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useToast } from '@/components/ui/toast-provider';
 import { requestJson } from '@/lib/request-json';
+import { resetSessionCache } from '@/hooks/use-auth-session';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -53,6 +54,7 @@ export default function LoginPage() {
         body: JSON.stringify({ login_id: loginId.trim(), password }),
       });
       await requestJson('/api/auth/me');
+      resetSessionCache();
       success('Login success.', 'Authenticated');
       router.refresh();
       router.replace(nextPath);
