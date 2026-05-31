@@ -60,6 +60,8 @@ export function resetSessionCache() {
   inflightSessionPromise = null;
 }
 
+export { fetchAuthSession };
+
 export default function useAuthSession() {
   const [user, setUser] = useState(sessionCache.fetchedAt ? sessionCache.user : null);
   const [loading, setLoading] = useState(!sessionCache.fetchedAt);
