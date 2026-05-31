@@ -6,6 +6,7 @@ Read these first:
 2. `docs/agent-restrictions.md`
 3. `docs/agent-context/current-project-context.md`
 4. `docs/agent-context/session-handoff-2026-05-12-network-vm-landing.md`
+5. `docs/agent-context/session-handoff-2026-06-01-auth-model-and-login-fix.md`
 
 ## Local Skill
 
