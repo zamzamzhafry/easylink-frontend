@@ -732,15 +732,19 @@ export function verifyPlainPassword(stored: string | null | undefined, input: st
   const dbValue = String(stored ?? '').trim();
   const typed = String(input ?? '').trim();
 
-  if (!dbValue) {
-    return typed.length === 0;
-  }
-
-  if (!typed) {
+  if (!dbValue || !typed) {
     return false;
   }
 
-  return dbValue === typed;
+  if (dbValue.length !== typed.length) {
+    return false;
+  }
+
+  try {
+    return crypto.timingSafeEqual(Buffer.from(dbValue, 'utf8'), Buffer.from(typed, 'utf8'));
+  } catch {
+    return false;
+  }
 }
 
 export function isAllowedGroup(
