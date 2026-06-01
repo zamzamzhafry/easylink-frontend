@@ -6,6 +6,8 @@ import { NextRequest, NextResponse } from 'next/server';
 type RateLimitEntry = { count: number; resetAt: number };
 
 const rateLimitStore = new Map<string, RateLimitEntry>();
+let cleanupInterval: NodeJS.Timeout | null = null;
+
 
 const RATE_LIMIT_WINDOW_MS = 60_000; // 1 minute
 const RATE_LIMIT_MAX_AUTH = 30; // max 30 auth attempts per minute
@@ -19,35 +21,46 @@ function getClientIp(request: NextRequest): string {
   );
 }
 
-function isRateLimited(key: string, maxRequests: number): boolean {
-  const now = Date.now();
+export function evaluateRateLimit(key: string, maxRequests: number, now = Date.now()) {
   const entry = rateLimitStore.get(key);
 
   if (!entry || now > entry.resetAt) {
-    rateLimitStore.set(key, { count: 1, resetAt: now + RATE_LIMIT_WINDOW_MS });
-    return false;
+    const next = { count: 1, resetAt: now + RATE_LIMIT_WINDOW_MS };
+    rateLimitStore.set(key, next);
+    return { limited: false, count: next.count, resetAt: next.resetAt, remaining: Math.max(0, maxRequests - next.count) };
   }
 
-  entry.count++;
-  return entry.count > maxRequests;
+  entry.count += 1;
+  return {
+    limited: entry.count > maxRequests,
+    count: entry.count,
+    resetAt: entry.resetAt,
+    remaining: Math.max(0, maxRequests - Math.min(entry.count, maxRequests)),
+  };
 }
 
-// Periodic cleanup to prevent memory leak (every 5 minutes)
-setInterval(() => {
-  const now = Date.now();
+function cleanupExpiredRateLimitEntries(now = Date.now()) {
   for (const [key, entry] of rateLimitStore) {
     if (now > entry.resetAt) {
       rateLimitStore.delete(key);
     }
   }
-}, 5 * 60_000);
+}
+
+function ensureRateLimitCleanupInterval() {
+  if (cleanupInterval) return;
+  cleanupInterval = setInterval(() => {
+    cleanupExpiredRateLimitEntries();
+  }, 5 * 60_000);
+  cleanupInterval.unref?.();
+}
 
 // ─── Security Headers ────────────────────────────────────────────────────────
 
 const SECURITY_HEADERS: Record<string, string> = {
   'X-Content-Type-Options': 'nosniff',
   'X-Frame-Options': 'DENY',
-  'X-XSS-Protection': '1; mode=block',
+  // X-XSS-Protection intentionally omitted: modern browsers ignore it and CSP is the supported mitigation.
   'Referrer-Policy': 'strict-origin-when-cross-origin',
   'Permissions-Policy': 'camera=(), microphone=(), geolocation=()',
 };
@@ -77,17 +90,35 @@ function isValidOrigin(request: NextRequest): boolean {
 
 // ─── Middleware ───────────────────────────────────────────────────────────────
 
+function rateLimitHeaders(rateLimit: { resetAt: number; remaining: number }) {
+  const retryAfterSeconds = Math.max(1, Math.ceil((rateLimit.resetAt - Date.now()) / 1000));
+
+  return {
+    'RateLimit-Reset': String(rateLimit.resetAt),
+    'RateLimit-Remaining': String(rateLimit.remaining),
+    'Retry-After': String(retryAfterSeconds),
+  };
+}
+
 export function middleware(request: NextRequest) {
+  ensureRateLimitCleanupInterval();
   const { pathname } = request.nextUrl;
   const ip = getClientIp(request);
 
   // ── Rate limiting for auth endpoints ──
   if (pathname.startsWith('/api/auth/')) {
     const key = `auth:${ip}`;
-    if (isRateLimited(key, RATE_LIMIT_MAX_AUTH)) {
+    const authLimit = evaluateRateLimit(key, RATE_LIMIT_MAX_AUTH);
+    if (authLimit.limited) {
       return new NextResponse(
         JSON.stringify({ ok: false, error: 'Too many requests. Try again later.' }),
-        { status: 429, headers: { 'Content-Type': 'application/json', 'Retry-After': '60' } }
+        {
+          status: 429,
+          headers: {
+            'Content-Type': 'application/json',
+            ...rateLimitHeaders(authLimit),
+          },
+        }
       );
     }
   }
@@ -95,10 +126,17 @@ export function middleware(request: NextRequest) {
   // ── Rate limiting for all API endpoints ──
   if (pathname.startsWith('/api/')) {
     const key = `api:${ip}`;
-    if (isRateLimited(key, RATE_LIMIT_MAX_API)) {
+    const apiLimit = evaluateRateLimit(key, RATE_LIMIT_MAX_API);
+    if (apiLimit.limited) {
       return new NextResponse(
         JSON.stringify({ ok: false, error: 'Rate limit exceeded. Try again later.' }),
-        { status: 429, headers: { 'Content-Type': 'application/json', 'Retry-After': '60' } }
+        {
+          status: 429,
+          headers: {
+            'Content-Type': 'application/json',
+            ...rateLimitHeaders(apiLimit),
+          },
+        }
       );
     }
 

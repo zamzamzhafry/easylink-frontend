@@ -29,6 +29,7 @@ This note captures the current operational direction for the Linux VM deployment
 
 - The Next.js app still runs in dev mode on the VM because production build is blocked by remote font fetch behavior.
 - Future stabilization should self-host or remove remote font dependency for production build reliability.
+- Production-like builds now require explicit `AUTH_SECRET` and database env vars; keep `.env.example` current and copy it to `.env` or `.env.local` before `npm run build`.
 - Existing server-side logs showed pages such as groups, schedule, performance, and users are sensitive to schema drift and should be checked against the imported local DB.
 
 ## Required follow-up behavior

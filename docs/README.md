@@ -10,6 +10,9 @@ This folder is the handoff context for future contributors and AI agents.
 
 ## Core Docs
 
+- [`../.env.example`](../.env.example)
+  - Canonical env var template for local build/runtime parity
+  - `AUTH_SECRET` and `DB_PASSWORD` must be set for production-like builds
 - [`project-context.md`](./project-context.md)
   - High-level architecture
   - How request flow works (UI -> API -> DB/SDK)

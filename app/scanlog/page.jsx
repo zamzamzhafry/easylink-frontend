@@ -425,9 +425,17 @@ export default function ScanlogPage() {
         <InlineStatusPanel
           message={loadError}
           variant="error"
-          actionLabel="Retry"
-          onAction={retry}
+          actionLabel={/unauthorized|401|forbidden|403/i.test(loadError || '') ? 'Sign in' : 'Retry'}
+          onAction={/unauthorized|401|forbidden|403/i.test(loadError || '') ? undefined : retry}
         />
+        {/unauthorized|401|forbidden|403/i.test(loadError || '') && (
+          <Link
+            href={`/login?next=${encodeURIComponent(`/scanlog?${new URLSearchParams({ from: appliedFilters.from, to: appliedFilters.to, pin: appliedFilters.pin, source: appliedFilters.source }).toString()}`)}`}
+            className="inline-flex w-fit items-center gap-1 rounded-lg border border-teal-500/40 px-3 py-2 text-xs text-teal-200 transition-colors hover:border-teal-400 hover:text-white"
+          >
+            Sign in
+          </Link>
+        )}
 
         {/* Table */}
         <TableShell>

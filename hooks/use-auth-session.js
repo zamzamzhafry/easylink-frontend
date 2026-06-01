@@ -54,10 +54,30 @@ async function fetchAuthSession(force = false) {
   return inflightSessionPromise;
 }
 
+function applySessionCachePatch(next) {
+  sessionCache = { ...sessionCache, ...next };
+}
+
 /** Reset cache — call after login/logout to force fresh fetch. */
 export function resetSessionCache() {
   sessionCache = { user: null, error: '', statusCode: 0, fetchedAt: 0 };
   inflightSessionPromise = null;
+}
+
+export function invalidateAuthSession(reason = 'manual') {
+  resetSessionCache();
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('easylink-auth-session-invalidated', { detail: { reason } }));
+  }
+}
+
+export function setOptimisticAuthSession(user, statusCode = 200) {
+  applySessionCachePatch({
+    user: user || null,
+    error: '',
+    statusCode,
+    fetchedAt: Date.now(),
+  });
 }
 
 export { fetchAuthSession };
