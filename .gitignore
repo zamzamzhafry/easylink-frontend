@@ -7,12 +7,15 @@ node_modules/
 !migration_v3_clean_slate_rollback.sql
 !migration_machine_user_polling.sql
 *.tsbuildinfo
-.sysyphus/
+.sisyphus/
 .docs/
 *.sql.example
 nul
 Postman/
 .next/
-.sisyphus/
 *.log
 .playwright-mcp/
+.graphify/
+# Large SDK binaries and dumps
+docs/learning/sdk-share-dumps/
+tmp/

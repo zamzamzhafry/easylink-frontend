@@ -1,0 +1,26 @@
+[
+  {
+    "name": "EasyLink Absensi",
+    "slug": "easylink",
+    "description": "Attendance management, scheduling, analytics, biometric sync, and operator admin panel.",
+    "href": "http://{{host}}:3000/login",
+    "badge": "Production",
+    "status_host": "127.0.0.1",
+    "status_port": 3000,
+    "audience": "Admin & HR operators",
+    "notes": "Next.js 14 · MySQL · Biometric SDK",
+    "icon": "fingerprint"
+  },
+  {
+    "name": "Stirling PDF",
+    "slug": "stirling-pdf",
+    "description": "Self-hosted PDF toolkit — merge, split, compress, convert, OCR, and watermark documents.",
+    "href": "http://{{host}}:8080",
+    "badge": "Utility",
+    "status_host": "127.0.0.1",
+    "status_port": 8080,
+    "audience": "All staff",
+    "notes": "Docker · Java · LibreOffice engine",
+    "icon": "document"
+  }
+]
