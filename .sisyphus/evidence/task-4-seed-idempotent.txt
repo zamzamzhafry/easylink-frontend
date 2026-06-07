@@ -1,0 +1,267 @@
+Timestamp: Sun, Mar 29, 2026  5:40:11 AM
+
+1. Schema prep
+   Command: node scripts/migration-v3-orchestrator.mjs --mode apply --execute --database demo_easylinksdk
+   Output:
+     [migration-v3-orchestrator] Target database: demo_easylinksdk
+     [migration-v3-orchestrator] Mode requested: apply
+     [migration-v3-orchestrator] Executing 24 statements from migration_v3_clean_slate_schema.sql
+     [migration-v3-orchestrator] SQL file applied successfully.
+
+2. Fixture-count command (executed before seeding, after run 1, and after run 2)
+   Command:
+   node --input-type=module <<'EOF'
+import pool from './lib/db.js';
+
+const pins = ['admin001', 'leader001', 'employee001'];
+const placeholders = pins.map(() => '?').join(',');
+
+const queries = [
+  {
+    label: 'tb_karyawan',
+    sql: `SELECT 'tb_karyawan' AS table_name, pin, COUNT(*) AS cnt FROM tb_karyawan WHERE pin IN (${placeholders}) GROUP BY pin ORDER BY pin`,
+  },
+  {
+    label: 'tb_user',
+    sql: `SELECT 'tb_user' AS table_name, pin, COUNT(*) AS cnt FROM tb_user WHERE pin IN (${placeholders}) GROUP BY pin ORDER BY pin`,
+  },
+  {
+    label: 'tb_karyawan_auth',
+    sql: `SELECT 'tb_karyawan_auth' AS table_name, k.pin, COUNT(*) AS cnt FROM tb_karyawan_auth a JOIN tb_karyawan k ON a.karyawan_id = k.id WHERE k.pin IN (${placeholders}) GROUP BY k.pin ORDER BY k.pin`,
+  },
+  {
+    label: 'tb_karyawan_roles',
+    sql: `SELECT 'tb_karyawan_roles' AS table_name, k.pin, COUNT(*) AS cnt FROM tb_karyawan_roles r JOIN tb_karyawan k ON r.karyawan_id = k.id WHERE k.pin IN (${placeholders}) GROUP BY k.pin ORDER BY k.pin`,
+  },
+  {
+    label: 'tb_employee_group',
+    sql: `SELECT 'tb_employee_group' AS table_name, k.pin, COUNT(*) AS cnt FROM tb_employee_group eg JOIN tb_karyawan k ON eg.karyawan_id = k.id WHERE k.pin IN (${placeholders}) GROUP BY k.pin ORDER BY k.pin`,
+  },
+  {
+    label: 'tb_schedule',
+    sql: `SELECT 'tb_schedule' AS table_name, k.pin, COUNT(*) AS cnt FROM tb_schedule s JOIN tb_karyawan k ON s.karyawan_id = k.id WHERE k.pin IN (${placeholders}) GROUP BY k.pin ORDER BY k.pin`,
+  },
+  {
+    label: 'tb_user_group_access',
+    sql: `SELECT 'tb_user_group_access' AS table_name, pin, COUNT(*) AS cnt FROM tb_user_group_access WHERE pin IN (${placeholders}) GROUP BY pin ORDER BY pin`,
+  },
+  {
+    label: 'cs_employee_auth_identity',
+    sql: `SELECT 'cs_employee_auth_identity' AS table_name, k.pin, COUNT(*) AS cnt FROM cs_employee_auth_identity ci JOIN tb_karyawan k ON ci.employee_id = k.id WHERE k.pin IN (${placeholders}) GROUP BY k.pin ORDER BY k.pin`,
+  },
+  {
+    label: 'cs_employee_identification_methods',
+    sql: `SELECT 'cs_employee_identification_methods' AS table_name, k.pin, m.method_type, COUNT(*) AS cnt FROM cs_employee_identification_methods m JOIN tb_karyawan k ON m.employee_id = k.id WHERE k.pin IN (${placeholders}) GROUP BY k.pin, m.method_type ORDER BY k.pin, m.method_type`,
+  },
+  {
+    label: 'cs_employee_role_bindings',
+    sql: `SELECT 'cs_employee_role_bindings' AS table_name, k.pin, COUNT(*) AS cnt FROM cs_employee_role_bindings b JOIN tb_karyawan k ON b.employee_id = k.id WHERE k.pin IN (${placeholders}) GROUP BY k.pin ORDER BY k.pin`,
+  },
+  {
+    label: 'cs_group_ownership',
+    sql: `SELECT 'cs_group_ownership' AS table_name, k.pin, COUNT(*) AS cnt FROM cs_group_ownership o JOIN tb_karyawan k ON o.owner_employee_id = k.id WHERE k.pin IN (${placeholders}) GROUP BY k.pin ORDER BY k.pin`,
+  },
+];
+
+async function capture() {
+  console.log('--- fixture counts snapshot ---');
+  for (const query of queries) {
+    const [rows] = await pool.query(query.sql, pins);
+    console.log(`\n${query.label}`);
+    if (rows.length === 0) {
+      console.log('  (no matching rows)');
+      continue;
+    }
+    for (const row of rows) {
+      let line = `  ${row.pin}`;
+      if (row.method_type) {
+        line += ` (${row.method_type})`;
+      }
+      line += ` -> ${row.cnt}`;
+      console.log(line);
+    }
+  }
+}
+
+capture()
+  .then(async () => {
+    await pool.end();
+  })
+  .catch(async (error) => {
+    console.error(error);
+    await pool.end();
+    process.exit(1);
+  });
+EOF
+
+   Baseline counts (before seed):
+   --- fixture counts snapshot ---
+
+   tb_karyawan
+     (no matching rows)
+
+   tb_user
+     (no matching rows)
+
+   tb_karyawan_auth
+     (no matching rows)
+
+   tb_karyawan_roles
+     (no matching rows)
+
+   tb_employee_group
+     (no matching rows)
+
+   tb_schedule
+     (no matching rows)
+
+   tb_user_group_access
+     (no matching rows)
+
+   cs_employee_auth_identity
+     (no matching rows)
+
+   cs_employee_identification_methods
+     (no matching rows)
+
+   cs_employee_role_bindings
+     (no matching rows)
+
+   cs_group_ownership
+     (no matching rows)
+
+   After seed run 1 counts:
+   --- fixture counts snapshot ---
+
+   tb_karyawan
+     admin001 -> 1
+     employee001 -> 1
+     leader001 -> 1
+
+   tb_user
+     admin001 -> 1
+     employee001 -> 1
+     leader001 -> 1
+
+   tb_karyawan_auth
+     admin001 -> 1
+     employee001 -> 1
+     leader001 -> 1
+
+   tb_karyawan_roles
+     admin001 -> 1
+     employee001 -> 1
+     leader001 -> 1
+
+   tb_employee_group
+     employee001 -> 1
+     leader001 -> 1
+
+   tb_schedule
+     admin001 -> 1
+     employee001 -> 1
+     leader001 -> 1
+
+   tb_user_group_access
+     employee001 -> 1
+     leader001 -> 1
+
+   cs_employee_auth_identity
+     admin001 -> 1
+     employee001 -> 1
+     leader001 -> 1
+
+   cs_employee_identification_methods
+     admin001 (nip) -> 1
+     admin001 (pin) -> 1
+     employee001 (nip) -> 1
+     employee001 (pin) -> 1
+     leader001 (nip) -> 1
+     leader001 (pin) -> 1
+
+   cs_employee_role_bindings
+     admin001 -> 1
+     employee001 -> 1
+     leader001 -> 1
+
+   cs_group_ownership
+     leader001 -> 1
+
+   After seed run 2 counts (identical to run 1):
+   --- fixture counts snapshot ---
+
+   tb_karyawan
+     admin001 -> 1
+     employee001 -> 1
+     leader001 -> 1
+
+   tb_user
+     admin001 -> 1
+     employee001 -> 1
+     leader001 -> 1
+
+   tb_karyawan_auth
+     admin001 -> 1
+     employee001 -> 1
+     leader001 -> 1
+
+   tb_karyawan_roles
+     admin001 -> 1
+     employee001 -> 1
+     leader001 -> 1
+
+   tb_employee_group
+     employee001 -> 1
+     leader001 -> 1
+
+   tb_schedule
+     admin001 -> 1
+     employee001 -> 1
+     leader001 -> 1
+
+   tb_user_group_access
+     employee001 -> 1
+     leader001 -> 1
+
+   cs_employee_auth_identity
+     admin001 -> 1
+     employee001 -> 1
+     leader001 -> 1
+
+   cs_employee_identification_methods
+     admin001 (nip) -> 1
+     admin001 (pin) -> 1
+     employee001 (nip) -> 1
+     employee001 (pin) -> 1
+     leader001 (nip) -> 1
+     leader001 (pin) -> 1
+
+   cs_employee_role_bindings
+     admin001 -> 1
+     employee001 -> 1
+     leader001 -> 1
+
+   cs_group_ownership
+     leader001 -> 1
+
+3. Seed run 1
+   Command: node scripts/seed-v3-role-fixtures.mjs --execute --database demo_easylinksdk
+   Output:
+     [seed-v3-role-fixtures] Target database: demo_easylinksdk
+     [seed-v3-role-fixtures] Mode: execute
+     [seed-v3-role-fixtures] Seed applied successfully:
+       - Seeded admin001 (Seed Admin 001)
+       - Seeded leader001 (Seed Leader 001)
+       - Seeded employee001 (Seed Employee 001)
+
+4. Seed run 2
+   Command: node scripts/seed-v3-role-fixtures.mjs --execute --database demo_easylinksdk
+   Output:
+     [seed-v3-role-fixtures] Target database: demo_easylinksdk
+     [seed-v3-role-fixtures] Mode: execute
+     [seed-v3-role-fixtures] Seed applied successfully:
+       - Seeded admin001 (Seed Admin 001)
+       - Seeded leader001 (Seed Leader 001)
+       - Seeded employee001 (Seed Employee 001)
+
+Conclusion: Idempotent – counts for admin001, leader001, and employee001 stayed at 1 row per canonical/intermediary table on run 2, matching the output from run 1 and showing no duplicate logical identities after the second execution.

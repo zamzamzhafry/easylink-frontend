@@ -1,0 +1,102 @@
+{
+  "generatedAt": "2026-03-28T21:46:12.261027+00:00",
+  "canonicalRoles": [
+    "admin",
+    "group_leader",
+    "employee"
+  ],
+  "inventory": {
+    "protectedApiRouteFilesFound": 19,
+    "protectedApiHandlersFound": 31,
+    "protectedUiRoutesFound": 13
+  },
+  "matrixEntryCountInDocs": {
+    "protectedRouteMatrixEntries": 13,
+    "protectedApiMatrixEntries": 31,
+    "totalMatrixEntries": 44
+  },
+  "coverageDiff": {
+    "missingApiHandlersInMatrix": [],
+    "extraApiMatrixEntriesNotInGuardInventory": [],
+    "missingUiRoutesInMatrix": [],
+    "extraUiMatrixRoutesNotInInventory": []
+  },
+  "coverageResult": {
+    "status": "pass",
+    "explicitCoveragePass": true,
+    "reasons": [
+      "All protected API handlers discovered from guarded route files are represented in matrix.",
+      "All protected UI routes in inventory are represented in matrix.",
+      "Protected API matrix entry count equals discovered protected API handlers."
+    ]
+  },
+  "guardedApiRouteFiles": [
+    "app/api/admin/migrate-scanlog/route.js",
+    "app/api/attendance/raw/route.js",
+    "app/api/attendance/review/route.js",
+    "app/api/attendance/route.js",
+    "app/api/auth/me/route.js",
+    "app/api/employees/[id]/profile/route.js",
+    "app/api/groups/route.js",
+    "app/api/machine/route.js",
+    "app/api/performance/route.js",
+    "app/api/scanlog/route.js",
+    "app/api/scanlog/stream/route.js",
+    "app/api/scanlog/sync/route.js",
+    "app/api/schedule/route.js",
+    "app/api/schedule-revisions/[id]/approve/route.js",
+    "app/api/schedule-revisions/[id]/reject/route.js",
+    "app/api/schedule-revisions/route.js",
+    "app/api/shifts/[id]/route.js",
+    "app/api/shifts/route.js",
+    "app/api/users/route.js"
+  ],
+  "protectedApiHandlers": [
+    "DELETE /api/shifts/[id]",
+    "DELETE /api/users",
+    "GET /api/attendance",
+    "GET /api/attendance/raw",
+    "GET /api/attendance/review",
+    "GET /api/auth/me",
+    "GET /api/employees/[id]/profile",
+    "GET /api/groups",
+    "GET /api/machine",
+    "GET /api/performance",
+    "GET /api/scanlog",
+    "GET /api/scanlog/stream",
+    "GET /api/scanlog/sync",
+    "GET /api/schedule",
+    "GET /api/schedule-revisions",
+    "GET /api/shifts",
+    "GET /api/users",
+    "POST /api/admin/migrate-scanlog",
+    "POST /api/attendance",
+    "POST /api/attendance/review",
+    "POST /api/groups",
+    "POST /api/machine",
+    "POST /api/scanlog/sync",
+    "POST /api/schedule",
+    "POST /api/schedule-revisions",
+    "POST /api/schedule-revisions/[id]/approve",
+    "POST /api/schedule-revisions/[id]/reject",
+    "POST /api/shifts",
+    "POST /api/users",
+    "PUT /api/shifts/[id]",
+    "PUT /api/users"
+  ],
+  "protectedUiRoutes": [
+    "/",
+    "/admin/migrate",
+    "/attendance",
+    "/attendance/review",
+    "/employees",
+    "/employees/[id]",
+    "/groups",
+    "/machine",
+    "/performance",
+    "/scanlog",
+    "/schedule",
+    "/shifts",
+    "/users"
+  ]
+}

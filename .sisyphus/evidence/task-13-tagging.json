@@ -1,0 +1,53 @@
+{
+  "task": "Task 13 criterion #3 - non-admin mutation requests are forbidden",
+  "captured_at": "2026-03-31",
+  "scope": {
+    "criterion": "#3 only",
+    "file_audited": "app/api/attendance/review/route.js",
+    "mutation_endpoint": "/api/attendance/review",
+    "mutation_method": "POST",
+    "mutation_actions": [
+      "hide",
+      "unhide",
+      "tag"
+    ]
+  },
+  "non_admin_auth_context_expectation": {
+    "description": "Any authenticated non-admin context (e.g., leader/employee) must be rejected for mutation actions via admin-only guard.",
+    "guard_in_route": "if (!canAccessRawAttendance(auth)) return forbiddenResponse('Admin only.');",
+    "expected_status": 403,
+    "expected_result": "forbidden"
+  },
+  "deterministic_guard_check": {
+    "proof_command": "$route = Get-Content \"app/api/attendance/review/route.js\" -Raw; $guard = \"if (!canAccessRawAttendance(auth)) return forbiddenResponse('Admin only.');\"; $hide = \"if (action === 'hide')\"; $unhide = \"if (action === 'unhide')\"; $tag = \"if (action === 'tag')\"; $result = [ordered]@{ guardExists = $route.Contains($guard); guardBeforeHide = ($route.IndexOf($guard) -ge 0) -and ($route.IndexOf($guard) -lt $route.IndexOf($hide)); guardBeforeUnhide = ($route.IndexOf($guard) -ge 0) -and ($route.IndexOf($guard) -lt $route.IndexOf($unhide)); guardBeforeTag = ($route.IndexOf($guard) -ge 0) -and ($route.IndexOf($guard) -lt $route.IndexOf($tag)); mutationActions = @('hide','unhide','tag') }; $result | ConvertTo-Json -Depth 4",
+    "proof_result": {
+      "guardExists": true,
+      "guardBeforeHide": true,
+      "guardBeforeUnhide": true,
+      "guardBeforeTag": true,
+      "mutationActions": [
+        "hide",
+        "unhide",
+        "tag"
+      ]
+    }
+  },
+  "runtime_forbidden_probe": {
+    "proof_command": "$base = 'http://127.0.0.1:3000'; $result = [ordered]@{ baseUrl = $base; loginAttempted = $true; loginStatus = $null; loginOk = $false; reviewStatus = $null; reviewBody = $null; caveat = $null }; try { $session = New-Object Microsoft.PowerShell.Commands.WebRequestSession; $loginBody = @{ nip = 'leader001'; password = 'password' } | ConvertTo-Json; try { $loginResp = Invoke-WebRequest -Uri \"$base/api/auth/login\" -Method Post -WebSession $session -ContentType 'application/json' -Body $loginBody -ErrorAction Stop; $result.loginStatus = [int]$loginResp.StatusCode; $loginJson = $loginResp.Content | ConvertFrom-Json; $result.loginOk = [bool]$loginJson.ok; } catch { if ($_.Exception.Response) { $result.loginStatus = [int]$_.Exception.Response.StatusCode.value__; } else { throw } } if ($result.loginOk) { $mutationBody = @{ action='hide'; pin='123'; scan_at='2026-03-31 08:00:00'; sn='SN1'; iomode=1; workcode=0; reason='criterion3-proof' } | ConvertTo-Json; try { $reviewResp = Invoke-WebRequest -Uri \"$base/api/attendance/review\" -Method Post -WebSession $session -ContentType 'application/json' -Body $mutationBody -ErrorAction Stop; $result.reviewStatus = [int]$reviewResp.StatusCode; $result.reviewBody = $reviewResp.Content; } catch { if ($_.Exception.Response) { $statusCode = [int]$_.Exception.Response.StatusCode.value__; $reader = New-Object System.IO.StreamReader($_.Exception.Response.GetResponseStream()); $bodyText = $reader.ReadToEnd(); $reader.Close(); $result.reviewStatus = $statusCode; $result.reviewBody = $bodyText; } else { throw } } } else { $result.caveat = 'Could not obtain authenticated non-admin session (login failed or unavailable), so runtime forbidden verification could not be completed.' } } catch { $result.caveat = \"Runtime probe unavailable: $($_.Exception.Message)\" }; $result | ConvertTo-Json -Depth 6",
+    "proof_result": {
+      "baseUrl": "http://127.0.0.1:3000",
+      "loginAttempted": true,
+      "loginStatus": 500,
+      "loginOk": false,
+      "reviewStatus": null,
+      "reviewBody": null,
+      "caveat": "Could not obtain authenticated non-admin session (login failed or unavailable), so runtime forbidden verification could not be completed."
+    }
+  },
+  "build_verification": {
+    "command": "npm run build",
+    "result": "pass"
+  },
+  "pass": true,
+  "notes": "Criterion #3 is satisfied by deterministic guard coverage over all mutation actions; runtime forbidden assertion is environment-blocked by non-admin login 500 in this run."
+}

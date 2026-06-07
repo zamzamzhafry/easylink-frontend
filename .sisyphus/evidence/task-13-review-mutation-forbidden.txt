@@ -1,0 +1,4 @@
+BODY:
+{"ok":false,"error":"Admin only."}
+HTTP_STATUS:
+403

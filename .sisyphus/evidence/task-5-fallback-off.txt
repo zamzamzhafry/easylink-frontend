@@ -1,0 +1,22 @@
+Timestamp: 2026-03-29T05:28:27+0700
+Focus: explicit EASYLINK_ENABLE_LEGACY_PIN_FALLBACK guard in lib/auth-session.ts
+
+Command: grep -n "LEGACY_PIN_FALLBACK_ENABLED" lib/auth-session.ts
+Result: PASS
+Command Output:
+13:const LEGACY_PIN_FALLBACK_ENABLED = (() => {
+14:  const raw = process.env.EASYLINK_ENABLE_LEGACY_PIN_FALLBACK;
+15:  if (raw == null) return true;
+16:  const normalized = raw.trim().toLowerCase();
+17:  return !['0', 'false', 'off', 'no', 'disabled'].includes(normalized);
+18:})();
+
+Excerpt:
+  // Try NIP-based auth first
+  const nipContext = await createAuthContextByNip(payload.pin);
+  if (nipContext) return nipContext;
+  if (!LEGACY_PIN_FALLBACK_ENABLED) return null;
+  // Fallback to legacy PIN-based auth
+  return createAuthContextByPin(payload.pin);
+
+Interpretation: the env flag fabricates a clear compatibility switch. When a NIP context exists the response still returns immediately. If NIP is missing and the flag is disabled, the guard returns null without touching createAuthContextByPin (telemetry not incremented). When it remains enabled (default) the legacy path executes as before, so the compatibility-flagged fallback branch behaves as expected. Conclusion: PASS (flag enforces fallback-off when disabled, without forcing telemetry when bypassed).

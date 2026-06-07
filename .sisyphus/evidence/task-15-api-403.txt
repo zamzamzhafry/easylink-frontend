@@ -1,0 +1,8 @@
+api_machine_body:
+{"ok":false,"error":"Admin only"}
+api_machine_status:
+403
+api_scanlog_sync_body:
+{"ok":false,"error":"Admin only"}
+api_scanlog_sync_status:
+403

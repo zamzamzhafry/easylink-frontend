@@ -1,0 +1,31 @@
+{
+  "task": "Task 14 / Acceptance #5",
+  "criterion": "Table fallback remount runs at most once per failed toggle check and logs fallback event",
+  "run_at": "2026-03-31T16:59:20.000Z",
+  "page": "http://127.0.0.1:3101/attendance",
+  "method": "forced mismatch during one theme toggle via temporary root setAttribute no-op",
+  "forced_failure_check": {
+    "before_theme": "dark",
+    "after_theme": "dark",
+    "fallback_events_before": 0,
+    "fallback_events_after": 1,
+    "fallback_event_delta": 1,
+    "custom_event_count": 1,
+    "one_shot_for_failed_check": true
+  },
+  "last_fallback_event": {
+    "type": "theme-remount-fallback",
+    "expectedTheme": "light",
+    "currentTheme": "dark",
+    "timestamp": "2026-03-31T16:59:19.603Z"
+  },
+  "result": {
+    "fallback_event_logged": true,
+    "single_remount_trigger_per_failed_check": true,
+    "pass": true
+  },
+  "notes": [
+    "Validation targeted one failed toggle-check window and observed exactly one fallback event dispatch.",
+    "Console contained unrelated dev-server 500/404 noise during Fast Refresh; criterion-specific one-shot/event assertions still passed."
+  ]
+}

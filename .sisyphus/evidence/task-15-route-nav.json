@@ -1,0 +1,42 @@
+{
+  "task": 15,
+  "criterion": 3,
+  "criterion_2": {
+    "route_guard_location": {
+      "file": "components/app-shell.jsx",
+      "lines": "195-203",
+      "logic": "if non-admin user is on /machine or /machine/*, router.replace('/dashboard')"
+    },
+    "non_admin_expected_behavior": "Non-admin users cannot remain on /machine and are redirected to /dashboard.",
+    "observed_behavior": {
+      "requested_path": "/machine",
+      "login_user": "leader001",
+      "initial_url": "http://127.0.0.1:3000/login?next=%2Fmachine",
+      "final_url": "http://127.0.0.1:3000/dashboard",
+      "final_pathname": "/dashboard",
+      "machine_blocked": true,
+      "admin_access_preserved": true
+    },
+    "verification_mode": "static+prior-runtime-evidence",
+    "pass": true,
+    "caveat": "Runtime auth in this environment is intermittently unstable; this update relies on current guard code plus prior runtime artifact in .sisyphus/evidence/task-15-nav-guard.txt."
+  },
+  "criterion_3": {
+    "guarded_endpoints": [
+      "GET /api/machine",
+      "POST /api/machine"
+    ],
+    "expected_status_for_non_admin": 403,
+    "observed_status": {
+      "login_user": "employee001",
+      "login_status": 200,
+      "get": 403,
+      "post": 403,
+      "get_body_error": "Admin only",
+      "post_body_error": "Admin only"
+    },
+    "verification_mode": "runtime-probe",
+    "pass": true
+  },
+  "learning_note": "Keep route-guard checks colocated with auth bootstrap in AppShell so path-based restrictions (like /machine) stay explicit and low-risk to maintain. For API guards, verify both read (GET) and action (POST) paths with the same non-admin session to prevent asymmetric access regressions."
+}

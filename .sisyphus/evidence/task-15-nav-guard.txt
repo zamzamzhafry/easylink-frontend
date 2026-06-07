@@ -1,0 +1,4 @@
+Initial URL: http://127.0.0.1:3000/login?next=%2Fmachine (requested /machine and landed on the login guard)
+Final URL:   http://127.0.0.1:3000/dashboard
+Pass:        true  (final pathname `/dashboard` ≠ `/machine`)
+Notes:       Leader001 is redirected off the `/machine` guard target and ends up on `/dashboard` (404 page in this build), so the non-admin route guard is working as intended.

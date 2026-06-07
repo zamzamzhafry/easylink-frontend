@@ -1,0 +1,1 @@
+{"ok":false,"error":"Unknown action","supported_actions":["info","time","sync_time","pull_users","users","users_partial","scanlog_new","devinfo","set_user","initialize_machine"]}

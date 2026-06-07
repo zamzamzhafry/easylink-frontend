@@ -1,0 +1,19 @@
+API role matrix smoke (adapter gates)
+
+Role: admin
+  canAccessAttendance: true
+  canManageAttendanceNotes: true
+  canAccessRawAttendance: true
+  attendanceGroupIds: null (admin)
+
+Role: leader
+  canAccessAttendance: true
+  canManageAttendanceNotes: true
+  canAccessRawAttendance: false
+  attendanceGroupIds: 42,84
+
+Role: employee
+  canAccessAttendance: true
+  canManageAttendanceNotes: false
+  canAccessRawAttendance: false
+  attendanceGroupIds: 

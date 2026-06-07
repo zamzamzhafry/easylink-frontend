@@ -1,0 +1,22 @@
+# Task 1 Role Label Audit
+
+Generated at: 2026-03-28T21:48:36.334282+00:00
+Pattern: \bhr\b|\bscheduler\b|\bviewer\b
+
+Grep results in policy scope (app/api + auth model files):
+- app/api/schedule-revisions/route.js:20:       // If not admin/hr, only show their own group's pending requests
+- lib/auth-session.ts:207:     const is_hr = roles.some((r: any) => r.role_key === 'hr');
+- lib/domain/employee-auth-model.ts:5: export const employeeRoleSchema = z.enum(['admin', 'leader', 'scheduler', 'viewer']);
+- lib/domain/employee-auth-model.ts:10:   'scheduler',
+- lib/domain/employee-auth-model.ts:11:   'viewer',
+- lib/domain/employee-auth-model.ts:14:   'hr',
+- lib/domain/employee-auth-model.ts:20:   scheduler: 'group_leader',
+- lib/domain/employee-auth-model.ts:21:   viewer: 'employee',
+- lib/domain/employee-auth-model.ts:24:   hr: 'group_leader',
+
+Interpretation:
+- Legacy mapping definitions are allowed in compatibility mapping artifacts.
+- Active policy decision handlers must not introduce standalone hr/scheduler/viewer labels.
+- RESULT: PASS (0 active policy decision matches in app/api route handlers; remaining matches are comments/compatibility mappings).
+- auth-session/hr role-key extraction is treated as compatibility role ingestion, not canonical policy tier expansion.
+- Canonical policy set remains: admin, group_leader, employee.

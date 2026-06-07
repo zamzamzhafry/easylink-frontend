@@ -1,0 +1,59 @@
+Task: 6 flag toggling acceptance evidence (no source edits)
+Date: 2026-03-29
+
+Scope verified from implementation files:
+- lib/flags/migration-flags.ts
+- app/api/scanlog/sync/route.js (GET returns `migration: getMigrationGateStatus(...)`)
+- components/right-ops-sidebar.jsx (renders migrationFlags modes)
+
+Smoke command (resolver-level, command-driven):
+`npx -y tsx -e "import { getMigrationGateStatus } from './lib/flags/migration-flags.ts'; const envNames=['EASYLINK_POLICY_SOURCE_MODE','EASYLINK_DATA_SOURCE_CUTOVER_MODE','EASYLINK_MACHINE_PARITY_EXPOSURE_MODE','EASYLINK_REPORTING_INTERACTION_MODE']; const cases=[{name:'default-none',env:{}},{name:'policy-compat+data-shadow+parity-admin+reporting-bridge',env:{EASYLINK_POLICY_SOURCE_MODE:'compat_view',EASYLINK_DATA_SOURCE_CUTOVER_MODE:'shadow_read',EASYLINK_MACHINE_PARITY_EXPOSURE_MODE:'admin_only',EASYLINK_REPORTING_INTERACTION_MODE:'compat_bridge'}},{name:'policy-canonical+data-canonical+parity-all+reporting-canonical',env:{EASYLINK_POLICY_SOURCE_MODE:'canonical',EASYLINK_DATA_SOURCE_CUTOVER_MODE:'canonical_read',EASYLINK_MACHINE_PARITY_EXPOSURE_MODE:'all_users',EASYLINK_REPORTING_INTERACTION_MODE:'canonical'}},{name:'mixed-policy-legacy+data-shadow+parity-off+reporting-canonical',env:{EASYLINK_POLICY_SOURCE_MODE:'legacy',EASYLINK_DATA_SOURCE_CUTOVER_MODE:'shadow_read',EASYLINK_MACHINE_PARITY_EXPOSURE_MODE:'off',EASYLINK_REPORTING_INTERACTION_MODE:'canonical'}},{name:'invalid-values-fallback',env:{EASYLINK_POLICY_SOURCE_MODE:'BAD',EASYLINK_DATA_SOURCE_CUTOVER_MODE:'BAD',EASYLINK_MACHINE_PARITY_EXPOSURE_MODE:'BAD',EASYLINK_REPORTING_INTERACTION_MODE:'BAD'}}]; const results=[]; for (const c of cases){ for(const n of envNames){delete process.env[n];} for(const [k,v] of Object.entries(c.env)){process.env[k]=v;} const adminSnapshot=getMigrationGateStatus({viewerIsAdmin:true}); const userSnapshot=getMigrationGateStatus({viewerIsAdmin:false}); results.push({case:c.name,env:c.env,admin:{flags:adminSnapshot.flags,gates:adminSnapshot.gates,compatibilityFirst:adminSnapshot.compatibilityFirst},nonAdminMachineParityVisible:userSnapshot.gates.machineParityVisible}); } console.log(JSON.stringify({ok:true,results},null,2));"`
+
+Mode snapshot outputs (selected):
+
+1) case=default-none
+- policySource.mode=legacy (source=default)
+- dataSourceCutover.mode=legacy_only (source=default)
+- machineParityExposure.mode=off (source=default)
+- reportingInteraction.mode=legacy (source=default)
+- gates: policy=false, data=false, machineParityVisible=false, reporting=false
+- compatibilityFirst.runtimeDefaulted=true
+
+2) case=policy-compat+data-shadow+parity-admin+reporting-bridge
+- policySource.mode=compat_view (source=env)
+- dataSourceCutover.mode=shadow_read (source=env)
+- machineParityExposure.mode=admin_only (source=env)
+- reportingInteraction.mode=compat_bridge (source=env)
+- gates(admin): policy=true, data=true, machineParityVisible=true, reporting=true
+- nonAdminMachineParityVisible=false
+
+3) case=policy-canonical+data-canonical+parity-all+reporting-canonical
+- policySource.mode=canonical (source=env)
+- dataSourceCutover.mode=canonical_read (source=env)
+- machineParityExposure.mode=all_users (source=env)
+- reportingInteraction.mode=canonical (source=env)
+- gates(admin): policy=true, data=true, machineParityVisible=true, reporting=true
+- nonAdminMachineParityVisible=true
+
+4) case=mixed-policy-legacy+data-shadow+parity-off+reporting-canonical
+- policySource.mode=legacy (source=env)
+- dataSourceCutover.mode=shadow_read (source=env)
+- machineParityExposure.mode=off (source=env)
+- reportingInteraction.mode=canonical (source=env)
+- gates(admin): policy=false, data=true, machineParityVisible=false, reporting=true
+
+5) case=invalid-values-fallback
+- env values set to BAD for all four flags
+- normalized modes fell back safely: legacy / legacy_only / off / legacy
+- sources remain env, raw captured as BAD
+- gates all false, compatibilityFirst.runtimeDefaulted=true
+
+Pass/Fail conclusion:
+PASS
+- Explicit migration flags are recognized and applied across required combinations.
+- Gate outputs change consistently with mode selections.
+- Invalid values degrade safely to compatibility defaults.
+- Smoke completed without runtime crash.
+
+Blockers / intervention requests:
+- None.

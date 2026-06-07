@@ -1,0 +1,28 @@
+{
+  "task": 15,
+  "criterion": 1,
+  "criterion_1": {
+    "machine_nav_requirement": "admin",
+    "non_admin_visibility_expected": false,
+    "verification_mode": "static",
+    "pass": true,
+    "proof": {
+      "sidebar_machine_item": {
+        "file": "components/sidebar.jsx",
+        "line": 94,
+        "auth": "admin"
+      },
+      "nav_filter": {
+        "file": "components/sidebar.jsx",
+        "line": 111,
+        "fn": "canSeeNavItem(currentUser, item.auth)"
+      },
+      "authorization_adapter": {
+        "file": "lib/authz/authorization-adapter.ts",
+        "lines": "7-14",
+        "non_admin_admin_requirement_result": false
+      }
+    },
+    "caveat": "Static verification used for this run; existing runtime artifact already records non-admin machine nav as hidden in .sisyphus/evidence/task-15-route-nav.json."
+  }
+}

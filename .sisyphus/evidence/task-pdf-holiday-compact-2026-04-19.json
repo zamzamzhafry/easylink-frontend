@@ -1,0 +1,26 @@
+{
+  "timestamp": "2026-04-19",
+  "scope": "print_pdf_holiday_compaction",
+  "changes": {
+    "attendance_print": {
+      "file": "app/attendance/page.jsx",
+      "rule": "holiday name text removed from quick-summary print headers and header tooltips",
+      "kept": ["compact date label", "holiday color classes"]
+    },
+    "schedule_print": {
+      "file": "lib/schedule-helpers.js",
+      "rule": "holiday name text removed from header suffix and day-cell notes",
+      "kept": ["th-holiday class", "is-holiday class", "legend"]
+    },
+    "csv_excel": {
+      "status": "unchanged",
+      "file": "lib/quick-summaries-export.js"
+    }
+  },
+  "static_checks": {
+    "attendance_holiday_label_tokens_found": 0,
+    "attendance_holiday_tooltip_tokens_found": 0,
+    "schedule_holiday_note_tokens_found": 0,
+    "schedule_holiday_name_suffix_tokens_found": 0
+  }
+}

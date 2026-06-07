@@ -1,0 +1,128 @@
+{
+  "route": "/",
+  "requestedUrl": "http://127.0.0.1:3002/",
+  "snapshots": {
+    "admin": [
+      {
+        "section": "Overview",
+        "items": [
+          {
+            "label": "Dashboard",
+            "href": "/"
+          }
+        ]
+      },
+      {
+        "section": "Planning & Attendance",
+        "items": [
+          {
+            "label": "Schedule",
+            "href": "/schedule"
+          },
+          {
+            "label": "Absensi",
+            "href": "/attendance"
+          },
+          {
+            "label": "Attendance Review",
+            "href": "/attendance/review"
+          },
+          {
+            "label": "Performance",
+            "href": "/performance"
+          }
+        ]
+      },
+      {
+        "section": "Master Data",
+        "items": [
+          {
+            "label": "Employees",
+            "href": "/employees"
+          },
+          {
+            "label": "Groups",
+            "href": "/groups"
+          },
+          {
+            "label": "Shift Maker",
+            "href": "/shifts"
+          },
+          {
+            "label": "Users",
+            "href": "/users"
+          },
+          {
+            "label": "Scan Log",
+            "href": "/scanlog"
+          },
+          {
+            "label": "Machine Connect",
+            "href": "/machine"
+          }
+        ]
+      }
+    ],
+    "leader": [
+      {
+        "section": "Overview",
+        "items": [
+          {
+            "label": "Dashboard",
+            "href": "/"
+          }
+        ]
+      },
+      {
+        "section": "Planning & Attendance",
+        "items": [
+          {
+            "label": "Schedule",
+            "href": "/schedule"
+          },
+          {
+            "label": "Absensi",
+            "href": "/attendance"
+          },
+          {
+            "label": "Attendance Review",
+            "href": "/attendance/review"
+          },
+          {
+            "label": "Performance",
+            "href": "/performance"
+          }
+        ]
+      }
+    ],
+    "employee": [
+      {
+        "section": "Overview",
+        "items": [
+          {
+            "label": "Dashboard",
+            "href": "/"
+          }
+        ]
+      },
+      {
+        "section": "Planning & Attendance",
+        "items": [
+          {
+            "label": "Absensi",
+            "href": "/attendance"
+          },
+          {
+            "label": "Attendance Review",
+            "href": "/attendance/review"
+          },
+          {
+            "label": "Performance",
+            "href": "/performance"
+          }
+        ]
+      }
+    ]
+  },
+  "timestamp": "2026-03-28T21:59:22.428Z"
+}

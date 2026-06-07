@@ -1,0 +1,61 @@
+{
+  "timestamp_utc": "2026-03-28T23:34:26.047Z",
+  "base_url": "http://127.0.0.1:3001",
+  "runtime_started_by_script": false,
+  "endpoint_summary": {
+    "login_endpoint": "/api/auth/login",
+    "me_endpoint": "/api/auth/me",
+    "session_payload_assertion": "cookie payload contains canonical 'sub' key and does not contain legacy 'pin' key"
+  },
+  "cases": [
+    {
+      "nip": "admin001",
+      "password": "password",
+      "login_status": 200,
+      "me_status": 200,
+      "canonical_roles": ["admin", "employee"],
+      "session_payload": {
+        "sub": "admin001",
+        "exp": 1774784065,
+        "v": 2
+      },
+      "canonical_session_payload_ok": true,
+      "expected_role": "admin",
+      "pass": true,
+      "failure_snippet": null
+    },
+    {
+      "nip": "leader001",
+      "password": "password",
+      "login_status": 200,
+      "me_status": 200,
+      "canonical_roles": ["group_leader", "employee"],
+      "session_payload": {
+        "sub": "leader001",
+        "exp": 1774784065,
+        "v": 2
+      },
+      "canonical_session_payload_ok": true,
+      "expected_role": "group_leader",
+      "pass": true,
+      "failure_snippet": null
+    },
+    {
+      "nip": "employee001",
+      "password": "password",
+      "login_status": 200,
+      "me_status": 200,
+      "canonical_roles": ["employee"],
+      "session_payload": {
+        "sub": "employee001",
+        "exp": 1774784066,
+        "v": 2
+      },
+      "canonical_session_payload_ok": true,
+      "expected_role": "employee",
+      "pass": true,
+      "failure_snippet": null
+    }
+  ],
+  "overall_pass": true
+}

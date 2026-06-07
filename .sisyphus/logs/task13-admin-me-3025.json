@@ -1,0 +1,1 @@
+{"ok":true,"user":{"nip":"admin001","pin":"admin001","karyawan_id":10000,"nama":"Seed Admin 001","privilege":4,"is_admin":true,"is_leader":false,"is_hr":false,"can_schedule":true,"can_dashboard":true,"groups":[],"canonical_roles":["admin","employee"]}}

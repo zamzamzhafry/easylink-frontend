@@ -1,0 +1,13 @@
+{
+  "ok": false,
+  "blocked": true,
+  "reason_code": "delta_threshold_exceeded",
+  "message": "Safe vs legacy delta exceeds configured threshold.",
+  "threshold": 0,
+  "unresolved_total": 12,
+  "action": "check_gate",
+  "report_snapshot": {
+    "safe_not_in_legacy": 12,
+    "legacy_not_in_safe": 0
+  }
+}

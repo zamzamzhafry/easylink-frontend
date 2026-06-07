@@ -1,0 +1,1 @@
+{"ok":true,"user":{"nip":"leader001","pin":"leader001","karyawan_id":10001,"nama":"Seed Leader 001","privilege":1,"is_admin":false,"is_leader":true,"is_hr":false,"can_schedule":true,"can_dashboard":true,"groups":[{"group_id":31,"nama_group":"Role Fixture Auth Group","can_schedule":1,"can_dashboard":1,"is_leader":true}],"canonical_roles":["group_leader","employee"]}}

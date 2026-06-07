@@ -1,0 +1,36 @@
+Task 9 Legacy Cookie Compatibility-Gate Evidence
+
+Timestamp (UTC start): 2026-03-28T23:36:37Z
+Timestamp (UTC end): 2026-03-28T23:36:39Z
+Base URL: http://127.0.0.1:3011
+
+Runtime launch configuration:
+- AUTH_SECRET=task9-legacy-proof-secret
+- EASYLINK_ENABLE_LEGACY_SESSION_PAYLOAD_COMPAT=0
+- Command: npm run dev -- --hostname 127.0.0.1 --port 3011
+
+Manual legacy payload details:
+- JSON payload: {"pin":"admin001","exp":1774744598}
+- Base64url payload: eyJwaW4iOiJhZG1pbjAwMSIsImV4cCI6MTc3NDc0NDU5OH0
+- Signature algo: HMAC-SHA256(rawPayload, AUTH_SECRET), base64url digest
+- Signature: WXWvmFgpibWsp0APHsuHTR3bCaIBbwoPbVgbsRPSobY
+- Cookie token sent:
+  eyJwaW4iOiJhZG1pbjAwMSIsImV4cCI6MTc3NDc0NDU5OH0.WXWvmFgpibWsp0APHsuHTR3bCaIBbwoPbVgbsRPSobY
+
+Request command:
+curl -sS -i -m 10 "http://127.0.0.1:3011/api/auth/me" \
+  -H "Cookie: easylink_session=<legacy-token-above>"
+
+HTTP response:
+HTTP/1.1 401 Unauthorized
+content-type: application/json
+
+{"ok":false,"error":"Login required."}
+
+Pass/Fail:
+PASS
+
+Conclusion:
+- With EASYLINK_ENABLE_LEGACY_SESSION_PAYLOAD_COMPAT=0, a correctly signed legacy cookie payload
+  ({"pin":"...","exp":...}) is rejected by /api/auth/me.
+- Runtime behavior is unauthorized/null-context rejection with no crash.

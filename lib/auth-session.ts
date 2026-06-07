@@ -3,6 +3,11 @@ import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
 import pool from '@/lib/db';
 import {
+  decodeSessionToken,
+  encodeSessionToken,
+  normalizeSubjectType,
+} from '@/lib/auth-hardening-helpers.js';
+import {
   LEGACY_EMPLOYEE_ROLE_TO_CANONICAL_ROLE,
   type CanonicalEmployeeRole,
 } from '@/lib/domain/employee-auth-model';
@@ -39,6 +44,7 @@ type SessionPayload = {
   subject: string;
   exp: number;
   payload_format: 'canonical' | 'legacy';
+  subject_type?: AuthSubjectType;
 };
 
 type UserRow = {
@@ -229,60 +235,92 @@ function base64UrlDecode(value: string) {
   return Buffer.from(value, 'base64url').toString('utf8');
 }
 
+function safeBase64UrlDecode(value: string) {
+  try {
+    return base64UrlDecode(value);
+  } catch (error) {
+    logSessionDecodeFailure('BASE64URL_DECODE_ERROR', error);
+    throw error;
+  }
+}
+
 function sign(raw: string) {
   return crypto.createHmac('sha256', SECRET).update(raw).digest('base64url');
 }
 
 function encodeSession(payload: SessionPayload) {
-  const encodedPayload = {
-    sub: payload.subject,
-    exp: payload.exp,
-    v: 2,
-  };
-  const raw = base64UrlEncode(JSON.stringify(encodedPayload));
-  return `${raw}.${sign(raw)}`;
+  return encodeSessionToken(payload, sign, base64UrlEncode);
+}
+
+function logSessionDecodeFailure(reason: string, error: unknown) {
+  const message = error instanceof Error ? error.message : String(error ?? 'unknown');
+  console.warn('[auth-session] failed to decode session payload', {
+    code: 'AUTH_SESSION_DECODE_FAILURE',
+    reason,
+    error: message,
+  });
 }
 
 function decodeSession(token?: string | null): SessionPayload | null {
-  if (!token) return null;
-  const [raw, signature] = token.split('.');
-  if (!raw || !signature) return null;
-  if (sign(raw) !== signature) return null;
-
   try {
-    const decoded = JSON.parse(base64UrlDecode(raw));
-    const exp = Number(decoded?.exp ?? 0);
+    const payload = decodeSessionToken(
+      token,
+      sign,
+      safeBase64UrlDecode,
+      LEGACY_SESSION_PAYLOAD_COMPAT_ENABLED
+    );
 
-    if (!Number.isFinite(exp) || exp <= Math.floor(Date.now() / 1000)) {
-      return null;
-    }
+    if (!payload) return null;
 
-    const canonicalSubject = String(decoded?.sub ?? '').trim();
-    if (canonicalSubject) {
-      return {
-        subject: canonicalSubject,
-        exp,
-        payload_format: 'canonical',
-      };
-    }
+    const subjectType = payload.subject_type;
+    const normalizedSubjectType = subjectType || undefined;
+    const payloadFormat = payload.payload_format === 'legacy' ? 'legacy' : 'canonical';
+    const inferredSubjectType = payload.subject.startsWith('account:')
+      ? 'account'
+      : payload.subject.startsWith('nip:')
+        ? 'employee_nip'
+        : payload.subject.startsWith('pin:')
+          ? 'legacy_pin'
+          : undefined;
 
-    const legacyPin = String(decoded?.pin ?? '').trim();
-    if (!legacyPin) {
-      return null;
-    }
-
-    if (!LEGACY_SESSION_PAYLOAD_COMPAT_ENABLED) {
-      return null;
+    if (normalizedSubjectType && inferredSubjectType && normalizedSubjectType !== inferredSubjectType) {
+      logSubjectTypeMismatch(inferredSubjectType, normalizedSubjectType);
     }
 
     return {
-      subject: legacyPin,
-      exp,
-      payload_format: 'legacy',
+      subject: payload.subject,
+      exp: payload.exp,
+      payload_format: payloadFormat,
+      subject_type: normalizedSubjectType,
     };
-  } catch {
+  } catch (error) {
+    logSessionDecodeFailure('TOKEN_PARSE_FAILURE', error);
     return null;
   }
+}
+
+function getSubjectValueForType(subject: string, subjectType: AuthSubjectType) {
+  if (subjectType === 'account') {
+    return subject.startsWith('account:') ? subject.slice('account:'.length) : subject;
+  }
+  if (subjectType === 'employee_nip') {
+    return subject.startsWith('nip:') ? subject.slice('nip:'.length) : subject;
+  }
+  if (subjectType === 'legacy_pin') {
+    return subject.startsWith('pin:') ? subject.slice('pin:'.length) : subject;
+  }
+  return subject;
+}
+
+function logSubjectTypeMismatch(expected: AuthSubjectType, actual: AuthSubjectType | undefined) {
+  if (!actual || actual === expected) return;
+
+  console.warn('[auth-session] subject type mismatch', {
+    code: 'AUTH_SESSION_SUBJECT_TYPE_MISMATCH',
+    reason: `${expected}_WITH_${actual}`,
+    expected_subject_type: expected,
+    actual_subject_type: actual,
+  });
 }
 
 async function hasTable(tableName: string) {
@@ -639,7 +677,19 @@ export async function getAuthContextFromCookies(): Promise<AuthContext | null> {
   const payload = decodeSession(token);
   if (!payload) return null;
 
-  // Direct dispatch when subject encodes type prefix
+  const normalizedSubjectType = normalizeSubjectType(payload.subject_type);
+
+  if (normalizedSubjectType === 'account') {
+    return createAuthContextByLoginId(getSubjectValueForType(payload.subject, 'account'));
+  }
+  if (normalizedSubjectType === 'employee_nip') {
+    return createAuthContextByNip(getSubjectValueForType(payload.subject, 'employee_nip'));
+  }
+  if (normalizedSubjectType === 'legacy_pin') {
+    if (!LEGACY_PIN_FALLBACK_ENABLED) return null;
+    return createAuthContextByPin(getSubjectValueForType(payload.subject, 'legacy_pin'));
+  }
+
   if (payload.subject.startsWith('account:')) {
     return createAuthContextByLoginId(payload.subject.slice('account:'.length));
   }
@@ -651,7 +701,10 @@ export async function getAuthContextFromCookies(): Promise<AuthContext | null> {
     return createAuthContextByPin(payload.subject.slice('pin:'.length));
   }
 
-  // Legacy waterfall for sessions without type prefix
+  if (!LEGACY_SESSION_PAYLOAD_COMPAT_ENABLED) {
+    return null;
+  }
+
   const accountContext = await createAuthContextByLoginId(payload.subject);
   if (accountContext) return accountContext;
 
@@ -669,18 +722,11 @@ export function setAuthCookie(
   options: { subjectType?: AuthSubjectType } = {}
 ) {
   const exp = Math.floor(Date.now() / 1000) + SESSION_TTL_SECONDS;
-  const subjectType = options.subjectType ?? 'account';
-  const encodedSubject =
-    subjectType === 'account'
-      ? `account:${String(subject ?? '').trim()}`
-      : subjectType === 'employee_nip'
-        ? `nip:${String(subject ?? '').trim()}`
-        : subjectType === 'legacy_pin'
-          ? `pin:${String(subject ?? '').trim()}`
-          : String(subject ?? '');
+  const subjectType = normalizeSubjectType(options.subjectType) ?? 'account';
 
   const token = encodeSession({
-    subject: encodedSubject,
+    subject: String(subject ?? '').trim(),
+    subject_type: subjectType,
     exp,
     payload_format: 'canonical',
   });

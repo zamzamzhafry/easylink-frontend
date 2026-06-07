@@ -1,0 +1,54 @@
+{
+  "task": "TASK-16",
+  "role": "group_leader",
+  "scope": {
+    "visible": {
+      "attendance_tabs": [
+        "summary",
+        "quick_summaries"
+      ],
+      "schedule_management": {
+        "current_month": true,
+        "upcoming_month": true,
+        "entry_points": [
+          "/schedule",
+          "/schedule?month=next"
+        ]
+      },
+      "cumulative_hours_panel": true,
+      "monthly_prediction_panel": true,
+      "group_schedule_view": true
+    },
+    "hidden": {
+      "attendance_review_nav": true,
+      "review_punches_action": true,
+      "raw_scanlog_tab": true,
+      "review_queue_endpoint": "/api/attendance/review",
+      "discipline_review_mutation_controls": true,
+      "attendance_note_mutation": true,
+      "review_detail_columns": [
+        "review",
+        "note",
+        "action"
+      ]
+    }
+  },
+  "api_partition": {
+    "attendance_payload": {
+      "includes": [
+        "cumulative_summary",
+        "prediction_context"
+      ],
+      "excludes": [
+        "review_controls",
+        "note_status",
+        "note_catatan",
+        "note_manual_hours",
+        "note_manual_approved",
+        "reviewed_status",
+        "has_review"
+      ]
+    },
+    "review_queue_access": "forbidden_non_admin"
+  }
+}

@@ -8,7 +8,24 @@ import {
   setAuthCookie,
   updateAuthAccountLastLogin,
 } from '@/lib/auth-session';
+import { buildNormalizedAuthUser } from '@/lib/auth-hardening-helpers';
+import { resolveAuthenticatedLane } from '@/lib/auth-login-helpers';
 import { verifyPassword, hashPassword } from '@/lib/password';
+
+async function finalizeLoginSuccess({
+  authContext,
+  loginId,
+  request,
+  subjectType,
+}) {
+  const response = NextResponse.json({
+    ok: true,
+    user: buildNormalizedAuthUser(authContext),
+  });
+
+  setAuthCookie(response, loginId, request, { subjectType });
+  return response;
+}
 
 const loginSchema = z.object({
   login_id: z.string().min(1, 'Login ID is required').max(80).optional(),
@@ -38,7 +55,12 @@ export async function POST(request) {
 
     try {
       const standaloneAccount = await findAuthAccountByLoginId(loginId, connection);
-      if (standaloneAccount) {
+      const selectedSubjectType = standaloneAccount ? 'account' : 'employee_nip';
+
+      let accountContext = null;
+      let nipContext = null;
+
+      if (selectedSubjectType === 'account') {
         const { valid, needsRehash } = await verifyPassword(standaloneAccount.password_hash, password);
         if (!valid) {
           return NextResponse.json({ ok: false, error: 'Invalid credentials' }, { status: 401 });
@@ -49,88 +71,79 @@ export async function POST(request) {
         }
 
         await updateAuthAccountLastLogin(Number(standaloneAccount.id), connection);
-        const authContext = await createAuthContextByLoginId(loginId, connection);
+        accountContext = await createAuthContextByLoginId(loginId, connection);
 
-        if (!authContext) {
+        if (!accountContext) {
           return NextResponse.json(
             { ok: false, error: 'Failed to create account session context' },
             { status: 500 }
           );
         }
 
-        const response = NextResponse.json({
-          ok: true,
-          user: {
-            account_id: authContext.account_id,
-            login_id: authContext.login_id,
-            role_key: authContext.role_key,
-            nama: authContext.nama,
-            is_admin: authContext.is_admin,
-            is_hr: Boolean(authContext.is_hr),
-            is_leader: authContext.is_leader,
-            groups: authContext.groups,
-          },
-        });
-
-        setAuthCookie(response, loginId, request, { subjectType: 'account' });
-        return response;
-      }
-
-      const [users] = await connection.query(
-        `
-        SELECT auth.*, k.nama
-        FROM tb_karyawan_auth auth
-        JOIN tb_karyawan k ON auth.karyawan_id = k.id
-        WHERE auth.nip = ? AND auth.is_active = 1
-      `,
-        [loginId]
-      );
-
-      if (!Array.isArray(users) || users.length === 0) {
-        return NextResponse.json(
-          { ok: false, error: 'Invalid credentials or inactive account' },
-          { status: 401 }
+        nipContext = await createAuthContextByNip(loginId, connection);
+      } else {
+        const [users] = await connection.query(
+          `
+          SELECT auth.*, k.nama
+          FROM tb_karyawan_auth auth
+          JOIN tb_karyawan k ON auth.karyawan_id = k.id
+          WHERE auth.nip = ? AND auth.is_active = 1
+        `,
+          [loginId]
         );
+
+        if (!Array.isArray(users) || users.length === 0) {
+          return NextResponse.json(
+            { ok: false, error: 'Invalid credentials or inactive account' },
+            { status: 401 }
+          );
+        }
+
+        const user = users[0];
+        const { valid: nipValid, needsRehash: nipNeedsRehash } = await verifyPassword(user.password_hash, password);
+        if (!nipValid) {
+          return NextResponse.json({ ok: false, error: 'Invalid credentials' }, { status: 401 });
+        }
+        if (nipNeedsRehash) {
+          const hashed = await hashPassword(password);
+          await connection.query('UPDATE tb_karyawan_auth SET password_hash = ? WHERE karyawan_id = ?', [hashed, user.karyawan_id]);
+        }
+
+        await connection.query('UPDATE tb_karyawan_auth SET last_login_at = NOW() WHERE karyawan_id = ?', [
+          user.karyawan_id,
+        ]);
+
+        nipContext = await createAuthContextByNip(loginId, connection);
+
+        if (!nipContext) {
+          return NextResponse.json(
+            { ok: false, error: 'Failed to create session context' },
+            { status: 500 }
+          );
+        }
+
+        accountContext = await findAuthAccountByLoginId(loginId, connection)
+          ? await createAuthContextByLoginId(loginId, connection)
+          : null;
       }
 
-      const user = users[0];
-
-      const { valid: nipValid, needsRehash: nipNeedsRehash } = await verifyPassword(user.password_hash, password);
-      if (!nipValid) {
-        return NextResponse.json({ ok: false, error: 'Invalid credentials' }, { status: 401 });
-      }
-      if (nipNeedsRehash) {
-        const hashed = await hashPassword(password);
-        await connection.query('UPDATE tb_karyawan_auth SET password_hash = ? WHERE karyawan_id = ?', [hashed, user.karyawan_id]);
-      }
-
-      await connection.query('UPDATE tb_karyawan_auth SET last_login_at = NOW() WHERE karyawan_id = ?', [
-        user.karyawan_id,
-      ]);
-
-      const authContext = await createAuthContextByNip(loginId, connection);
-
-      if (!authContext) {
-        return NextResponse.json(
-          { ok: false, error: 'Failed to create session context' },
-          { status: 500 }
-        );
-      }
-
-      const response = NextResponse.json({
-        ok: true,
-        user: {
-          login_id: loginId,
-          nip: authContext.nip,
-          nama: authContext.nama,
-          is_admin: authContext.is_admin,
-          is_hr: Boolean(authContext.is_hr),
-          is_leader: authContext.is_leader,
-        },
+      const laneResult = await resolveAuthenticatedLane({
+        loginId,
+        accountContext,
+        nipContext,
+        selectedSubjectType,
       });
 
-      setAuthCookie(response, loginId, request, { subjectType: 'employee_nip' });
-      return response;
+      if (!laneResult.ok) {
+        return NextResponse.json({ ok: false, error: laneResult.error }, { status: laneResult.status });
+      }
+
+      return finalizeLoginSuccess({
+        authContext: laneResult.authContext,
+        loginId,
+        request,
+        subjectType: laneResult.subjectType,
+      });
     } finally {
       connection.release();
     }

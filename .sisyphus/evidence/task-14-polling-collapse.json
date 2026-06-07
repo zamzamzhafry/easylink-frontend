@@ -1,0 +1,42 @@
+{
+  "task": "Task 14 / Acceptance #2",
+  "criterion": "Collapsed mode suppresses heavy polling",
+  "run_at": "2026-03-31T16:36:00.000Z",
+  "method": "browser-evaluate fetch interception",
+  "page": "http://127.0.0.1:3101/attendance",
+  "observation_window_seconds": 17,
+  "poll_gate_condition": "useEffect in RightOpsSidebar returns early when collapsed is true",
+  "collapsed_snapshot": {
+    "storage_key": "easylink_right_sidebar_collapsed",
+    "storage_value": "1",
+    "toggle_labels": ["Refresh right sidebar", "Expand right sidebar"],
+    "counts": {
+      "total": 0,
+      "matched": 0,
+      "review": 0,
+      "scanlog": 0,
+      "machine": 0
+    }
+  },
+  "expanded_snapshot": {
+    "storage_key": "easylink_right_sidebar_collapsed",
+    "storage_value": "0",
+    "toggle_labels": ["Refresh right sidebar", "Collapse right sidebar"],
+    "counts": {
+      "total": 2,
+      "matched": 2,
+      "review": 2,
+      "scanlog": 0,
+      "machine": 0
+    }
+  },
+  "result": {
+    "collapsed_heavy_poll_suppressed": true,
+    "expanded_poll_resumes": true,
+    "pass": true
+  },
+  "notes": [
+    "Fetch interception counted polling requests for /api/attendance/review, /api/scanlog/sync, /api/machine.",
+    "Collapsed window produced zero matched requests while expanded window produced matched review polling requests."
+  ]
+}

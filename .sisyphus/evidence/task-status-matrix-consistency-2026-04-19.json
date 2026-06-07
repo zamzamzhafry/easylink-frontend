@@ -1,0 +1,68 @@
+{
+  "timestamp": "2026-04-19",
+  "canonical_sources": [
+    ".sisyphus/plans/easylink-architecture-clean-slate.md",
+    "docs/agent-context/session-handoff-2026-04-19.md",
+    "docs/agent-context/session-handoff-2026-04-19-attendance-performance-backlog.md",
+    ".sisyphus/evidence/*"
+  ],
+  "normalized_evidence_mapping": {
+    "task_17_drilldown": ".sisyphus/evidence/task-17-report-ui.json",
+    "task_17_role_scope": ".sisyphus/evidence/task-17-api-contract.json",
+    "final_wave_f1": ".sisyphus/evidence/F1-plan-compliance-audit.md",
+    "final_wave_f2": ".sisyphus/evidence/F2-code-quality-review.md",
+    "final_wave_f3": ".sisyphus/evidence/F3-real-manual-qa.md",
+    "final_wave_f4": ".sisyphus/evidence/F4-scope-fidelity-check.md"
+  },
+  "matrix": [
+    {
+      "task_id": "TASK-16",
+      "impl_state": "partial",
+      "evidence_state": "present",
+      "gate_state": "pending",
+      "blocker": "acceptance checklist still open"
+    },
+    {
+      "task_id": "TASK-17",
+      "impl_state": "partial",
+      "evidence_state": "present",
+      "gate_state": "pending",
+      "blocker": "acceptance checklist still open"
+    },
+    {
+      "task_id": "TASK-18",
+      "impl_state": "partial",
+      "evidence_state": "present",
+      "gate_state": "pending",
+      "blocker": "acceptance checklist still open"
+    },
+    {
+      "task_id": "F1",
+      "impl_state": "partial",
+      "evidence_state": "present",
+      "gate_state": "pending",
+      "blocker": "re-audit required"
+    },
+    {
+      "task_id": "F2",
+      "impl_state": "not_started",
+      "evidence_state": "missing",
+      "gate_state": "blocked",
+      "blocker": "missing evidence artifact"
+    },
+    {
+      "task_id": "F3",
+      "impl_state": "not_started",
+      "evidence_state": "missing",
+      "gate_state": "blocked",
+      "blocker": "missing evidence artifact"
+    },
+    {
+      "task_id": "F4",
+      "impl_state": "not_started",
+      "evidence_state": "missing",
+      "gate_state": "blocked",
+      "blocker": "missing evidence artifact"
+    }
+  ]
+}

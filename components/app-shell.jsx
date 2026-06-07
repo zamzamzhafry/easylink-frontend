@@ -16,6 +16,7 @@ import Sidebar from '@/components/sidebar';
 import { getUIText } from '@/lib/localization/ui-texts';
 import { cn } from '@/lib/utils';
 import useAuthSession from '@/hooks/use-auth-session';
+import useViewMode from '@/hooks/use-view-mode';
 
 const STORAGE_KEY = 'easylink_sidebar_collapsed';
 const RIGHT_SIDEBAR_STORAGE_KEY = 'easylink_right_sidebar_collapsed';
@@ -61,6 +62,7 @@ export default function AppShell({ children }) {
   const [theme, setTheme] = useState('dark');
   const [locale, setLocale] = useState('en');
   const [remountKey, setRemountKey] = useState(0);
+  const { viewMode, cycleViewMode } = useViewMode();
   const fallbackTriggeredRef = useRef(false);
   const showRightSidebar = Boolean(authUser?.is_admin) && !isLoginPage;
   const recordThemeFallbackEvent = (currentTheme, expectedTheme) => {
@@ -253,6 +255,8 @@ export default function AppShell({ children }) {
           onThemeToggle={toggleTheme}
           locale={locale}
           onLocaleChange={handleLocaleChange}
+          viewMode={viewMode}
+          onViewModeCycle={cycleViewMode}
         />
         <main
           className={cn(

@@ -7,7 +7,7 @@ node_modules/
 !migration_v3_clean_slate_rollback.sql
 !migration_machine_user_polling.sql
 *.tsbuildinfo
-.sisyphus/
+# .sisyphus/ intentionally tracked — AI knowledge (sessions, plans, notepads)
 .docs/
 *.sql.example
 nul
@@ -19,3 +19,4 @@ Postman/
 # Large SDK binaries and dumps
 docs/learning/sdk-share-dumps/
 tmp/
+test-results/

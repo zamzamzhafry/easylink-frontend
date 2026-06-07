@@ -1,0 +1,3 @@
+- [2026-03-29] Report API must reuse performance auth scope guards and limit drilldown rows to keep payload bounded.
+- [2026-03-29] Report UI should treat server drilldown rows as authoritative bounds, surfacing truncation/limit hints instead of client-side pagination fetch loops.
+- [2026-03-29] Report page text wiring now uses getUIText(reportPage.\*) with browser-language EN/ID mapping and explicit English fallback when locale is unknown.

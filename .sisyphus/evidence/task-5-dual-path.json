@@ -1,0 +1,14 @@
+{
+  "task": "dual-path canonical role parity",
+  "timestamp": "2026-03-28T22:49:30.896Z",
+  "method": "node --input-type=module - <<'EOF' (SELECT ka.karyawan_id, ka.nip, k.pin AS k_pin FROM tb_karyawan_auth ka JOIN tb_karyawan k ON ka.karyawan_id = k.id WHERE ka.nip IN ('admin001','leader001','employee001') AND ka.is_active = 1 ORDER BY ka.nip; for each matching tb_user run the same canonical role mapping logic as lib/auth-session.ts, then compare sets)",
+  "result": "pass",
+  "sample_size": 3,
+  "mismatches": [],
+  "details": [
+    "Canonical roles are derived exactly as in lib/auth-session.ts: admin if is_admin or privilege>=4, group_leader when is_leader/is_hr/can_schedule true, employee otherwise, and 'employee' is appended when can_dashboard true. Legacy role labels (viewer, scheduler, etc.) are mapped via LEGACY_EMPLOYEE_ROLE_TO_CANONICAL_ROLE before deduping.",
+    "All three seeded identities (admin001, leader001, employee001) produced identical canonical role sets on both the NIP and PIN paths, so parity now passes."
+  ],
+  "blocker": null,
+  "intervention": null
+}

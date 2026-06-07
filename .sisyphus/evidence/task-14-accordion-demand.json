@@ -1,0 +1,33 @@
+{
+  "task": "Task 14 / Acceptance #3",
+  "criterion": "Accordion loads details on demand",
+  "run_at": "2026-03-31T16:42:00.000Z",
+  "method": "browser-evaluate fetch interception",
+  "page": "http://127.0.0.1:3101/attendance",
+  "observation_window_seconds": 17,
+  "controls_clicked": {
+    "expand_scanlog_queue": true,
+    "expand_machine_queue": true
+  },
+  "closed_accordion_counts": {
+    "review": 1,
+    "scanlog": 0,
+    "machine": 0,
+    "total": 1
+  },
+  "expanded_accordion_counts": {
+    "review": 2,
+    "scanlog": 2,
+    "machine": 2,
+    "total": 6
+  },
+  "result": {
+    "detail_fetches_deferred_when_closed": true,
+    "detail_fetches_triggered_on_expand": true,
+    "pass": true
+  },
+  "notes": [
+    "With accordions closed, no /api/scanlog/sync or /api/machine detail polling was observed in the window.",
+    "After expanding Scanlog Queue and Machine Queue accordions, both detail endpoints began polling."
+  ]
+}

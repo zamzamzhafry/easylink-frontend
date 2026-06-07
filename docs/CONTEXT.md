@@ -1,7 +1,7 @@
 # CONTEXT
 
 **Status**: Active canonical context spine  
-**Last updated**: 2026-05-22
+**Last updated**: 2026-06-07
 
 This file is primary entrypoint for future contributors and AI agents. Use it before older handoff notes or planning docs.
 
@@ -14,6 +14,14 @@ EasyLink is private-network attendance and machine-sync app built with Next.js A
 - Shared runtime logic lives in `lib/**`
 - SQL migrations live at repo root as `migration*.sql`
 - Machine and scanlog integration flows through `lib/easylink-sdk-client.js`
+
+## Shared UI module layer
+
+Pages must reuse these shared modules instead of re-rolling table, button, or persistence markup.
+
+- `components/ui/data-table.jsx` — column-driven `<DataTable>`. Pass a declarative `columns` array (`{key, header, render?, align?, priority?, mobileLabel?, className?}`) and `rows`. Renders a scrollable table on desktop and reflows each row to label/value cards on mobile (`<768px`). `view` is `auto` by default; a global sidebar toggle can force `table` or `cards`. This is the home for responsive list rendering — do not add `min-w-[...]` overflow hacks to page tables.
+- `components/ui/button.jsx` — single CVA `<Button>` plus `<ButtonGroup>`. Axes: `variant` (solid/outline/ghost/soft) x `tone` (primary/success/danger/neutral, semantic tokens only — no purple, no free-form color) x `size` (sm/md/lg/icon). `<ButtonGroup>` is the outlined rounded-radius container for visually grouped actions. The legacy `globals.css` button/table classes (`.ui-btn-*`, `.btn-*`, `.ui-table-*`) are being deprecated gradually in favor of these.
+- `hooks/use-persisted-preference.js` — defensive localStorage hook. Persisted client preferences MUST use versioned + validated `usePersistedPreference` (versioned key like `easylink:v1:...`, `validate()` on every read with silent fallback and self-heal, SSR-safe), never raw `localStorage`. `hooks/use-view-mode.js` (global table view mode) is built on it.
 
 ## Runtime architecture
 

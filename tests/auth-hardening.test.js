@@ -71,6 +71,138 @@ describe('auth hardening helpers', () => {
     });
   });
 
+  test('decodeSession fails on malformed signature', () => {
+    const exp = Math.floor(Date.now() / 1000) + 60;
+    const raw = Buffer.from(JSON.stringify({ sub: 'admin', st: 'account', exp, v: 2 }), 'utf8').toString('base64url');
+    const signed = `${raw}.invalid-signature`;
+    const base64UrlDecode = (value) => Buffer.from(value, 'base64url').toString('utf8');
+    const sign = (value) =>
+      crypto
+        .createHmac('sha256', process.env.AUTH_SECRET || 'dev-only-insecure-fallback')
+        .update(value)
+        .digest('base64url');
+    const decoded = decodeSessionToken(signed, sign, base64UrlDecode, true);
+    assert.equal(decoded, null);
+  });
+
+  test('decodeSession fails on malformed JSON payload', () => {
+    const raw = Buffer.from('{ malformed_json ', 'utf8').toString('base64url');
+    const signed = `${raw}.${crypto
+      .createHmac('sha256', process.env.AUTH_SECRET || 'dev-only-insecure-fallback')
+      .update(raw)
+      .digest('base64url')}`;
+    const base64UrlDecode = (value) => Buffer.from(value, 'base64url').toString('utf8');
+    const sign = (value) =>
+      crypto
+        .createHmac('sha256', process.env.AUTH_SECRET || 'dev-only-insecure-fallback')
+        .update(value)
+        .digest('base64url');
+    const decoded = decodeSessionToken(signed, sign, base64UrlDecode, true);
+    assert.equal(decoded, null);
+  });
+
+  test('decodeSession rejects legacy payload when compat knob is off', () => {
+    const exp = Math.floor(Date.now() / 1000) + 60;
+    const raw = Buffer.from(JSON.stringify({ pin: '1234', exp, v: 1 }), 'utf8').toString('base64url');
+    const signed = `${raw}.${crypto
+      .createHmac('sha256', process.env.AUTH_SECRET || 'dev-only-insecure-fallback')
+      .update(raw)
+      .digest('base64url')}`;
+    const base64UrlDecode = (value) => Buffer.from(value, 'base64url').toString('utf8');
+    const sign = (value) =>
+      crypto
+        .createHmac('sha256', process.env.AUTH_SECRET || 'dev-only-insecure-fallback')
+        .update(value)
+        .digest('base64url');
+    const decoded = decodeSessionToken(signed, sign, base64UrlDecode, false);
+
+    assert.equal(decoded, null);
+  });
+
+  test('decodeSession fails on missing sub and pin', () => {
+    const exp = Math.floor(Date.now() / 1000) + 60;
+    const raw = Buffer.from(JSON.stringify({ exp, v: 2 }), 'utf8').toString('base64url');
+    const signed = `${raw}.${crypto
+      .createHmac('sha256', process.env.AUTH_SECRET || 'dev-only-insecure-fallback')
+      .update(raw)
+      .digest('base64url')}`;
+    const base64UrlDecode = (value) => Buffer.from(value, 'base64url').toString('utf8');
+    const sign = (value) =>
+      crypto
+        .createHmac('sha256', process.env.AUTH_SECRET || 'dev-only-insecure-fallback')
+        .update(value)
+        .digest('base64url');
+    const decoded = decodeSessionToken(signed, sign, base64UrlDecode, true);
+    assert.equal(decoded, null);
+  });
+
+  test('decodeSession fails on missing token prefix (no dot)', () => {
+    const base64UrlDecode = (value) => Buffer.from(value, 'base64url').toString('utf8');
+    const sign = (value) =>
+      crypto
+        .createHmac('sha256', process.env.AUTH_SECRET || 'dev-only-insecure-fallback')
+        .update(value)
+        .digest('base64url');
+    const decoded = decodeSessionToken('invalidtokenwithoutdot', sign, base64UrlDecode, true);
+    assert.equal(decoded, null);
+  });
+
+  test('decodeSession fails without key (null signature config)', () => {
+    const exp = Math.floor(Date.now() / 1000) + 60;
+    const raw = Buffer.from(JSON.stringify({ sub: 'admin', st: 'account', exp, v: 2 }), 'utf8').toString('base64url');
+    const signed = `${raw}.`;
+    const base64UrlDecode = (value) => Buffer.from(value, 'base64url').toString('utf8');
+    const sign = () => '';
+    const decoded = decodeSessionToken(signed, sign, base64UrlDecode, true);
+    assert.equal(decoded, null);
+  });
+
+  test('decodeSession with explicit st=account', () => {
+    const exp = Math.floor(Date.now() / 1000) + 60;
+    const raw = Buffer.from(JSON.stringify({ sub: 'admin', st: 'account', exp, v: 2 }), 'utf8').toString('base64url');
+    const signed = `${raw}.${crypto
+      .createHmac('sha256', process.env.AUTH_SECRET || 'dev-only-insecure-fallback')
+      .update(raw)
+      .digest('base64url')}`;
+    const base64UrlDecode = (value) => Buffer.from(value, 'base64url').toString('utf8');
+    const sign = (value) =>
+      crypto
+        .createHmac('sha256', process.env.AUTH_SECRET || 'dev-only-insecure-fallback')
+        .update(value)
+        .digest('base64url');
+    const decoded = decodeSessionToken(signed, sign, base64UrlDecode, true);
+
+    assert.deepEqual(decoded, {
+      subject: 'admin',
+      subject_type: 'account',
+      exp,
+      payload_format: 'canonical',
+    });
+  });
+
+  test('decodeSession with explicit st=employee_nip', () => {
+    const exp = Math.floor(Date.now() / 1000) + 60;
+    const raw = Buffer.from(JSON.stringify({ sub: 'nip123', st: 'employee_nip', exp, v: 2 }), 'utf8').toString('base64url');
+    const signed = `${raw}.${crypto
+      .createHmac('sha256', process.env.AUTH_SECRET || 'dev-only-insecure-fallback')
+      .update(raw)
+      .digest('base64url')}`;
+    const base64UrlDecode = (value) => Buffer.from(value, 'base64url').toString('utf8');
+    const sign = (value) =>
+      crypto
+        .createHmac('sha256', process.env.AUTH_SECRET || 'dev-only-insecure-fallback')
+        .update(value)
+        .digest('base64url');
+    const decoded = decodeSessionToken(signed, sign, base64UrlDecode, true);
+
+    assert.deepEqual(decoded, {
+      subject: 'nip123',
+      subject_type: 'employee_nip',
+      exp,
+      payload_format: 'canonical',
+    });
+  });
+
   test('hasPrivilegeMismatch detects disagreement across lanes', () => {
     const base = {
       pin: 'HRD01',

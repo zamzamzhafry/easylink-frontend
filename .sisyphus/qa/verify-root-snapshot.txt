@@ -1,0 +1,10 @@
+uid=1_0 RootWebArea "EasyLink Absensi" url="http://localhost:3000/login?next=%2F"
+  uid=1_1 main
+    uid=1_2 heading "EasyLink Login" level="1"
+    uid=1_3 StaticText "Use your account login ID and password."
+    uid=1_4 StaticText "Login ID"
+    uid=1_5 textbox "Login ID"
+    uid=1_6 StaticText "Password"
+    uid=1_7 textbox "Password"
+    uid=1_8 button "Sign In"
+  uid=1_9 alert atomic live="assertive" relevant="additions text"

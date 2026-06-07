@@ -1,0 +1,35 @@
+{
+  "task": "Task 14 / Acceptance #4",
+  "criterion": "Theme source-of-truth remains root-level class/token state",
+  "run_at": "2026-03-31T16:47:00.000Z",
+  "proof_type": "static source audit",
+  "findings": {
+    "root_theme_state_in_app_shell": true,
+    "root_data_theme_mutation_in_app_shell": true,
+    "global_tokens_defined_in_globals_css": true,
+    "root_theme_overrides_defined": true,
+    "right_sidebar_has_no_local_theme_state": true,
+    "right_sidebar_uses_semantic_classes": true
+  },
+  "references": {
+    "app_shell": [
+      "THEME_KEY = 'easylink_theme'",
+      "theme state + localStorage load",
+      "document.documentElement.setAttribute('data-theme', theme)",
+      "toggleTheme() updates root attribute"
+    ],
+    "globals_css": [
+      ":root token definitions",
+      "html[data-theme='light'] root token overrides",
+      "root-scoped semantic utility class mappings"
+    ],
+    "right_ops_sidebar": [
+      "no data-theme writes",
+      "semantic class usage (bg-card/text-foreground/border-border/ui-*)"
+    ]
+  },
+  "result": {
+    "component_local_color_authority_drift_detected": false,
+    "pass": true
+  }
+}

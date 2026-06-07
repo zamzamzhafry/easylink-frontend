@@ -1,0 +1,19 @@
+{
+  "route": "/",
+  "requestedUrl": "http://127.0.0.1:3001/",
+  "resolvedUrl": "http://127.0.0.1:3001/login?next=%2F",
+  "status": 200,
+  "durationMs": 11379,
+  "title": "EasyLink Absensi",
+  "bodySnippet": "EasyLink LoginUse your employee NIP and password.",
+  "consoleErrors": [
+    "Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+    "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+    "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+    "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+  ],
+  "consoleWarnings": [],
+  "devServerPort": 3001,
+  "notes": "Page redirected to /login and unauthenticated API/asset requests returned 401/404, which are expected for this baseline smoke."
+}

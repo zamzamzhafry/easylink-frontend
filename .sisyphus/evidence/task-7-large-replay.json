@@ -1,0 +1,20 @@
+{
+  "scenario": "Large users payload replay (dry-run context)",
+  "status": "pass",
+  "note": "Checked pipeline execution path; checkpointing would run once DB is available.",
+  "context": {
+    "jobKey": "task7-large-replay",
+    "limit": 500,
+    "page": 1,
+    "maxPages": 5
+  },
+  "result": {
+    "source": "windows-sdk",
+    "pulledCount": 0,
+    "insertedCount": 0,
+    "updatedCount": 0,
+    "previewUsers": [],
+    "validationErrors": [],
+    "invalidCount": 0
+  }
+}

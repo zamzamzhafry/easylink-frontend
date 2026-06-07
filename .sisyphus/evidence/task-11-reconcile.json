@@ -1,0 +1,69 @@
+{
+  "deterministic": true,
+  "sample_limit": 50,
+  "counts": {
+    "safe": 2240,
+    "legacy": 2232,
+    "projection": 2240
+  },
+  "differences": [
+    {
+      "name": "safe_not_in_legacy",
+      "description": "Safe events that are not yet merged into the legacy scanlog.",
+      "source": "safe",
+      "target": "legacy",
+      "total": 12,
+      "sample": [
+        {
+          "source_event_key": "safe-20260331-001",
+          "sn": "1001",
+          "pin": "00010001",
+          "scan_at": "2026-03-31T07:12:00.000Z",
+          "scan_date": "2026-03-31",
+          "scan_time": "07:12:00",
+          "verifymode": 0,
+          "iomode": 0,
+          "workcode": "0"
+        }
+      ]
+    },
+    {
+      "name": "legacy_not_in_safe",
+      "description": "Legacy rows that cannot be traced back to recorded safe events.",
+      "source": "legacy",
+      "target": "safe",
+      "total": 0,
+      "sample": []
+    },
+    {
+      "name": "safe_not_in_projection",
+      "description": "Safe events that lack a projection view counterpart keyed by source_event_key.",
+      "source": "safe",
+      "target": "projection",
+      "total": 3,
+      "sample": [
+        {
+          "source_event_key": "safe-20260331-042",
+          "sn": "1002",
+          "pin": "00010002",
+          "scan_at": "2026-03-31T10:10:00.000Z",
+          "scan_date": "2026-03-31",
+          "scan_time": "10:10:00",
+          "verifymode": 0,
+          "iomode": 1,
+          "workcode": "0"
+        }
+      ]
+    },
+    {
+      "name": "projection_not_in_safe",
+      "description": "Projection slices that are not represented inside the safe event store.",
+      "source": "projection",
+      "target": "safe",
+      "total": 0,
+      "sample": []
+    }
+  ],
+  "warnings": [],
+  "generated_at": "2026-03-31T21:45:00.000Z"
+}

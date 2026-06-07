@@ -1,0 +1,19 @@
+{
+  "charts": {
+    "pie": {
+      "type": "svg",
+      "interactive": true,
+      "drilldown_enabled": true
+    },
+    "bar": {
+      "type": "div-based",
+      "interactive": true,
+      "drilldown_enabled": true,
+      "target_line_enabled": true
+    }
+  },
+  "pagination": {
+    "enabled": true,
+    "controls_present": true
+  }
+}

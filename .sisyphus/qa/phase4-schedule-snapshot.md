@@ -1,0 +1,96 @@
+- generic [active] [ref=e1]:
+  - complementary [ref=e11]:
+    - generic [ref=e12]:
+      - button "Collapse sidebar" [ref=e13] [cursor=pointer]:
+        - img [ref=e14]
+      - generic [ref=e17]:
+        - img [ref=e18]
+        - generic [ref=e27]
+    - navigation [ref=e28]:
+      - generic [ref=e29]:
+        - button "Overview" [ref=e30] [cursor=pointer]
+        - link "Dashboard" [ref=e35] [cursor=pointer]:
+          - /url: /
+      - generic [ref=e41]:
+        - button "Planning & Attendance" [ref=e42] [cursor=pointer]
+        - generic [ref=e46]
+      - generic [ref=e67]:
+        - button "Master Data" [ref=e68] [cursor=pointer]
+        - generic [ref=e72]
+    - generic [ref=e114]:
+      - button "Settings" [ref=e115] [cursor=pointer]:
+        - img [ref=e116]
+        - text: Settings
+      - button "Light Mode" [ref=e119] [cursor=pointer]:
+        - img [ref=e120]
+        - text: Light Mode
+      - generic [ref=e127]:
+        - img [ref=e129]
+        - button "EN" [ref=e133] [cursor=pointer]
+        - button "ID" [ref=e134] [cursor=pointer]
+      - generic [ref=e135]:
+        - generic [ref=e136]: Seed Admin 001
+        - generic [ref=e137]
+      - button "Logout" [ref=e141] [cursor=pointer]:
+        - img [ref=e142]
+        - text: Logout
+      - generic [ref=e145]: demo_easylinksdk | v1.2
+  - main [ref=e146]:
+    - generic [ref=e147]:
+      - generic [ref=e148]:
+        - generic [ref=e149]
+        - generic [ref=e153]
+      - generic [ref=e172]:
+        - button [ref=e173] [cursor=pointer]
+        - generic [ref=e176]: Mei 2026
+        - button [ref=e177] [cursor=pointer]
+        - generic [ref=e180]: 30 Kam - 30 Sab
+      - generic [ref=e181]:
+        - generic [ref=e182]: Day Columns Zoom
+        - slider "Day Columns Zoom" [ref=e183] [cursor=pointer]: "100"
+        - generic [ref=e184]: 100%
+        - button "Reset" [ref=e185] [cursor=pointer]
+        - generic [ref=e186]: Employee column stays fixed.
+      - generic [ref=e187]:
+        - button "Monthly Plan" [ref=e188] [cursor=pointer]
+        - button "Punch Shortcut" [ref=e189] [cursor=pointer]
+        - button "Quick Summaries" [ref=e190] [cursor=pointer]
+        - button "Import / Check" [ref=e191] [cursor=pointer]
+        - button "Employee Metrics" [ref=e192] [cursor=pointer]
+      - generic [ref=e193]:
+        - button "Group Employee Filter Hide" [ref=e194] [cursor=pointer]
+        - generic [ref=e197]
+      - generic [ref=e227]:
+        - generic [ref=e228]
+        - generic [ref=e277]
+        - generic [ref=e3786]
+  - complementary "Admin operations sidebar" [ref=e3794]:
+    - generic [ref=e3795]:
+      - generic [ref=e3796]:
+        - paragraph [ref=e3797]
+        - paragraph [ref=e3801]: Queue monitor + review alerts
+      - generic [ref=e3802]:
+        - button "Refresh right sidebar" [ref=e3803] [cursor=pointer]
+        - button "Collapse right sidebar" [expanded] [ref=e3809] [cursor=pointer]
+    - 'link "Punch-time reviews: 0 pending" [ref=e3812] [cursor=pointer]':
+      - /url: /attendance/review
+      - generic [ref=e3813]:
+        - generic [ref=e3814]
+        - generic [ref=e3819]: "0"
+      - paragraph [ref=e3820]:
+        - img [ref=e3821]
+        - text: Rows that need review today
+    - generic [ref=e3824]:
+      - generic [ref=e3826]:
+        - paragraph [ref=e3827]: Scanlog Queue
+        - generic [ref=e3828]
+      - generic [ref=e3832]:
+        - paragraph [ref=e3833]: Migration Gates
+        - generic [ref=e3834]
+      - generic [ref=e3838]:
+        - paragraph [ref=e3839]: Machine Queue
+        - generic [ref=e3840]
+      - generic [ref=e3844]:
+        - paragraph [ref=e3845]: Admin JSON preview
+        - button "Expand Admin JSON preview" [ref=e3847] [cursor=pointer]: Show
+  - alert [ref=e10]

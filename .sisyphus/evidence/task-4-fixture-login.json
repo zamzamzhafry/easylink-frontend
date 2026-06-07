@@ -1,0 +1,124 @@
+{
+  "timestamp": "Sun, Mar 29, 2026  5:54:33 AM",
+  "fixtures": [
+    {
+      "nip": "admin001",
+      "login": {
+        "status": 200,
+        "body": {
+          "ok": true,
+          "user": {
+            "nip": "admin001",
+            "nama": "Seed Admin 001",
+            "is_admin": true,
+            "is_leader": false
+          }
+        }
+      },
+      "me": {
+        "status": 200,
+        "body": {
+          "ok": true,
+          "user": {
+            "nip": "admin001",
+            "pin": "admin001",
+            "karyawan_id": 10000,
+            "nama": "Seed Admin 001",
+            "privilege": 4,
+            "is_admin": true,
+            "is_leader": false,
+            "is_hr": false,
+            "can_schedule": true,
+            "can_dashboard": true,
+            "groups": [],
+            "canonical_roles": ["admin", "employee"]
+          }
+        }
+      },
+      "canonical_roles": ["admin", "employee"],
+      "pass": true
+    },
+    {
+      "nip": "leader001",
+      "login": {
+        "status": 200,
+        "body": {
+          "ok": true,
+          "user": {
+            "nip": "leader001",
+            "nama": "Seed Leader 001",
+            "is_admin": false,
+            "is_leader": true
+          }
+        }
+      },
+      "me": {
+        "status": 200,
+        "body": {
+          "ok": true,
+          "user": {
+            "nip": "leader001",
+            "pin": "leader001",
+            "karyawan_id": 10001,
+            "nama": "Seed Leader 001",
+            "privilege": 1,
+            "is_admin": false,
+            "is_leader": true,
+            "is_hr": false,
+            "can_schedule": true,
+            "can_dashboard": true,
+            "groups": [
+              {
+                "group_id": 31,
+                "nama_group": "Role Fixture Auth Group",
+                "can_schedule": 1,
+                "can_dashboard": 1,
+                "is_leader": true
+              }
+            ],
+            "canonical_roles": ["group_leader", "employee"]
+          }
+        }
+      },
+      "canonical_roles": ["group_leader", "employee"],
+      "pass": true
+    },
+    {
+      "nip": "employee001",
+      "login": {
+        "status": 200,
+        "body": {
+          "ok": true,
+          "user": {
+            "nip": "employee001",
+            "nama": "Seed Employee 001",
+            "is_admin": false,
+            "is_leader": false
+          }
+        }
+      },
+      "me": {
+        "status": 200,
+        "body": {
+          "ok": true,
+          "user": {
+            "nip": "employee001",
+            "pin": "employee001",
+            "karyawan_id": 10002,
+            "nama": "Seed Employee 001",
+            "privilege": 1,
+            "is_admin": false,
+            "is_leader": false,
+            "is_hr": false,
+            "can_schedule": false,
+            "can_dashboard": false,
+            "groups": [],
+            "canonical_roles": ["employee"]
+          }
+        }
+      },
+      "canonical_roles": ["employee"],
+      "pass": true
+    }
+  ]
+}

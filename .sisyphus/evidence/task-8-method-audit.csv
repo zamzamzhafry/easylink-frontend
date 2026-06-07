@@ -1,0 +1,8 @@
+audit_timestamp_utc,employee_id,login_nip,method_type,method_value,is_primary,is_verified,valid_from_utc,valid_to_utc,method_type_allowed,method_value_present,valid_range_ok,normalization_status,allowed_method_set,invalid_method_type_rows_overall,empty_method_value_rows_overall,invalid_validity_range_rows_overall,audit_result,notes
+2026-03-28T23:26:46.018Z,10000,admin001,nip,admin001,1,1,2026-03-28T22:39:33.000Z,,1,1,1,normalized,"nip|pin|rfid|face_id|custom",0,0,0,PASS,canonical method within allowed set
+2026-03-28T23:26:46.018Z,10000,admin001,pin,admin001,1,1,2026-03-28T22:39:33.000Z,,1,1,1,normalized,"nip|pin|rfid|face_id|custom",0,0,0,PASS,canonical method within allowed set
+2026-03-28T23:26:46.018Z,10001,leader001,nip,leader001,1,1,2026-03-28T22:39:33.000Z,,1,1,1,normalized,"nip|pin|rfid|face_id|custom",0,0,0,PASS,canonical method within allowed set
+2026-03-28T23:26:46.018Z,10001,leader001,pin,leader001,1,1,2026-03-28T22:39:33.000Z,,1,1,1,normalized,"nip|pin|rfid|face_id|custom",0,0,0,PASS,canonical method within allowed set
+2026-03-28T23:26:46.018Z,10002,employee001,nip,employee001,1,1,2026-03-28T22:39:33.000Z,,1,1,1,normalized,"nip|pin|rfid|face_id|custom",0,0,0,PASS,canonical method within allowed set
+2026-03-28T23:26:46.018Z,10002,employee001,pin,employee001,1,1,2026-03-28T22:39:33.000Z,,1,1,1,normalized,"nip|pin|rfid|face_id|custom",0,0,0,PASS,canonical method within allowed set
+2026-03-28T23:26:46.018Z,SUMMARY,,,,,,,,,,,,"nip|pin|rfid|face_id|custom",0,0,0,PASS,"total_rows=6; invalid_method_type_rows=0; empty_method_value_rows=0; invalid_validity_range_rows=0"

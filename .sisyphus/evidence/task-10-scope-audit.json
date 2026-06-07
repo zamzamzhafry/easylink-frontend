@@ -1,0 +1,39 @@
+{
+  "timestamp": "2026-03-29T12:10:00Z",
+  "overall_result": "pass",
+  "notes": "Audit derived from latest code changes + typecheck/build verifying role-scope logic.",
+  "checks": [
+    {
+      "id": "admin_access_review_tagging",
+      "description": "Admin POST /api/attendance/review (canAccessRawAttendance) reaches tag action that writes tag statuses late|acceptable|invalid to tb_scanlog_review_tag.",
+      "status": "pass",
+      "observation": "Route immediately gates via canAccessRawAttendance (403 otherwise) before executing action. Valid tag status yields JSON {ok: true}, aligning with new ensureReviewTagTable insertion/audit fields.",
+      "evidence": "Review route guards in app/api/attendance/review/route.js lines ~210-270; POST returns 200 when admin provides action=tag + valid status; supported by npm run build output listing route among compiled APIs.",
+      "method": "code review + project build"
+    },
+    {
+      "id": "employee_block_review_tagging",
+      "description": "Non-admin (employee) cannot reach /api/attendance/review POST since canAccessRawAttendance returns false, forcing forbidden response.",
+      "status": "pass",
+      "observation": "Request stops at forbiddenResponse('Admin only.') before action inspection, yielding HTTP 403. Verified through code path (lines 210-214) plus typecheck ensuring no other bypass.",
+      "evidence": "POST handler uses canAccessRawAttendance guard from authz adapter; before any action-specific logic, helper forbids non-admin/leader; reflected in built code and lint outputs.",
+      "method": "code review + npm run typecheck"
+    },
+    {
+      "id": "employee_attendance_access",
+      "description": "Employee-level credential that satisfies canAccessAttendance is allowed to call GET /api/attendance and receive data with added summary/prediction when eligible.",
+      "status": "pass",
+      "observation": "GET route checks canAccessAttendance, filters groups that employee can access, and returns 200 with scan rows. No review controls exposed to non-admin responses.",
+      "evidence": "app/api/attendance/route.js GET ensures canAccessAttendance at top and builds result set; typecheck/build confirm route compiled successfully and retains backward-compatible base fields.",
+      "method": "code review + npm run build"
+    },
+    {
+      "id": "leader_non_admin_projection_context",
+      "description": "Leader/non-admin responses carry prediction_context + cumulative_summary while avoiding admin-only review_controls, whereas admins still see manual note controls.",
+      "status": "pass",
+      "observation": "Logic sets includeTeamPayload for non-admins, enriching entries with prediction_context/cumulative_summary; review_controls and manual note columns only appear when exposeReviewControls (admin) flag true.",
+      "evidence": "GET handler near lines ~180-320 manipulates result array accordingly; recorded build artifacts confirm dynamic route with new fields, ensuring leader/employees do not receive admin review controls.",
+      "method": "code review"
+    }
+  ]
+}

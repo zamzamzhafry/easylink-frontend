@@ -1,0 +1,14 @@
+{
+  "endpoints": {
+    "/api/report": {
+      "role_scoped": true,
+      "pagination": {
+        "params": ["page", "limit"],
+        "response_fields": ["page", "limit", "total", "totalPages"]
+      },
+      "drilldown": {
+        "params": ["drilldown_status", "drilldown_group"]
+      }
+    }
+  }
+}

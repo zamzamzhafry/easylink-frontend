@@ -1,0 +1,92 @@
+Task 8 Constraint Evidence — Canonical 1:1 Identity
+
+Timestamp (UTC): 2026-03-28T23:24:59.946Z
+Database: demo_easylinksdk
+
+Source command (read-only metadata query runner):
+node --input-type=module -e 'import pool from "./lib/db.js"; const run=async()=>{ ... INFORMATION_SCHEMA queries ... }; run();'
+
+---
+Query 1
+SQL:
+SELECT CONSTRAINT_NAME, CONSTRAINT_TYPE
+FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS
+WHERE TABLE_SCHEMA = DATABASE()
+  AND TABLE_NAME = "cs_employee_auth_identity"
+  AND CONSTRAINT_TYPE IN ("PRIMARY KEY","UNIQUE")
+ORDER BY CASE WHEN CONSTRAINT_TYPE = "PRIMARY KEY" THEN 0 ELSE 1 END, CONSTRAINT_NAME;
+
+Returned rows:
+1) CONSTRAINT_NAME=PRIMARY, CONSTRAINT_TYPE=PRIMARY KEY
+2) CONSTRAINT_NAME=uq_cs_employee_auth_identity_login_nip, CONSTRAINT_TYPE=UNIQUE
+
+---
+Query 2
+SQL:
+SELECT CONSTRAINT_NAME, COLUMN_NAME, ORDINAL_POSITION
+FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE
+WHERE TABLE_SCHEMA = DATABASE()
+  AND TABLE_NAME = "cs_employee_auth_identity"
+  AND CONSTRAINT_NAME IN ("PRIMARY", "uq_cs_employee_auth_identity_login_nip")
+ORDER BY CONSTRAINT_NAME, ORDINAL_POSITION;
+
+Returned rows:
+1) CONSTRAINT_NAME=PRIMARY, COLUMN_NAME=employee_id, ORDINAL_POSITION=1
+2) CONSTRAINT_NAME=uq_cs_employee_auth_identity_login_nip, COLUMN_NAME=login_nip, ORDINAL_POSITION=1
+
+---
+Query 3
+SQL:
+SELECT CONSTRAINT_NAME, CONSTRAINT_TYPE
+FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS
+WHERE TABLE_SCHEMA = DATABASE()
+  AND TABLE_NAME = "cs_employee_identification_methods"
+  AND CONSTRAINT_TYPE IN ("UNIQUE","CHECK")
+ORDER BY CONSTRAINT_TYPE, CONSTRAINT_NAME;
+
+Returned rows:
+1) CONSTRAINT_NAME=chk_cs_ident_method_valid_range, CONSTRAINT_TYPE=CHECK
+2) CONSTRAINT_NAME=metadata_json, CONSTRAINT_TYPE=CHECK
+3) CONSTRAINT_NAME=uq_cs_ident_method_employee_type_value, CONSTRAINT_TYPE=UNIQUE
+
+---
+Query 4
+SQL:
+SELECT CONSTRAINT_NAME, COLUMN_NAME, ORDINAL_POSITION
+FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE
+WHERE TABLE_SCHEMA = DATABASE()
+  AND TABLE_NAME = "cs_employee_identification_methods"
+  AND CONSTRAINT_NAME = "uq_cs_ident_method_employee_type_value"
+ORDER BY ORDINAL_POSITION;
+
+Returned rows:
+1) CONSTRAINT_NAME=uq_cs_ident_method_employee_type_value, COLUMN_NAME=employee_id, ORDINAL_POSITION=1
+2) CONSTRAINT_NAME=uq_cs_ident_method_employee_type_value, COLUMN_NAME=method_type, ORDINAL_POSITION=2
+3) CONSTRAINT_NAME=uq_cs_ident_method_employee_type_value, COLUMN_NAME=method_value, ORDINAL_POSITION=3
+
+---
+Query 5
+SQL:
+SELECT tc.CONSTRAINT_NAME, cc.CHECK_CLAUSE
+FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS tc
+JOIN INFORMATION_SCHEMA.CHECK_CONSTRAINTS cc
+  ON tc.CONSTRAINT_SCHEMA = cc.CONSTRAINT_SCHEMA
+ AND tc.CONSTRAINT_NAME = cc.CONSTRAINT_NAME
+WHERE tc.TABLE_SCHEMA = DATABASE()
+  AND tc.TABLE_NAME = "cs_employee_identification_methods"
+  AND tc.CONSTRAINT_TYPE = "CHECK"
+ORDER BY tc.CONSTRAINT_NAME;
+
+Returned rows:
+1) CONSTRAINT_NAME=chk_cs_ident_method_valid_range, CHECK_CLAUSE=`valid_to` is null or `valid_to` >= `valid_from`
+2) CONSTRAINT_NAME=metadata_json, CHECK_CLAUSE=json_valid(`metadata_json`)
+
+---
+PASS/FAIL CONCLUSION
+PASS
+
+Reasoning:
+- Canonical auth identity table has PRIMARY KEY on employee_id (enforces 1 employee : 1 auth row).
+- Canonical login identifier has UNIQUE constraint on login_nip.
+- Identification methods table has UNIQUE(employee_id, method_type, method_value).
+- Identification methods table includes CHECK validity range (`valid_to` null or >= `valid_from`) and JSON validity check.

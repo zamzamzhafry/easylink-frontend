@@ -1,0 +1,18 @@
+{
+  "run_at": "2026-03-31T16:23:50.000Z",
+  "browser_tool": "next-devtools_browser_eval (Playwright)",
+  "route": "/attendance",
+  "url_before_reload": "http://127.0.0.1:3070/attendance",
+  "url_after_reload": "http://127.0.0.1:3070/attendance",
+  "persisted_key": "easylink_right_sidebar_collapsed",
+  "collapsed_before_toggle": false,
+  "collapsed_after_toggle": true,
+  "collapsed_after_reload": true,
+  "local_storage_before_toggle": null,
+  "local_storage_after_toggle": "1",
+  "local_storage_after_reload": "1",
+  "toggle_label_after_reload": "Expand right sidebar",
+  "persisted": true,
+  "blocked": false,
+  "blocker_reason": null
+}

@@ -16,7 +16,9 @@ import {
   Languages,
   LayersIcon,
   LayoutDashboard,
+  LayoutGrid,
   LogOut,
+  Monitor,
   Moon,
   PanelLeftClose,
   PanelLeftOpen,
@@ -24,6 +26,7 @@ import {
   Settings,
   ShieldCheck,
   Sun,
+  Table,
   Timer,
   UserCog,
   Users,
@@ -41,10 +44,19 @@ export default function Sidebar({
   onThemeToggle,
   locale = 'en',
   onLocaleChange,
+  viewMode = 'auto',
+  onViewModeCycle,
 }) {
   const path = usePathname();
   const resolvedLocale = locale === 'id' ? 'id' : 'en';
   const t = useCallback((path) => getUIText(path, resolvedLocale), [resolvedLocale]);
+  const viewModeMeta = {
+    auto: { icon: Monitor, label: 'Auto layout' },
+    table: { icon: Table, label: 'Table view' },
+    cards: { icon: LayoutGrid, label: 'Card view' },
+  };
+  const currentViewMode = viewModeMeta[viewMode] ?? viewModeMeta.auto;
+  const ViewModeIcon = currentViewMode.icon;
   const navSections = useMemo(
     () => [
       {
@@ -301,6 +313,18 @@ export default function Sidebar({
           )}
           {!collapsed &&
             (theme === 'dark' ? t('sidebar.actions.lightMode') : t('sidebar.actions.darkMode'))}
+        </button>
+        <button
+          type="button"
+          onClick={onViewModeCycle}
+          className={cn(
+            'app-sidebar-viewmode-btn mb-2 flex w-full items-center rounded-lg border border-slate-700 px-2.5 py-2 text-xs text-slate-300 transition-colors hover:border-slate-500 hover:text-white',
+            collapsed ? 'justify-center' : 'gap-2'
+          )}
+          title={`Table layout: ${currentViewMode.label} (click to change)`}
+        >
+          <ViewModeIcon className="h-3.5 w-3.5 shrink-0 text-teal-400" />
+          {!collapsed && currentViewMode.label}
         </button>
         <div
           className={cn(
