@@ -11,6 +11,36 @@ import {
   parsePaginationParams,
 } from '@/lib/pagination';
 
+/**
+ * Users CRUD route — handles GET/POST/PUT/DELETE across multiple tables.
+ *
+ * ## Extraction assessment (T13)
+ *
+ * This route aggregates ~991 lines touching: `tb_karyawan_auth`,
+ * `auth_accounts`, `tb_user`, `cs_employee_auth_identity`,
+ * `cs_employee_identification_methods`, `tb_karyawan_roles`,
+ * `tb_user_group_access`. A full extraction was assessed and deferred:
+ *
+ * - **Reason**: The route's value is in its transactional guarantees across
+ *   multiple tables. Extracting into separate modules risks breaking atomicity
+ *   or introducing subtle ordering bugs in the write paths (POST/PUT/DELETE).
+ *
+ * - **Safe extraction seams** (if extracted later):
+ *   - `resolveCanonicalIdentityByPin()` → pure lookup, no side effects
+ *   - `upsertIdentificationMethod()` → self-contained INSERT/UPDATE
+ *   - `privilegeToCanonicalRole()` → pure mapping
+ *   - `normalizeIdentifier()` / `isValidIdentifier()` → pure validation
+ *   - `buildUserListResponse()` → read-only aggregation for GET
+ *
+ * - **Risky extraction targets** (avoid unless refactoring with tests):
+ *   - POST handler: employee + auth identity + identification methods + roles + tb_user in one transaction
+ *   - PUT handler: canonical identity + legacy rows + optional role rebind
+ *   - DELETE handler: cascading deletes across 5+ tables
+ *
+ * - **Recommendation**: Keep as-is. Add tests for the pure helpers above
+ *   before any future extraction attempt.
+ */
+
 const IDENTIFIER_PATTERN = /^[A-Za-z0-9._-]{1,50}$/;
 
 function normalizeIdentifier(value) {

@@ -1,5 +1,45 @@
 "use client";
 
+/**
+ * Shared client-side auth session hook.
+ *
+ * All auth-aware pages MUST use this hook instead of fetching /api/auth/me
+ * independently. The hook provides:
+ * - Module-level cache with 30-second TTL to avoid redundant requests
+ * - Inflight request deduplication so concurrent mounts share one fetch
+ * - Force-refresh via the returned `refresh()` function
+ *
+ * Usage:
+ *   const { user, loading, error, statusCode, refresh } = useAuthSession()
+ *
+ * For pages that need to trigger re-evaluation after login/logout without a
+ * full page reload, call `resetSessionCache()` or `invalidateAuthSession()`.
+ *
+ * ## Cache semantics & failure modes
+ *
+ * - **Stale positive after logout**: If another tab logs out, this hook still
+ *   returns cached `user` until TTL expires. Mitigated by
+ *   `invalidateAuthSession()` dispatching a cross-component CustomEvent
+ *   (`easylink-auth-session-invalidated`) that forces cache eviction. Pages
+ *   that call `resetSessionCache()` or `invalidateAuthSession()` on logout
+ *   will see immediate invalidation; other tabs clear on next navigation.
+ *
+ * - **Stale negative after login**: Login page calls `resetSessionCache()`
+ *   before redirect, so the destination page always fetches fresh.
+ *
+ * - **Cross-tab drift**: Module-level cache is per-tab (in-memory). Cross-tab
+ *   logout coordination relies on the session cookie being cleared server-side.
+ *   `invalidateAuthSession()` only clears the current tab's cache.
+ *
+ * - **Rapid route-change race**: `inflightSessionPromise` deduplicates
+ *   concurrent fetches so fast navigation doesn't spawn duplicate requests.
+ *   The inflight promise is shared across all callers until it resolves.
+ *
+ * - **429 rate-limit**: `useAuthSession` treats 429 as `error` state, NOT as
+ *   auth expiry. `statusCode === 429` allows callers to show a retry prompt
+ *   rather than redirecting to login.
+ */
+
 import { useEffect, useState, useCallback } from 'react';
 
 const SESSION_CACHE_TTL_MS = 30_000;
@@ -54,10 +94,30 @@ async function fetchAuthSession(force = false) {
   return inflightSessionPromise;
 }
 
+function applySessionCachePatch(next) {
+  sessionCache = { ...sessionCache, ...next };
+}
+
 /** Reset cache — call after login/logout to force fresh fetch. */
 export function resetSessionCache() {
   sessionCache = { user: null, error: '', statusCode: 0, fetchedAt: 0 };
   inflightSessionPromise = null;
+}
+
+export function invalidateAuthSession(reason = 'manual') {
+  resetSessionCache();
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('easylink-auth-session-invalidated', { detail: { reason } }));
+  }
+}
+
+export function setOptimisticAuthSession(user, statusCode = 200) {
+  applySessionCachePatch({
+    user: user || null,
+    error: '',
+    statusCode,
+    fetchedAt: Date.now(),
+  });
 }
 
 export { fetchAuthSession };

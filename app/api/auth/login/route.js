@@ -126,6 +126,7 @@ export async function POST(request) {
           is_admin: authContext.is_admin,
           is_hr: Boolean(authContext.is_hr),
           is_leader: authContext.is_leader,
+          groups: authContext.groups || [],
         },
       });
 

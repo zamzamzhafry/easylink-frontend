@@ -7,6 +7,7 @@ import {
   decodeSessionToken,
   encodeSessionToken,
   hasPrivilegeMismatch,
+  maskIdentifier,
   normalizeSubjectType,
 } from '../lib/auth-hardening-helpers.js';
 
@@ -138,5 +139,17 @@ describe('auth hardening helpers', () => {
       nip: 'HRD01',
       karyawan_id: 42,
     });
+  });
+
+  test('maskIdentifier redacts identifiers without leaking raw value', () => {
+    const masked = maskIdentifier('1234567890');
+    assert.ok(masked.endsWith('***'));
+    assert.ok(!masked.includes('1234567890'));
+  });
+
+  test('maskIdentifier returns empty marker for blank input', () => {
+    assert.equal(maskIdentifier(''), '<empty>');
+    assert.equal(maskIdentifier(null), '<empty>');
+    assert.equal(maskIdentifier(undefined), '<empty>');
   });
 });

@@ -1,11 +1,16 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Fingerprint, Lock, UserCircle2 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useToast } from '@/components/ui/toast-provider';
 import { requestJson } from '@/lib/request-json';
-import { resetSessionCache, fetchAuthSession } from '@/hooks/use-auth-session';
+import { sanitizeNextPath } from '@/lib/login-redirect';
+import {
+  fetchAuthSession,
+  invalidateAuthSession,
+  setOptimisticAuthSession,
+} from '@/hooks/use-auth-session';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -13,12 +18,10 @@ export default function LoginPage() {
   const [loginId, setLoginId] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
-  const [nextPath, setNextPath] = useState('/');
-
-  useEffect(() => {
+  const nextPath = useMemo(() => {
+    if (typeof window === 'undefined') return '/';
     const params = new URLSearchParams(window.location.search);
-    const next = params.get('next') || '/';
-    setNextPath(next);
+    return sanitizeNextPath(params.get('next'));
   }, []);
 
   useEffect(() => {
@@ -43,13 +46,14 @@ export default function LoginPage() {
 
     setLoading(true);
     try {
-      await requestJson('/api/auth/login', {
+      const result = await requestJson('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ login_id: loginId.trim(), password }),
       });
       success('Login success.', 'Authenticated');
-      resetSessionCache();
+      setOptimisticAuthSession(result?.user || null);
+      invalidateAuthSession('login-success');
       router.refresh();
       router.replace(nextPath);
     } catch (error) {

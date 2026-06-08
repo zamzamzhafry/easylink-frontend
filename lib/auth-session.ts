@@ -6,6 +6,12 @@ import {
   LEGACY_EMPLOYEE_ROLE_TO_CANONICAL_ROLE,
   type CanonicalEmployeeRole,
 } from '@/lib/domain/employee-auth-model';
+import {
+  decodeSessionToken,
+  encodeSessionToken,
+  hasPrivilegeMismatch,
+  normalizeSubjectType,
+} from '@/lib/auth-hardening-helpers.js';
 
 const SESSION_COOKIE = 'easylink_session';
 const SESSION_TTL_SECONDS = 60 * 60 * 12; // 12h
@@ -37,6 +43,7 @@ const LEGACY_SESSION_PAYLOAD_COMPAT_ENABLED = parseEnabledFlag(
 
 type SessionPayload = {
   subject: string;
+  subject_type?: AuthSubjectType;
   exp: number;
   payload_format: 'canonical' | 'legacy';
 };
@@ -209,7 +216,8 @@ export function getCanonicalRolesFromLegacyAuth(
   return [...new Set(canonicalRoles)];
 }
 
-const legacyAuthFallbackTelemetry = { hits: 0 };
+const legacyAuthFallbackTelemetry = { hits: 0, mismatches: 0 };
+const TABLE_EXISTS_TTL_MS = 5 * 60_000;
 
 export function recordLegacyAuthFallbackHit() {
   legacyAuthFallbackTelemetry.hits += 1;
@@ -219,7 +227,7 @@ export function getLegacyAuthFallbackHits() {
   return legacyAuthFallbackTelemetry.hits;
 }
 
-const tableExistsCache = new Map<string, boolean>();
+const tableExistsCache = new Map<string, { exists: boolean; cachedAt: number }>();
 
 function base64UrlEncode(value: string) {
   return Buffer.from(value, 'utf8').toString('base64url');
@@ -234,60 +242,43 @@ function sign(raw: string) {
 }
 
 function encodeSession(payload: SessionPayload) {
-  const encodedPayload = {
-    sub: payload.subject,
-    exp: payload.exp,
-    v: 2,
-  };
-  const raw = base64UrlEncode(JSON.stringify(encodedPayload));
-  return `${raw}.${sign(raw)}`;
+  return encodeSessionToken(
+    {
+      subject: payload.subject,
+      subject_type: payload.subject_type,
+      exp: payload.exp,
+    },
+    sign,
+    base64UrlEncode
+  );
 }
 
 function decodeSession(token?: string | null): SessionPayload | null {
-  if (!token) return null;
-  const [raw, signature] = token.split('.');
-  if (!raw || !signature) return null;
-  if (sign(raw) !== signature) return null;
+  const result = decodeSessionToken(token, sign, base64UrlDecode, LEGACY_SESSION_PAYLOAD_COMPAT_ENABLED);
 
-  try {
-    const decoded = JSON.parse(base64UrlDecode(raw));
-    const exp = Number(decoded?.exp ?? 0);
+  if (!result) return null;
 
-    if (!Number.isFinite(exp) || exp <= Math.floor(Date.now() / 1000)) {
-      return null;
-    }
+  return {
+    subject: result.subject,
+    subject_type: normalizeSubjectType(result.subject_type) ?? undefined,
+    exp: result.exp,
+    payload_format: result.payload_format as SessionPayload['payload_format'],
+  };
+}
 
-    const canonicalSubject = String(decoded?.sub ?? '').trim();
-    if (canonicalSubject) {
-      return {
-        subject: canonicalSubject,
-        exp,
-        payload_format: 'canonical',
-      };
-    }
-
-    const legacyPin = String(decoded?.pin ?? '').trim();
-    if (!legacyPin) {
-      return null;
-    }
-
-    if (!LEGACY_SESSION_PAYLOAD_COMPAT_ENABLED) {
-      return null;
-    }
-
-    return {
-      subject: legacyPin,
-      exp,
-      payload_format: 'legacy',
-    };
-  } catch {
-    return null;
+export function invalidateTableExistsCache(tableName?: string) {
+  if (typeof tableName === 'string') {
+    tableExistsCache.delete(tableName);
+    return;
   }
+
+  tableExistsCache.clear();
 }
 
 async function hasTable(tableName: string) {
-  if (tableExistsCache.has(tableName)) {
-    return tableExistsCache.get(tableName) === true;
+  const cached = tableExistsCache.get(tableName);
+  if (cached && Date.now() - cached.cachedAt < TABLE_EXISTS_TTL_MS) {
+    return cached.exists;
   }
 
   const [rows] = await pool.query(
@@ -300,7 +291,7 @@ async function hasTable(tableName: string) {
   );
 
   const exists = Array.isArray(rows) && rows.length > 0;
-  tableExistsCache.set(tableName, exists);
+  tableExistsCache.set(tableName, { exists, cachedAt: Date.now() });
   return exists;
 }
 
@@ -552,9 +543,17 @@ export async function createAuthContextByNip(
   }
 }
 
+function redactIdentifier(value: string) {
+  const normalized = String(value ?? '').trim();
+  if (!normalized) return '<empty>';
+
+  const safePrefix = normalized.replace(/[^a-zA-Z0-9]/g, '').slice(0, 3);
+  return `${safePrefix || '***'}***`;
+}
+
 export async function createAuthContextByPin(pin: string): Promise<AuthContext | null> {
   recordLegacyAuthFallbackHit();
-  console.warn('[auth-session] Legacy PIN fallback used for subject:', pin);
+  console.warn('[auth-session] Legacy PIN fallback used for subject:', redactIdentifier(pin));
 
   const [userRows] = await pool.query(
     `SELECT pin, nama, privilege
@@ -575,7 +574,7 @@ export async function createAuthContextByPin(pin: string): Promise<AuthContext |
     );
     const emp = Array.isArray(empRows) ? empRows[0] as any : null;
     if (emp && Number(emp.isDeleted) === 1) {
-      console.warn('[auth-session] PIN fallback blocked: employee deleted, pin:', pin);
+      console.warn('[auth-session] PIN fallback blocked: employee deleted, pin:', redactIdentifier(pin));
       return null;
     }
   }
@@ -653,13 +652,32 @@ export async function getAuthContextFromCookies(): Promise<AuthContext | null> {
 
   // Legacy waterfall for sessions without type prefix
   const accountContext = await createAuthContextByLoginId(payload.subject);
-  if (accountContext) return accountContext;
+  const nipContext = !accountContext ? await createAuthContextByNip(payload.subject) : null;
 
-  const nipContext = await createAuthContextByNip(payload.subject);
+  if (accountContext && nipContext && hasPrivilegeMismatch(accountContext, nipContext)) {
+    legacyAuthFallbackTelemetry.mismatches += 1;
+    console.warn('[auth-session] Detected auth mismatch between account and NIP subject:', redactIdentifier(payload.subject));
+  }
+
+  if (accountContext) return accountContext;
   if (nipContext) return nipContext;
 
   if (!LEGACY_PIN_FALLBACK_ENABLED) return null;
   return createAuthContextByPin(payload.subject);
+}
+
+function resolveSessionCookieSecureFlag(request: any) {
+  const forwardedProto = String(request?.headers?.get?.('x-forwarded-proto') ?? '').trim();
+  const requestProtocol = String(request?.nextUrl?.protocol ?? '').trim().replace(/:$/, '');
+  const envForcesInsecure = process.env.ALLOW_INSECURE_COOKIES === 'true';
+
+  return envForcesInsecure
+    ? false
+    : forwardedProto
+      ? forwardedProto === 'https'
+      : requestProtocol
+        ? requestProtocol === 'https'
+        : process.env.NODE_ENV === 'production';
 }
 
 export function setAuthCookie(
@@ -681,19 +699,11 @@ export function setAuthCookie(
 
   const token = encodeSession({
     subject: encodedSubject,
+    subject_type: subjectType,
     exp,
     payload_format: 'canonical',
   });
-  const forwardedProto = String(request?.headers?.get?.('x-forwarded-proto') ?? '').trim();
-  const requestProtocol = String(request?.nextUrl?.protocol ?? '').trim().replace(/:$/, '');
-  const envForcesInsecure = process.env.ALLOW_INSECURE_COOKIES === 'true';
-  const secure = envForcesInsecure
-    ? false
-    : forwardedProto
-      ? forwardedProto === 'https'
-      : requestProtocol
-        ? requestProtocol === 'https'
-        : process.env.NODE_ENV === 'production';
+  const secure = resolveSessionCookieSecureFlag(request);
   response.cookies.set({
     name: SESSION_COOKIE,
     value: token,
@@ -706,16 +716,7 @@ export function setAuthCookie(
 }
 
 export function clearAuthCookie(response: NextResponse, request: any = null) {
-  const forwardedProto = String(request?.headers?.get?.('x-forwarded-proto') ?? '').trim();
-  const requestProtocol = String(request?.nextUrl?.protocol ?? '').trim().replace(/:$/, '');
-  const envForcesInsecure = process.env.ALLOW_INSECURE_COOKIES === 'true';
-  const secure = envForcesInsecure
-    ? false
-    : forwardedProto
-      ? forwardedProto === 'https'
-      : requestProtocol
-        ? requestProtocol === 'https'
-        : process.env.NODE_ENV === 'production';
+  const secure = resolveSessionCookieSecureFlag(request);
   response.cookies.set({
     name: SESSION_COOKIE,
     value: '',
@@ -730,8 +731,20 @@ export function clearAuthCookie(response: NextResponse, request: any = null) {
 export function verifyPlainPassword(stored: string | null | undefined, input: string) {
   const dbValue = String(stored ?? '').trim();
   const typed = String(input ?? '').trim();
-  if (!dbValue && !typed) return true;
-  return dbValue === typed;
+
+  if (!dbValue || !typed) {
+    return false;
+  }
+
+  if (dbValue.length !== typed.length) {
+    return false;
+  }
+
+  try {
+    return crypto.timingSafeEqual(Buffer.from(dbValue, 'utf8'), Buffer.from(typed, 'utf8'));
+  } catch {
+    return false;
+  }
 }
 
 export function isAllowedGroup(

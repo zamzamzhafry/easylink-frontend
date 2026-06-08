@@ -29,6 +29,7 @@ EasyLink is a Next.js 14 App Router frontend for attendance and machine-sync wor
 - Do not hardcode SDK endpoints if env-based fallback already exists.
 - Update docs alongside behavior changes in auth, schema, or SDK integration.
 - Run `npm run typecheck` and `npm run build` before wrapping up.
+- Production-like builds require runtime env vars; copy `.env.example` into `.env` or `.env.local` before `npm run build`.
 - Managed user state now spans `auth_accounts`, `tb_karyawan_auth`, canonical `cs_*` identity tables, and `tb_user` machine mirror rows.
 - Treat `tb_user` as device-scoped mirror data; when schema has `sn`, writes must include `EASYLINK_DEVICE_SN` or explicit request `sn`.
 - Private deployment shape is now split:

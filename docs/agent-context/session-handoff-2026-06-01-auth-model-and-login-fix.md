@@ -293,3 +293,51 @@ auth_account_group_scope
 4. **Test login flow**: After auth model decision, create test user, verify login + session + permissions
 5. **Test schedule CRUD**: Verify `canManageSchedule()` works for admin + group_leader roles
 6. **Deploy**: Push auth model changes to VM, test end-to-end
+
+---
+
+## Security Hardening Applied (2026-06-01)
+
+### Commits
+
+- `e0a7af5` — fix(auth): harden password compare, redirect sanitizer, rate-limit, telemetry (23 files, 909 ins/121 del)
+- `2b00747` — fix(auth): harden verifyPlainPassword with timing-safe compare (1 file)
+
+### Changes Summary
+
+| Task | What Changed | Files |
+|---|---|---|
+| T1 | `verifyPassword` + `verifyPlainPassword` reject empty input/stored; timing-safe compare for equal-length buffers | `lib/password.ts`, `lib/auth-session.ts`, `tests/verify-plain-password.test.js` |
+| T2 | Login `next` redirect sanitizer: allowlist same-app relative paths, reject `//`, schemes, `/login` loop, control chars | `lib/login-redirect.js`, `app/login/page.jsx`, `tests/login-redirect.test.js` |
+| T3 | Rate limit `evaluateRateLimit()` exported with allow-N/block-N+1 semantics; cleanup timer `.unref()`; lifecycle comments | `middleware.ts`, `tests/rate-limit-semantics.test.js` |
+| T4 | `resolveSessionCookieSecureFlag()` extracted as shared helper | `lib/auth-session.ts` |
+| T5 | `redactIdentifier()` in auth-session, `maskIdentifier()` in hardening helpers; raw PIN/subject logging redacted | `lib/auth-session.ts`, `lib/auth-hardening-helpers.js`, `tests/auth-hardening.test.js` |
+| T6 | AuthContext account-path semantics clarified; `subject_type` preserved in session token | `lib/auth-session.ts` |
+| T7 | `recordLegacyAuthFallbackHit()` + mismatch counter + redacted warn in legacy waterfall | `lib/auth-session.ts` |
+| T8 | NIP login response includes `groups` field (additive parity with account path) | `app/api/auth/login/route.js` |
+| T9 | `useAuthSession` cache failure mode documentation (stale positive/negative, cross-tab drift, rate-limit) | `hooks/use-auth-session.js` |
+| T10 | Verified: app-shell redirects only on confirmed 401; scanlog API enforces auth server-side; no changes needed | (no code change) |
+| T11 | `TABLE_EXISTS_TTL_MS = 5 * 60_000`; `invalidateTableExistsCache()` exported | `lib/auth-session.ts` |
+| T12 | Production `AUTH_SECRET` fallback throws; dev warns with fallback key | `lib/auth-session.ts` |
+| T13 | Users route extraction assessment documented; safe/risky seams identified | `app/api/users/route.js` |
+| T14 | `X-XSS-Protection` removed with explicit policy comment | `middleware.ts` |
+| T15 | All auth tests pass (17/17); typecheck clean; lint clean (1 pre-existing warning) | (test-only) |
+| T16 | This section added to session handoff doc | `docs/agent-context/session-handoff-2026-06-01-auth-model-and-login-fix.md` |
+
+### Verification
+
+```
+node --test tests/verify-plain-password.test.js tests/auth-hardening.test.js tests/login-redirect.test.js tests/rate-limit-semantics.test.js  # 17/17 pass
+npm run typecheck  # clean
+npm run lint       # 1 pre-existing warning only
+npm run build      # fails only due to missing DB env (pre-existing, not auth-related)
+```
+
+### Remaining Open Items (from original handoff)
+
+1. Auth model decision (single `auth_accounts` with `employee_id` FK vs dual-path)
+2. Dead table cleanup (`employee_auth_accounts`, `cs_employee_auth_identity`, etc.)
+3. 429 retry-with-backoff in `fetchAuthSession()`
+4. End-to-end login + session + permissions testing
+5. Schedule CRUD testing for admin + group_leader roles
+6. VM deploy of hardened auth

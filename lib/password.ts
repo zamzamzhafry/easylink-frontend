@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 import bcrypt from 'bcryptjs';
 
 const BCRYPT_ROUNDS = 12;
@@ -9,6 +10,15 @@ function isBcryptHash(value: string): boolean {
 
 export async function hashPassword(plaintext: string): Promise<string> {
   return bcrypt.hash(plaintext, BCRYPT_ROUNDS);
+}
+
+function timingSafeEqual(a: string, b: string) {
+  if (a.length !== b.length) {
+    return false;
+  }
+
+  // Equal-length comparison avoids crypto.timingSafeEqual length mismatch exception.
+  return crypto.timingSafeEqual(Buffer.from(a, 'utf8'), Buffer.from(b, 'utf8'));
 }
 
 /**
@@ -23,15 +33,15 @@ export async function verifyPassword(
   const stored = String(storedHash ?? '').trim();
   const typed = String(input ?? '').trim();
 
-  if (!stored && !typed) return { valid: true, needsRehash: false };
-  if (!stored || !typed) return { valid: false, needsRehash: false };
+  if (!stored || !typed) {
+    return { valid: false, needsRehash: false };
+  }
 
   if (isBcryptHash(stored)) {
     const valid = await bcrypt.compare(typed, stored);
     return { valid, needsRehash: false };
   }
 
-  // Legacy plaintext comparison (migration path)
-  const valid = stored === typed;
+  const valid = timingSafeEqual(stored, typed);
   return { valid, needsRehash: valid };
 }
