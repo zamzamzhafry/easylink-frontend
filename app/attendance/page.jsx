@@ -9,6 +9,7 @@ import AttendanceTable from '@/components/attendance/attendance-table';
 import NoteModal from '@/components/attendance/note-modal';
 import QuickSummariesTable from '@/components/schedule/quick-summaries-table';
 import { SvgBarChart, SvgPieChart } from '@/components/ui/charts';
+import { Button } from '@/components/ui/button';
 
 import { useToast } from '@/components/ui/toast-provider';
 import {
@@ -1176,7 +1177,7 @@ export default function AttendancePage() {
     <div className="ui-page-shell max-w-7xl space-y-6 p-6">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <p className="mb-1 text-xs font-mono uppercase tracking-widest text-teal-400">
+          <p className="mb-1 text-xs font-mono uppercase tracking-widest text-[hsl(var(--primary))]">
             {t('attendancePage.header.label')}
           </p>
           <h1 className="text-3xl font-bold text-foreground">{t('attendancePage.header.title')}</h1>
@@ -1191,23 +1192,15 @@ export default function AttendancePage() {
               {t('attendancePage.actions.reviewPunches')}
             </Link>
           )}
-          <button
-            type="button"
-            onClick={exportExcel}
-            className="ui-btn-secondary border-emerald-500/30 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20"
-          >
+          <Button type="button" onClick={exportExcel} variant="soft" tone="success" size="sm">
             <FileSpreadsheet className="h-4 w-4" /> {t('attendancePage.actions.exportExcel')}
-          </button>
-          <button
-            type="button"
-            onClick={exportCsv}
-            className="ui-btn-secondary border-teal-500/30 bg-teal-500/10 text-teal-400 hover:bg-teal-500/20"
-          >
+          </Button>
+          <Button type="button" onClick={exportCsv} variant="soft" tone="primary" size="sm">
             <Download className="h-4 w-4" /> {t('attendancePage.actions.exportCsv')}
-          </button>
-          <button type="button" onClick={printCurrentTab} className="ui-btn-secondary">
+          </Button>
+          <Button type="button" onClick={printCurrentTab} variant="outline" tone="neutral" size="sm">
             <Printer className="h-4 w-4" /> {t('attendancePage.actions.printPdf')}
-          </button>
+          </Button>
           {activeTab === 'quick_summaries' && (
             <div className="inline-flex items-center gap-2 rounded-lg border border-border/70 bg-background/60 px-2 py-1">
               <span className="text-[11px] text-muted-foreground">
@@ -1219,7 +1212,7 @@ export default function AttendancePage() {
                   onClick={() => setQuickSummaryExportScope('current')}
                   className={`rounded px-2 py-1 transition-colors ${
                     quickSummaryExportScope === 'current'
-                      ? 'bg-teal-500/20 text-teal-300'
+                      ? 'bg-[hsl(var(--primary)/0.2)] text-[hsl(var(--primary))]'
                       : 'text-muted-foreground hover:text-foreground'
                   }`}
                 >
@@ -1230,7 +1223,7 @@ export default function AttendancePage() {
                   onClick={() => setQuickSummaryExportScope('all')}
                   className={`rounded px-2 py-1 transition-colors ${
                     quickSummaryExportScope === 'all'
-                      ? 'bg-teal-500/20 text-teal-300'
+                      ? 'bg-[hsl(var(--primary)/0.2)] text-[hsl(var(--primary))]'
                       : 'text-muted-foreground hover:text-foreground'
                   }`}
                 >
@@ -1359,7 +1352,7 @@ export default function AttendancePage() {
                         <span
                           className="absolute inset-y-0 w-px bg-amber-300"
                           style={{ left: `${targetPct}%` }}
-                          title={`Target: ${minimumHours}h`}
+                          title={t('attendancePage.interactive.targetTooltip').replace('{{hours}}', String(minimumHours))}
                         />
                       )}
                     </div>
@@ -1414,7 +1407,7 @@ export default function AttendancePage() {
       {(isLeader || isEmployee) && (
         <div className="grid gap-4 lg:grid-cols-2">
           <section className="ui-card-shell p-4">
-            <p className="text-[11px] font-mono uppercase tracking-wider text-teal-400">
+            <p className="text-[11px] font-mono uppercase tracking-wider text-[hsl(var(--primary))]">
               {t('attendancePage.roleScope.eyebrow')}
             </p>
             <h2 className="mt-1 text-sm font-semibold text-foreground">
@@ -1488,7 +1481,7 @@ export default function AttendancePage() {
           </section>
 
           <section className="ui-card-shell p-4">
-            <p className="text-[11px] font-mono uppercase tracking-wider text-teal-400">
+            <p className="text-[11px] font-mono uppercase tracking-wider text-[hsl(var(--primary))]">
               {t('attendancePage.prediction.eyebrow')}
             </p>
             <h2 className="mt-1 text-sm font-semibold text-foreground">
@@ -1496,20 +1489,20 @@ export default function AttendancePage() {
             </h2>
             {isLeader && (
               <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                <Link href="/schedule" className="ui-card-muted p-3 transition-colors hover:border-teal-400/30 hover:bg-teal-500/5">
-                  <p className="text-[11px] uppercase tracking-wide text-teal-400">
+                <Link href="/schedule" className="ui-card-muted p-3 transition-colors hover:border-[hsl(var(--primary)/0.3)] hover:bg-[hsl(var(--primary)/0.05)]">
+                  <p className="text-[11px] uppercase tracking-wide text-[hsl(var(--primary))]">
                     {t('attendancePage.header.label')}
                   </p>
-                  <p className="mt-1 text-sm font-semibold text-foreground">Current month planning</p>
+                  <p className="mt-1 text-sm font-semibold text-foreground">{t('attendancePage.schedulePlanning.currentMonthTitle')}</p>
                   <p className="mt-1 text-xs text-muted-foreground">
-                    Open group planning grid and manage current month assignments.
+                    {t('attendancePage.schedulePlanning.currentMonthDesc')}
                   </p>
                 </Link>
                 <Link href="/schedule?month=next" className="ui-card-muted p-3 transition-colors hover:border-sky-400/30 hover:bg-sky-500/5">
-                  <p className="text-[11px] uppercase tracking-wide text-sky-300">Upcoming month</p>
-                  <p className="mt-1 text-sm font-semibold text-foreground">Next month planning</p>
+                  <p className="text-[11px] uppercase tracking-wide text-sky-300">{t('attendancePage.schedulePlanning.upcomingMonthEyebrow')}</p>
+                  <p className="mt-1 text-sm font-semibold text-foreground">{t('attendancePage.schedulePlanning.nextMonthTitle')}</p>
                   <p className="mt-1 text-xs text-muted-foreground">
-                    Prepare upcoming month schedule without opening admin review tools.
+                    {t('attendancePage.schedulePlanning.nextMonthDesc')}
                   </p>
                 </Link>
               </div>
@@ -1568,7 +1561,7 @@ export default function AttendancePage() {
             }}
             className={`rounded-lg px-3 py-2 text-xs font-medium transition-colors ${
               activeTab === tab.key
-                ? 'bg-teal-500 text-slate-900'
+                ? 'bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))]'
                 : 'text-muted-foreground hover:bg-muted hover:text-foreground'
             }`}
           >
@@ -1648,8 +1641,7 @@ export default function AttendancePage() {
                 {t('attendancePage.tabs.quick_summaries')}
               </h2>
               <p className="text-xs text-muted-foreground">
-                Employee rows and compact DD + day columns, each cell includes all punch times for
-                that day.
+                {t('attendancePage.quickSummaries.description')}
               </p>
             </div>
             <span className="font-mono text-xs text-muted-foreground">{quickSummaryRangeLabel}</span>

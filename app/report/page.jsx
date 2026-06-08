@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { BarChart3, Download, FileSpreadsheet, PieChart, RefreshCcw } from 'lucide-react';
 import { useAppLocale } from '@/components/app-shell';
+import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/toast-provider';
 import { getUIText } from '@/lib/localization/ui-texts';
 import { endOfRange, isoDate, PRESET_RANGE, startOfRange } from '@/lib/attendance-helpers';
@@ -378,14 +379,14 @@ export default function ReportPage() {
             <Download className="h-4 w-4" />
             {t('reportPage.actions.exportCsv')}
           </button>
-          <button type="button" onClick={exportPDF} className="rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-sm text-rose-300 hover:bg-rose-500/20 inline-flex items-center gap-2">
+          <Button type="button" onClick={exportPDF} variant="soft" tone="danger" size="sm">
             <Download className="h-4 w-4" />
-            PDF
-          </button>
-          <button type="button" onClick={exportExcel} className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-300 hover:bg-emerald-500/20 inline-flex items-center gap-2">
+            {t('reportPage.actions.exportPdf')}
+          </Button>
+          <Button type="button" onClick={exportExcel} variant="soft" tone="success" size="sm">
             <FileSpreadsheet className="h-4 w-4" />
-            Excel
-          </button>
+            {t('reportPage.actions.exportExcel')}
+          </Button>
         </div>
       </div>
 
@@ -471,7 +472,7 @@ export default function ReportPage() {
               key={range.key}
               type="button"
               onClick={() => handleSetRange(range.key)}
-              className="rounded-lg border border-slate-700 bg-slate-800 px-3 py-1.5 text-xs text-slate-300 transition-colors hover:border-slate-500 hover:text-white"
+              className="rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--secondary))] px-3 py-1.5 text-xs text-[hsl(var(--secondary-foreground))] transition-colors hover:border-[hsl(var(--ring))] hover:text-[hsl(var(--foreground))]"
             >
               {range.label}
             </button>
@@ -525,7 +526,7 @@ export default function ReportPage() {
                         className="h-2.5 w-2.5 rounded-full"
                         style={{ backgroundColor: item.color }}
                       />
-                      {item.name}
+                      {getLocalizedSeriesName(item, t)}
                     </div>
                     <span className="font-mono text-sm text-foreground">{item.value}</span>
                   </div>
@@ -546,8 +547,10 @@ export default function ReportPage() {
             {config?.scheduling?.monthly_target_hours > 0 && (
               <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground border border-border px-2 py-0.5 rounded">
                 <span className="h-2 w-2 rounded-full bg-cyan-500/50" />
-                Target: {config.scheduling.monthly_target_hours}h
-                <span className="opacity-60">(global config)</span>
+                {formatText(t('reportPage.charts.bar.target'), {
+                  hours: config.scheduling.monthly_target_hours,
+                })}
+                <span className="opacity-60">{t('reportPage.charts.bar.globalConfig')}</span>
               </div>
             )}
           </div>
@@ -617,8 +620,14 @@ export default function ReportPage() {
           <div>
             <h2 className="text-sm font-semibold text-foreground">
               {t('reportPage.drilldown.heading')}
-              {drilldownState.status && ` - Status: ${getStatusLabel(drilldownState.status, t)}`}
-              {drilldownState.group && ` - Group: ${drilldownState.group}`}
+              {drilldownState.status &&
+                formatText(t('reportPage.drilldown.statusPrefix'), {
+                  value: getStatusLabel(drilldownState.status, t),
+                })}
+              {drilldownState.group &&
+                formatText(t('reportPage.drilldown.groupPrefix'), {
+                  value: drilldownState.group,
+                })}
             </h2>
             <p className="mt-1 text-xs text-muted-foreground">
               {drilldownShowingLabel}
@@ -633,7 +642,7 @@ export default function ReportPage() {
               onClick={clearDrilldown}
               className="text-xs font-medium text-amber-500 hover:text-amber-400"
             >
-              Clear Filter
+              {t('reportPage.drilldown.clearFilter')}
             </button>
           )}
         </div>
@@ -703,16 +712,16 @@ export default function ReportPage() {
                     <td className="ui-table-cell px-4 py-3">
                       <span
                         className="inline-block max-w-[200px] truncate align-bottom"
-                        title={row.employee_name || 'Unknown'}
+                        title={row.employee_name || t('reportPage.table.fallbacks.unknownEmployee')}
                       >
-                        {row.employee_name || 'Unknown'}
+                        {row.employee_name || t('reportPage.table.fallbacks.unknownEmployee')}
                       </span>{' '}
                       <span className="ui-table-cell-muted font-mono text-xs">
                         ({row.pin || '-'})
                       </span>
                     </td>
                     <td className="ui-table-cell-muted px-4 py-3 text-xs">
-                      {row.group_name || 'Ungrouped'}
+                      {row.group_name || t('reportPage.table.fallbacks.ungrouped')}
                     </td>
                     <td className="ui-table-cell px-4 py-3 text-xs">{row.status || '-'}</td>
                     {row.flags !== undefined && (
@@ -743,7 +752,10 @@ export default function ReportPage() {
         {report?.drilldown?.totalPages > 1 && (
           <div className="flex items-center justify-between border-t border-border px-4 py-3 text-xs">
             <span className="text-muted-foreground">
-              Page {report.drilldown.page} of {report.drilldown.totalPages}
+              {formatText(t('reportPage.drilldown.pageOf'), {
+                page: report.drilldown.page,
+                total: report.drilldown.totalPages,
+              })}
             </span>
             <div className="flex items-center gap-2">
               <button
@@ -751,14 +763,14 @@ export default function ReportPage() {
                 disabled={report.drilldown.page === 1}
                 className="ui-btn-secondary px-2 py-1 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                Previous
+                {t('attendanceShared.previous')}
               </button>
               <button
                 onClick={() => handlePageChange(Math.min(report.drilldown.totalPages, report.drilldown.page + 1))}
                 disabled={report.drilldown.page === report.drilldown.totalPages}
                 className="ui-btn-secondary px-2 py-1 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                Next
+                {t('attendanceShared.next')}
               </button>
             </div>
           </div>
@@ -776,4 +788,15 @@ function getStatusLabel(status, t) {
     anomaly: t('reportPage.charts.pie.anomaly') || 'Anomaly',
   };
   return map[status] || status;
+}
+
+function getLocalizedSeriesName(item, t) {
+  const map = {
+    on_time: t('reportPage.charts.pie.onTime'),
+    late: t('reportPage.charts.pie.late'),
+    early_leave: t('reportPage.charts.pie.earlyLeave'),
+    anomaly: t('reportPage.charts.pie.anomaly'),
+  };
+  const key = normalizeKey(item?.key || item?.name || '');
+  return map[key] || item?.name || '';
 }

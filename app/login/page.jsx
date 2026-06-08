@@ -1,15 +1,20 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Fingerprint, Lock, UserCircle2 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useToast } from '@/components/ui/toast-provider';
 import { requestJson } from '@/lib/request-json';
 import { resetSessionCache, fetchAuthSession } from '@/hooks/use-auth-session';
+import { useAppLocale } from '@/components/app-shell';
+import { getUIText } from '@/lib/localization/ui-texts';
 
 export default function LoginPage() {
   const router = useRouter();
   const { warning, success } = useToast();
+  const { locale } = useAppLocale();
+  const resolvedLocale = locale === 'id' ? 'id' : 'en';
+  const t = useCallback((path) => getUIText(path, resolvedLocale), [resolvedLocale]);
   const [loginId, setLoginId] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -67,21 +72,21 @@ export default function LoginPage() {
           <div className="auth-brand-icon mx-auto mb-3 inline-flex h-12 w-12 items-center justify-center rounded-xl">
             <Fingerprint className="h-6 w-6" />
           </div>
-          <h1 className="text-2xl font-bold text-foreground">EasyLink Login</h1>
-          <p className="mt-1 text-sm text-muted-foreground">Use your account login ID and password.</p>
+          <h1 className="text-2xl font-bold text-foreground">{t('loginPage.title')}</h1>
+          <p className="mt-1 text-sm text-muted-foreground">{t('loginPage.subtitle')}</p>
         </div>
 
         <form onSubmit={login} className="space-y-4">
           <div>
             <label htmlFor="login-id" className="auth-label mb-1 block text-xs">
-              Login ID
+              {t('loginPage.loginIdLabel')}
             </label>
             <div className="relative">
               <UserCircle2 className="auth-input-icon pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2" />
               <input
                 value={loginId}
                 onChange={(event) => setLoginId(event.target.value)}
-                placeholder="Enter login ID"
+                placeholder={t('loginPage.loginIdPlaceholder')}
                 id="login-id"
                 className="auth-input w-full rounded-lg border py-2.5 pl-10 pr-3 text-sm transition-colors focus:outline-none"
               />
@@ -90,7 +95,7 @@ export default function LoginPage() {
 
           <div>
             <label htmlFor="login-password" className="auth-label mb-1 block text-xs">
-              Password
+              {t('loginPage.passwordLabel')}
             </label>
             <div className="relative">
               <Lock className="auth-input-icon pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2" />
@@ -98,7 +103,7 @@ export default function LoginPage() {
                 type="password"
                 value={password}
                 onChange={(event) => setPassword(event.target.value)}
-                placeholder="Account password"
+                placeholder={t('loginPage.passwordPlaceholder')}
                 id="login-password"
                 className="auth-input w-full rounded-lg border py-2.5 pl-10 pr-3 text-sm transition-colors focus:outline-none"
               />
@@ -110,7 +115,7 @@ export default function LoginPage() {
             disabled={loading}
             className="auth-submit w-full rounded-lg px-4 py-2.5 text-sm font-semibold transition-colors disabled:opacity-60"
           >
-            {loading ? 'Signing in...' : 'Sign In'}
+            {loading ? t('loginPage.signingIn') : t('loginPage.signIn')}
           </button>
         </form>
       </div>

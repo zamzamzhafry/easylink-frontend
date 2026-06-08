@@ -18,6 +18,7 @@ import BulkAssignModal from '@/components/schedule/bulk-assign-modal';
 import QuickSummariesTable from '@/components/schedule/quick-summaries-table';
 import ScheduleGrid from '@/components/schedule/schedule-grid';
 import ShiftLegend from '@/components/schedule/shift-legend';
+import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/toast-provider';
 import { requestJson } from '@/lib/request-json';
 import { PAGE_SIZE_OPTIONS } from '@/lib/constants';
@@ -710,34 +711,22 @@ export default function SchedulePage() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <p className="mb-1 text-xs font-mono uppercase tracking-widest text-teal-400">Planning</p>
-          <h1 className="text-3xl font-bold text-white">Monthly Group Schedule</h1>
-          <p className="mt-1 text-sm text-slate-400">
+          <p className="mb-1 text-xs font-mono uppercase tracking-widest text-[hsl(var(--primary))]">Planning</p>
+          <h1 className="text-3xl font-bold text-[hsl(var(--foreground))]">Monthly Group Schedule</h1>
+          <p className="mt-1 text-sm text-[hsl(var(--muted-foreground))]">
             Monthly planning by group, with done/pending/future estimated work hours.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <button
-            type="button"
-            onClick={exportTemplateExcel}
-            className="flex items-center gap-2 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-2.5 text-sm text-emerald-300 transition-colors hover:bg-emerald-500/20"
-          >
+          <Button variant="soft" tone="success" size="sm" onClick={exportTemplateExcel}>
             <FileSpreadsheet className="h-4 w-4" /> Export Excel
-          </button>
-          <button
-            type="button"
-            onClick={exportTemplateCsv}
-            className="flex items-center gap-2 rounded-xl border border-teal-500/30 bg-teal-500/10 px-4 py-2.5 text-sm text-teal-400 transition-colors hover:bg-teal-500/20"
-          >
+          </Button>
+          <Button variant="soft" tone="primary" size="sm" onClick={exportTemplateCsv}>
             <Download className="h-4 w-4" /> Export CSV
-          </button>
-          <button
-            type="button"
-            onClick={printSchedule}
-            className="flex items-center gap-2 rounded-xl border border-slate-700 bg-slate-900 px-4 py-2.5 text-sm text-slate-300 transition-colors hover:border-slate-500 hover:text-white"
-          >
+          </Button>
+          <Button variant="outline" tone="neutral" size="sm" onClick={printSchedule}>
             <Printer className="h-4 w-4" /> Print / PDF
-          </button>
+          </Button>
           {canAccessReviewQueue && (
             <Link
               href="/attendance/review"
@@ -748,62 +737,52 @@ export default function SchedulePage() {
           )}
           {editMode && canEdit ? (
             <>
-              <button
-                type="button"
-                onClick={() => setBulkModal(true)}
-                className="flex items-center gap-2 rounded-xl border border-violet-500/30 bg-violet-500/20 px-4 py-2.5 text-sm text-violet-300 transition-colors hover:bg-violet-500/30"
-              >
+              <Button variant="soft" tone="primary" size="sm" onClick={() => setBulkModal(true)}>
                 <Users className="h-4 w-4" /> Bulk Assign Group
-              </button>
-              <button
-                type="button"
-                onClick={() => setEditMode(false)}
-                className="flex items-center gap-2 rounded-xl border border-rose-500/30 bg-rose-500/10 px-4 py-2.5 text-sm text-rose-300 transition-colors hover:bg-rose-500/20"
-              >
+              </Button>
+              <Button variant="soft" tone="danger" size="sm" onClick={() => setEditMode(false)}>
                 <X className="h-4 w-4" /> Done Editing
-              </button>
+              </Button>
             </>
           ) : (
             <>
               {canEdit && (
-                <button
-                  type="button"
-                  onClick={() => setEditMode(true)}
-                  className="flex items-center gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-2.5 text-sm text-amber-300 transition-colors hover:bg-amber-500/20"
-                >
+                <Button variant="soft" tone="primary" size="sm" onClick={() => setEditMode(true)}>
                   <Pencil className="h-4 w-4" /> Plan a Schedule
-                </button>
+                </Button>
               )}
             </>
           )}
         </div>
       </div>
 
-      <div className="flex flex-wrap items-center gap-2 rounded-xl border border-slate-800 bg-slate-900 p-2">
-        <button
-          type="button"
+      <div className="flex flex-wrap items-center gap-2 rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] p-2">
+        <Button
+          variant="outline"
+          tone="neutral"
+          size="icon"
           onClick={() => setMonthOf((current) => addDays(monthStart(current), -1))}
-          className="rounded-lg border border-slate-700 bg-slate-800 p-2 text-slate-300 transition-colors hover:text-white"
         >
           <ChevronLeft className="h-4 w-4" />
-        </button>
-        <div className="rounded-lg border border-slate-700 px-3 py-2 font-mono text-sm text-white">
+        </Button>
+        <div className="rounded-lg border border-[hsl(var(--border))] px-3 py-2 font-mono text-sm text-[hsl(var(--foreground))]">
           {monthTitle}
         </div>
-        <button
-          type="button"
+        <Button
+          variant="outline"
+          tone="neutral"
+          size="icon"
           onClick={() => setMonthOf((current) => addDays(monthEnd(current), 1))}
-          className="rounded-lg border border-slate-700 bg-slate-800 p-2 text-slate-300 transition-colors hover:text-white"
         >
           <ChevronRight className="h-4 w-4" />
-        </button>
-        <div className="ml-auto font-mono text-xs text-slate-500">
+        </Button>
+        <div className="ml-auto font-mono text-xs text-[hsl(var(--muted-foreground))]">
           {compactRangeLabel}
         </div>
       </div>
 
-      <div className="flex flex-wrap items-center gap-3 rounded-xl border border-slate-800 bg-slate-900 p-3">
-        <label htmlFor="schedule-zoom" className="text-xs text-slate-400">
+      <div className="flex flex-wrap items-center gap-3 rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] p-3">
+        <label htmlFor="schedule-zoom" className="text-xs text-[hsl(var(--muted-foreground))]">
           Day Columns Zoom
         </label>
         <input
@@ -814,20 +793,16 @@ export default function SchedulePage() {
           step={5}
           value={zoomPercent}
           onChange={(event) => setZoomPercent(Number(event.target.value))}
-          className="h-1.5 w-48 cursor-pointer accent-teal-500"
+          className="h-1.5 w-48 cursor-pointer accent-[hsl(var(--primary))]"
         />
-        <span className="font-mono text-xs text-teal-300">{zoomPercent}%</span>
-        <button
-          type="button"
-          onClick={() => setZoomPercent(100)}
-          className="rounded-md border border-slate-700 px-2 py-1 text-xs text-slate-300 transition-colors hover:text-white"
-        >
+        <span className="font-mono text-xs text-[hsl(var(--primary))]">{zoomPercent}%</span>
+        <Button variant="outline" tone="neutral" size="sm" onClick={() => setZoomPercent(100)}>
           Reset
-        </button>
-        <span className="text-xs text-slate-500">Employee column stays fixed.</span>
+        </Button>
+        <span className="text-xs text-[hsl(var(--muted-foreground))]">Employee column stays fixed.</span>
       </div>
 
-      <div className="flex flex-wrap gap-2 rounded-xl border border-slate-800 bg-slate-900 p-2">
+      <div className="flex flex-wrap gap-2 rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] p-2">
         {visibleTabs.map((tab) => (
           <button
             key={tab.key}
@@ -835,8 +810,8 @@ export default function SchedulePage() {
             onClick={() => setActiveTab(tab.key)}
             className={`rounded-lg px-3 py-2 text-xs font-medium transition-colors ${
               activeTab === tab.key
-                ? 'bg-teal-500 text-slate-900'
-                : 'text-slate-400 hover:bg-slate-800 hover:text-white'
+                ? 'bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))]'
+                : 'text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--secondary))] hover:text-[hsl(var(--foreground))]'
             }`}
           >
             {tab.label}
@@ -844,14 +819,14 @@ export default function SchedulePage() {
         ))}
       </div>
 
-      <div className="rounded-xl border border-slate-800 bg-slate-900 p-2">
+      <div className="rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] p-2">
         <button
           type="button"
           onClick={() => setGroupFilterOpen((open) => !open)}
-          className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-slate-300 transition-colors hover:bg-slate-800"
+          className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-[hsl(var(--foreground))] transition-colors hover:bg-[hsl(var(--secondary))]"
         >
           <span>Group Employee Filter</span>
-          <span className="font-mono text-[11px] text-teal-300">
+          <span className="font-mono text-[11px] text-[hsl(var(--primary))]">
             {groupFilterOpen ? 'Hide' : 'Show'}
           </span>
         </button>
@@ -865,8 +840,8 @@ export default function SchedulePage() {
               }}
               className={`rounded-lg px-3 py-1.5 text-xs transition-colors ${
                 groupTab === 'all'
-                  ? 'bg-teal-500 text-slate-900'
-                  : 'text-slate-400 hover:bg-slate-800 hover:text-white'
+                  ? 'bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))]'
+                  : 'text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--secondary))] hover:text-[hsl(var(--foreground))]'
               }`}
             >
               All Groups ({data.employees.length})
@@ -885,8 +860,8 @@ export default function SchedulePage() {
                   }}
                   className={`rounded-lg px-3 py-1.5 text-xs transition-colors ${
                     String(groupTab) === String(group.id)
-                      ? 'bg-teal-500 text-slate-900'
-                      : 'text-slate-400 hover:bg-slate-800 hover:text-white'
+                      ? 'bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))]'
+                      : 'text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--secondary))] hover:text-[hsl(var(--foreground))]'
                   }`}
                 >
                   {group.name} ({count})
@@ -901,8 +876,8 @@ export default function SchedulePage() {
               }}
               className={`rounded-lg px-3 py-1.5 text-xs transition-colors ${
                 groupTab === 'ungrouped'
-                  ? 'bg-teal-500 text-slate-900'
-                  : 'text-slate-400 hover:bg-slate-800 hover:text-white'
+                  ? 'bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))]'
+                  : 'text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--secondary))] hover:text-[hsl(var(--foreground))]'
               }`}
             >
               Unassigned ({data.employees.filter((employee) => !employee.group_id).length})
@@ -930,14 +905,14 @@ export default function SchedulePage() {
             onSetShift={editMode ? setShift : undefined}
           />
 
-          <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-800 bg-slate-900 p-3 text-xs text-slate-400">
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] p-3 text-xs text-[hsl(var(--muted-foreground))]">
             <div>
               Showing {(employeePage - 1) * rowsPerPage + 1}-
               {Math.min(employeePage * rowsPerPage, filteredEmployees.length)} of{' '}
               {filteredEmployees.length} employees
             </div>
             <div className="flex items-center gap-2">
-              <label htmlFor="schedule-rows" className="text-slate-500">
+              <label htmlFor="schedule-rows" className="text-[hsl(var(--muted-foreground))]">
                 Rows
               </label>
               <select
@@ -947,7 +922,7 @@ export default function SchedulePage() {
                   setRowsPerPage(Number(event.target.value));
                   setEmployeePage(1);
                 }}
-                className="rounded border border-slate-700 bg-slate-950 px-2 py-1 text-slate-200"
+                className="rounded border border-[hsl(var(--border))] bg-[hsl(var(--input))] px-2 py-1 text-[hsl(var(--foreground))]"
               >
                 {PAGE_SIZE_OPTIONS.filter((size) => size <= 50).map((size) => (
                   <option key={size} value={size}>
@@ -955,36 +930,38 @@ export default function SchedulePage() {
                   </option>
                 ))}
               </select>
-              <button
-                type="button"
+              <Button
+                variant="outline"
+                tone="neutral"
+                size="sm"
                 onClick={() => setEmployeePage((page) => Math.max(1, page - 1))}
                 disabled={employeePage <= 1}
-                className="rounded border border-slate-700 px-2 py-1 text-slate-200 disabled:cursor-not-allowed disabled:opacity-40"
               >
                 Previous
-              </button>
-              <span className="font-mono text-slate-300">
+              </Button>
+              <span className="font-mono text-[hsl(var(--foreground))]">
                 {employeePage}/{totalEmployeePages}
               </span>
-              <button
-                type="button"
+              <Button
+                variant="outline"
+                tone="neutral"
+                size="sm"
                 onClick={() => setEmployeePage((page) => Math.min(totalEmployeePages, page + 1))}
                 disabled={employeePage >= totalEmployeePages}
-                className="rounded border border-slate-700 px-2 py-1 text-slate-200 disabled:cursor-not-allowed disabled:opacity-40"
               >
                 Next
-              </button>
+              </Button>
             </div>
           </div>
         </div>
       )}
 
       {activeTab === 'punches' && (
-        <div className="space-y-4 rounded-xl border border-slate-800 bg-slate-900 p-4">
+        <div className="space-y-4 rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] p-4">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div>
-              <h2 className="text-sm font-semibold text-white">Daily Punch Shortcut</h2>
-              <p className="text-xs text-slate-400">
+              <h2 className="text-sm font-semibold text-[hsl(var(--foreground))]">Daily Punch Shortcut</h2>
+              <p className="text-xs text-[hsl(var(--muted-foreground))]">
                 Quick review by employee/date without opening full Scan Log.
               </p>
             </div>
@@ -998,7 +975,7 @@ export default function SchedulePage() {
           <div className="overflow-x-auto">
             <table className="w-full min-w-[720px] text-sm">
               <thead>
-                <tr className="border-b border-slate-800 text-left text-xs uppercase tracking-wide text-slate-500">
+                <tr className="border-b border-[hsl(var(--border))] text-left text-xs uppercase tracking-wide text-[hsl(var(--muted-foreground))]">
                   <th className="px-3 py-2">Employee</th>
                   <th className="px-3 py-2">Date</th>
                   <th className="px-3 py-2">Shift</th>
@@ -1009,19 +986,19 @@ export default function SchedulePage() {
                   <th className="px-3 py-2">Decision</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-800/50">
+              <tbody className="divide-y divide-[hsl(var(--border))]">
                 {punchRows.slice(0, 250).map((row) => (
                   <tr key={`${row.pin}-${row.scan_date}`}>
-                    <td className="px-3 py-2 text-white">
+                    <td className="px-3 py-2 text-[hsl(var(--foreground))]">
                       <span className="block max-w-[200px] truncate" title={row.nama || row.pin}>
                         {row.nama || row.pin}
                       </span>
                     </td>
-                    <td className="px-3 py-2 font-mono text-slate-300">{row.scan_date}</td>
-                    <td className="px-3 py-2 text-slate-300">{row.shift || '-'}</td>
+                    <td className="px-3 py-2 font-mono text-[hsl(var(--foreground))]">{row.scan_date}</td>
+                    <td className="px-3 py-2 text-[hsl(var(--foreground))]">{row.shift || '-'}</td>
                     <td className="px-3 py-2 font-mono text-emerald-300">{row.punch_in || '-'}</td>
                     <td className="px-3 py-2 font-mono text-amber-300">{row.punch_out || '-'}</td>
-                    <td className="px-3 py-2 font-mono text-slate-300">{row.punch_count || 0}</td>
+                    <td className="px-3 py-2 font-mono text-[hsl(var(--foreground))]">{row.punch_count || 0}</td>
                     <td className="px-3 py-2 font-mono text-cyan-300">
                       {Number(row.total_hours || 0).toFixed(1)}h
                     </td>
@@ -1045,16 +1022,16 @@ export default function SchedulePage() {
       )}
 
       {activeTab === 'quick_summaries' && (
-        <div className="space-y-4 rounded-xl border border-slate-800 bg-slate-900 p-4">
+        <div className="space-y-4 rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] p-4">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div>
-              <h2 className="text-sm font-semibold text-white">Quick Summaries</h2>
-              <p className="text-xs text-slate-400">
+              <h2 className="text-sm font-semibold text-[hsl(var(--foreground))]">Quick Summaries</h2>
+              <p className="text-xs text-[hsl(var(--muted-foreground))]">
                 Employee rows with compact DD + day columns. Each cell shows all punch times on
                 that date.
               </p>
             </div>
-            <div className="font-mono text-xs text-slate-500">
+            <div className="font-mono text-xs text-[hsl(var(--muted-foreground))]">
               {compactRangeLabel}
             </div>
           </div>
@@ -1072,29 +1049,21 @@ export default function SchedulePage() {
       )}
 
       {activeTab === 'import' && (
-        <div className="space-y-4 rounded-xl border border-slate-800 bg-slate-900 p-4">
-          <h2 className="text-sm font-semibold text-white">Import / Check Schedule Template</h2>
-          <p className="text-xs text-slate-400">
+        <div className="space-y-4 rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] p-4">
+          <h2 className="text-sm font-semibold text-[hsl(var(--foreground))]">Import / Check Schedule Template</h2>
+          <p className="text-xs text-[hsl(var(--muted-foreground))]">
             Download template per selected group, fill in Excel, validate, then apply to schedule
             table.
           </p>
 
           <div className="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              onClick={exportTemplateExcel}
-              className="inline-flex items-center gap-2 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-300 transition-colors hover:bg-emerald-500/20"
-            >
+            <Button variant="soft" tone="success" size="sm" onClick={exportTemplateExcel}>
               <FileSpreadsheet className="h-3.5 w-3.5" /> Download Excel Template
-            </button>
-            <button
-              type="button"
-              onClick={exportTemplateCsv}
-              className="inline-flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-xs text-slate-300 transition-colors hover:border-slate-500 hover:text-white"
-            >
+            </Button>
+            <Button variant="outline" tone="neutral" size="sm" onClick={exportTemplateCsv}>
               <Download className="h-3.5 w-3.5" /> Download CSV Template
-            </button>
-            <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-teal-500/30 bg-teal-500/10 px-3 py-2 text-xs text-teal-300 transition-colors hover:bg-teal-500/20">
+            </Button>
+            <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-[hsl(var(--primary)/0.3)] bg-[hsl(var(--primary)/0.1)] px-3 py-2 text-xs text-[hsl(var(--primary))] transition-colors hover:bg-[hsl(var(--primary)/0.2)]">
               <Upload className="h-3.5 w-3.5" /> Upload Excel / CSV
               <input
                 type="file"
@@ -1104,22 +1073,22 @@ export default function SchedulePage() {
               />
             </label>
           </div>
-          {uploadFileName && <p className="text-xs text-slate-500">File: {uploadFileName}</p>}
+          {uploadFileName && <p className="text-xs text-[hsl(var(--muted-foreground))]">File: {uploadFileName}</p>}
 
           <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
             <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2">
               <p className="text-xs text-emerald-300">Valid entries</p>
-              <p className="font-mono text-xl font-bold text-white">
+              <p className="font-mono text-xl font-bold text-[hsl(var(--foreground))]">
                 {importResult.entries.length}
               </p>
             </div>
             <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2">
               <p className="text-xs text-amber-300">Validation errors</p>
-              <p className="font-mono text-xl font-bold text-white">{importResult.errors.length}</p>
+              <p className="font-mono text-xl font-bold text-[hsl(var(--foreground))]">{importResult.errors.length}</p>
             </div>
-            <div className="rounded-lg border border-slate-700 bg-slate-800 px-3 py-2">
-              <p className="text-xs text-slate-400">Selected month</p>
-              <p className="font-mono text-sm text-white">{monthTitle}</p>
+            <div className="rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--secondary))] px-3 py-2">
+              <p className="text-xs text-[hsl(var(--muted-foreground))]">Selected month</p>
+              <p className="font-mono text-sm text-[hsl(var(--foreground))]">{monthTitle}</p>
             </div>
           </div>
 
@@ -1136,97 +1105,98 @@ export default function SchedulePage() {
             </div>
           )}
 
-          <button
-            type="button"
+          <Button
+            variant="solid"
+            tone="primary"
+            size="md"
             onClick={applyImport}
             disabled={applyingImport || !importResult.entries.length}
-            className="rounded-lg bg-teal-500 px-4 py-2 text-sm font-semibold text-slate-900 transition-colors hover:bg-teal-400 disabled:opacity-50"
           >
             {applyingImport ? 'Applying import...' : 'Apply Import'}
-          </button>
+          </Button>
         </div>
       )}
 
       {activeTab === 'summary' && (
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
-            <div className="rounded-lg border border-slate-800 bg-slate-900 px-3 py-2">
-              <p className="text-xs text-slate-500">Total Shifted</p>
-              <p className="font-mono text-lg font-bold text-white">{totalStats.shiftedDays}d</p>
+            <div className="rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--card))] px-3 py-2">
+              <p className="text-xs text-[hsl(var(--muted-foreground))]">Total Shifted</p>
+              <p className="font-mono text-lg font-bold text-[hsl(var(--foreground))]">{totalStats.shiftedDays}d</p>
             </div>
-            <div className="rounded-lg border border-slate-800 bg-slate-900 px-3 py-2">
-              <p className="text-xs text-slate-500">Planned Hours</p>
+            <div className="rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--card))] px-3 py-2">
+              <p className="text-xs text-[hsl(var(--muted-foreground))]">Planned Hours</p>
               <p className="font-mono text-lg font-bold text-teal-300">
                 {totalStats.plannedHours.toFixed(1)}h
               </p>
             </div>
-            <div className="rounded-lg border border-slate-800 bg-slate-900 px-3 py-2">
-              <p className="text-xs text-slate-500">Done Hours</p>
+            <div className="rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--card))] px-3 py-2">
+              <p className="text-xs text-[hsl(var(--muted-foreground))]">Done Hours</p>
               <p className="font-mono text-lg font-bold text-emerald-300">
                 {totalStats.doneHours.toFixed(1)}h
               </p>
             </div>
-            <div className="rounded-lg border border-slate-800 bg-slate-900 px-3 py-2">
-              <p className="text-xs text-slate-500">Pending Hours</p>
+            <div className="rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--card))] px-3 py-2">
+              <p className="text-xs text-[hsl(var(--muted-foreground))]">Pending Hours</p>
               <p className="font-mono text-lg font-bold text-amber-300">
                 {totalStats.pendingHours.toFixed(1)}h
               </p>
             </div>
-            <div className="rounded-lg border border-slate-800 bg-slate-900 px-3 py-2">
-              <p className="text-xs text-slate-500">Future Hours</p>
+            <div className="rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--card))] px-3 py-2">
+              <p className="text-xs text-[hsl(var(--muted-foreground))]">Future Hours</p>
               <p className="font-mono text-lg font-bold text-violet-300">
                 {totalStats.futureHours.toFixed(1)}h
               </p>
             </div>
           </div>
 
-          <div className="rounded-xl border border-slate-800 bg-slate-900">
-            <div className="border-b border-slate-800 px-4 py-3">
-              <h2 className="text-sm font-semibold text-white">Per Employee Schedule Metrics</h2>
+          <div className="rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))]">
+            <div className="border-b border-[hsl(var(--border))] px-4 py-3">
+              <h2 className="text-sm font-semibold text-[hsl(var(--foreground))]">Per Employee Schedule Metrics</h2>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b border-slate-800 text-left">
-                    <th className="px-4 py-2 text-xs uppercase tracking-wide text-slate-500">
+                  <tr className="border-b border-[hsl(var(--border))] text-left">
+                    <th className="px-4 py-2 text-xs uppercase tracking-wide text-[hsl(var(--muted-foreground))]">
                       Employee
                     </th>
-                    <th className="px-4 py-2 text-xs uppercase tracking-wide text-slate-500">
+                    <th className="px-4 py-2 text-xs uppercase tracking-wide text-[hsl(var(--muted-foreground))]">
                       Group
                     </th>
-                    <th className="px-4 py-2 text-xs uppercase tracking-wide text-slate-500">
+                    <th className="px-4 py-2 text-xs uppercase tracking-wide text-[hsl(var(--muted-foreground))]">
                       Total Shifted
                     </th>
-                    <th className="px-4 py-2 text-xs uppercase tracking-wide text-slate-500">
+                    <th className="px-4 py-2 text-xs uppercase tracking-wide text-[hsl(var(--muted-foreground))]">
                       Planned Hours
                     </th>
-                    <th className="px-4 py-2 text-xs uppercase tracking-wide text-slate-500">
+                    <th className="px-4 py-2 text-xs uppercase tracking-wide text-[hsl(var(--muted-foreground))]">
                       Done Hours
                     </th>
-                    <th className="px-4 py-2 text-xs uppercase tracking-wide text-slate-500">
+                    <th className="px-4 py-2 text-xs uppercase tracking-wide text-[hsl(var(--muted-foreground))]">
                       Pending Hours
                     </th>
-                    <th className="px-4 py-2 text-xs uppercase tracking-wide text-slate-500">
+                    <th className="px-4 py-2 text-xs uppercase tracking-wide text-[hsl(var(--muted-foreground))]">
                       Future Hours
                     </th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-800/40">
+                <tbody className="divide-y divide-[hsl(var(--border))]">
                   {filteredSummary.map(({ employee, metrics }) => (
                     <tr key={employee.id}>
-                      <td className="px-4 py-3 text-white">
+                      <td className="px-4 py-3 text-[hsl(var(--foreground))]">
                         <Link
                           href={`/employees/${employee.id}`}
-                          className="block max-w-[200px] truncate hover:text-teal-300"
+                          className="block max-w-[200px] truncate hover:text-[hsl(var(--primary))]"
                           title={employee.nama}
                         >
                           {employee.nama}
                         </Link>
                       </td>
-                      <td className="px-4 py-3 text-xs text-slate-400">
+                      <td className="px-4 py-3 text-xs text-[hsl(var(--muted-foreground))]">
                         {employee.nama_group || '-'}
                       </td>
-                      <td className="px-4 py-3 font-mono text-xs text-slate-300">
+                      <td className="px-4 py-3 font-mono text-xs text-[hsl(var(--foreground))]">
                         {metrics.shifted_days}
                       </td>
                       <td className="px-4 py-3 font-mono text-xs text-teal-300">
