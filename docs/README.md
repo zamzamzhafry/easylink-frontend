@@ -24,6 +24,17 @@ This folder is the handoff context for future contributors and AI agents.
   - Accepted auth architecture direction for identity resolution, capability-driven authorization, and controlled role mutation
 - [`auth-hardening-execution-plan.md`](./auth-hardening-execution-plan.md)
   - Staged execution plan for auth hardening after the `HRD01` elevation incident
+- [`implementation-guidance-component-auth-service-slicing.md`](./implementation-guidance-component-auth-service-slicing.md)
+  - Implementation guidance for frontend slicing, auth scope redesign, backend modularization, and phased service extraction
+  - Synthesizes architecture review findings into staged implementation order and migration guidance
+- [`role-scope-matrix.md`](./role-scope-matrix.md)
+  - Canonical target global roles, group roles, scope catalog, and compatibility mapping
+- [`route-ownership-matrix.md`](./route-ownership-matrix.md)
+  - Route-to-domain ownership map for modular-monolith refactoring and later service extraction
+- [`auth-canonical-schema-ddl.md`](./auth-canonical-schema-ddl.md)
+  - Proposed canonical SQL DDL for unified auth identities, roles, scopes, and group bindings
+- [`service-extraction-roadmap.md`](./service-extraction-roadmap.md)
+  - Phased roadmap for modularization-first service extraction across identity, machine, scanlog, scheduling, workforce, and reporting
 - [`hrd01-auth-elevation-hardening-review-2026-05-22.md`](./hrd01-auth-elevation-hardening-review-2026-05-22.md)
   - Incident-driven review of `HRD01` SQL elevation behavior, risks, and hardening recommendations
 - [`app-current-state-graph.md`](./app-current-state-graph.md)
