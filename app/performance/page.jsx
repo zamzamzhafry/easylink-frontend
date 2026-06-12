@@ -4,8 +4,11 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { Download, LineChart } from 'lucide-react';
 import { useToast } from '@/components/ui/toast-provider';
+import InlineStatusPanel from '@/components/ui/inline-status-panel';
 import useAuthSession from '@/hooks/use-auth-session';
 import { requestJson } from '@/lib/request-json';
+import { useAppLocale } from '@/components/app-shell';
+import { getUIText } from '@/lib/localization/ui-texts';
 import { PAGE_SIZE_OPTIONS } from '@/lib/constants';
 
 function isoDate(value = new Date()) {
@@ -43,6 +46,9 @@ function StatCard({ label, value, className }) {
 }
 
 export default function PerformancePage() {
+  const { locale } = useAppLocale();
+  const resolvedLocale = locale === 'id' ? 'id' : 'en';
+  const t = useCallback((path) => getUIText(path, resolvedLocale), [resolvedLocale]);
   const { warning } = useToast();
   const { user: authUser } = useAuthSession();
   const [groups, setGroups] = useState([]);
@@ -52,6 +58,7 @@ export default function PerformancePage() {
   const [employeeId, setEmployeeId] = useState('');
   const [data, setData] = useState({ rows: [], summary: [], daily: [] });
   const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState('');
   const [summaryPage, setSummaryPage] = useState(1);
   const [summaryLimit, setSummaryLimit] = useState(15);
 
@@ -82,12 +89,13 @@ export default function PerformancePage() {
       .catch(() => {
         if (cancelled) return;
         setGroups([]);
+        warning('Could not load groups. Some filters may be unavailable.', 'Groups request failed');
       });
 
     return () => {
       cancelled = true;
     };
-  }, [authUser]);
+  }, [authUser, warning]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -102,8 +110,11 @@ export default function PerformancePage() {
         daily: Array.isArray(result?.daily) ? result.daily : [],
       });
       setSummaryPage(1);
+      setLoadError('');
     } catch (error) {
-      warning(error.message || 'Failed to load performance dashboard.', 'Dashboard request failed');
+      const message = error.message || 'Failed to load performance dashboard.';
+      setLoadError(message);
+      warning(message, 'Dashboard request failed');
     } finally {
       setLoading(false);
     }
@@ -324,6 +335,19 @@ export default function PerformancePage() {
         </div>
       </div>
 
+      {loadError && (
+        <InlineStatusPanel
+          message={loadError}
+          variant="error"
+          actionLabel="Retry"
+          onAction={load}
+        />
+      )}
+
+      <div
+        aria-busy={loading}
+        className={`space-y-6 ${loading ? 'opacity-60 pointer-events-none transition-opacity' : 'transition-opacity'}`}
+      >
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
         <StatCard label="Profiles" value={data.summary.length} />
         <StatCard label="Total Days" value={totals.totalDays} />
@@ -339,7 +363,7 @@ export default function PerformancePage() {
             <h2 className="text-sm font-semibold text-white">Daily Late Trend (Line)</h2>
           </div>
           {data.daily.length === 0 ? (
-            <p className="text-xs text-slate-500">No daily data in selected range.</p>
+            <p className="text-xs text-slate-500">{t('performancePage.daily.empty')}</p>
           ) : (
             <div className="overflow-x-auto">
               <svg
@@ -378,7 +402,7 @@ export default function PerformancePage() {
           <h2 className="mb-3 text-sm font-semibold text-white">Top Late Profiles (Bar)</h2>
           <div className="space-y-2">
             {topLate.length === 0 ? (
-              <p className="text-xs text-slate-500">No profile rows for selected range.</p>
+              <p className="text-xs text-slate-500">{t('performancePage.topLate.empty')}</p>
             ) : (
               topLate.map((item) => (
                 <div key={item.key} className="space-y-1">
@@ -430,7 +454,7 @@ export default function PerformancePage() {
               {groupPunchSummary.length === 0 ? (
                 <tr>
                   <td colSpan={4} className="px-4 py-6 text-center text-xs text-slate-500">
-                    No grouped punch summary data.
+                    {t('performancePage.groupPunch.empty')}
                   </td>
                 </tr>
               ) : (
@@ -501,13 +525,13 @@ export default function PerformancePage() {
               {loading ? (
                 <tr>
                   <td colSpan={8} className="px-4 py-8 text-center text-xs text-slate-500">
-                    Loading dashboard data...
+                    {t('performancePage.table.loading')}
                   </td>
                 </tr>
               ) : data.summary.length === 0 ? (
                 <tr>
                   <td colSpan={8} className="px-4 py-8 text-center text-xs text-slate-500">
-                    No performance rows found in selected range.
+                    {t('performancePage.table.empty')}
                   </td>
                 </tr>
               ) : (
@@ -571,6 +595,7 @@ export default function PerformancePage() {
             </button>
           </div>
         </div>
+      </div>
       </div>
 
           {!authUser && <p className="text-xs text-rose-400">Session not loaded. Please re-login.</p>}

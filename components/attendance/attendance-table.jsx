@@ -4,7 +4,7 @@ import { AlertTriangle, CheckCircle2, Clock, Pencil } from 'lucide-react';
 import Link from 'next/link';
 import { memo, useCallback, useMemo } from 'react';
 import { useAppLocale } from '@/components/app-shell';
-import { TableEmptyRow, TableHeadRow, TableLoadingRow } from '@/components/ui/table-shell';
+import { TableEmptyRow, TableHeadRow, TableLoadingRow, TableShell } from '@/components/ui/table-shell';
 import { STATUS_MAP } from '@/lib/attendance-helpers';
 import { getUIText } from '@/lib/localization/ui-texts';
 import { compactDateDayLabel } from '@/lib/schedule-helpers';
@@ -64,7 +64,7 @@ function AttendanceTable({
   };
 
   return (
-    <div className="table-shell">
+    <TableShell>
       <table className="w-full text-sm text-foreground">
         <thead>
           <TableHeadRow headers={tableHeaders} className="table-head-cell" />
@@ -246,7 +246,7 @@ function AttendanceTable({
           )}
         </tbody>
       </table>
-    </div>
+    </TableShell>
   );
 }
 

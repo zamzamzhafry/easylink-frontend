@@ -10,6 +10,7 @@ import NoteModal from '@/components/attendance/note-modal';
 import QuickSummariesTable from '@/components/schedule/quick-summaries-table';
 import { SvgBarChart, SvgPieChart } from '@/components/ui/charts';
 import { Button } from '@/components/ui/button';
+import InlineStatusPanel from '@/components/ui/inline-status-panel';
 
 import { useToast } from '@/components/ui/toast-provider';
 import {
@@ -226,6 +227,7 @@ export default function AttendancePage() {
     group: null,
   });
   const [groups, setGroups] = useState([]);
+  const [loadError, setLoadError] = useState('');
   const [loading, setLoading] = useState(false);
   const [editing, setEditing] = useState(null);
   const [employeeFilter, setEmployeeFilter] = useState('');
@@ -236,6 +238,8 @@ export default function AttendancePage() {
   const warningRef = useRef(warning);
   const tRef = useRef(t);
   const lastRefreshAtRef = useRef(0);
+  const groupsWarnedRef = useRef(false);
+  const holidaysWarnedRef = useRef(false);
 
   useEffect(() => {
     warningRef.current = warning;
@@ -258,6 +262,7 @@ export default function AttendancePage() {
 
   const load = useCallback(async () => {
     setLoading(true);
+    setLoadError('');
     try {
       const query = new URLSearchParams({ from, to, reporting: 'interactive' });
       if (groupId) query.set('group_id', groupId);
@@ -320,8 +325,10 @@ export default function AttendancePage() {
         drilldown: { rows: [], total: 0 },
         metadata: { totalRecords: 0, availableGroups: [], availableEmployees: [] },
       });
+      const message = error.message || tRef.current('attendancePage.errors.loadFailed');
+      setLoadError(message);
       warningRef.current(
-        error.message || tRef.current('reportPage.errors.fetchFailed'),
+        message,
         tRef.current('reportPage.errors.requestFailed')
       );
     } finally {
@@ -381,8 +388,16 @@ export default function AttendancePage() {
     try {
       const data = await requestJson('/api/groups');
       setGroups(Array.isArray(data?.groups) ? data.groups : []);
+      groupsWarnedRef.current = false;
     } catch {
       setGroups([]);
+      if (!groupsWarnedRef.current) {
+        groupsWarnedRef.current = true;
+        warningRef.current(
+          tRef.current('attendancePage.errors.groupsFailedMessage'),
+          tRef.current('attendancePage.errors.groupsFailedTitle')
+        );
+      }
     }
   }, [currentUser, isAdmin]);
 
@@ -452,9 +467,18 @@ export default function AttendancePage() {
           });
         });
         setHolidayMap(Object.fromEntries(map.entries()));
+        holidaysWarnedRef.current = false;
       })
       .catch(() => {
-        if (!cancelled) setHolidayMap({});
+        if (cancelled) return;
+        setHolidayMap({});
+        if (!holidaysWarnedRef.current) {
+          holidaysWarnedRef.current = true;
+          warningRef.current(
+            tRef.current('attendancePage.errors.holidaysFailedMessage'),
+            tRef.current('attendancePage.errors.holidaysFailedTitle')
+          );
+        }
       });
 
     return () => {
@@ -1620,6 +1644,12 @@ export default function AttendancePage() {
               </div>
             )}
           </section>
+          <InlineStatusPanel
+            message={loadError}
+            variant="error"
+            actionLabel={t('attendancePage.errors.retry')}
+            onAction={load}
+          />
           <div className="ui-table-shell">
             <AttendanceTable
               loading={loading}

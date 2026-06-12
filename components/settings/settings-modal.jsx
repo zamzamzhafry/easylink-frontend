@@ -10,11 +10,11 @@ const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
 function Field({ label, children, hint }) {
   return (
-    <div className="block space-y-1">
-      <span className="text-xs font-medium text-foreground">{label}</span>
+    <label className="block space-y-1">
+      <span className="block text-xs font-medium text-foreground">{label}</span>
       {children}
-      {hint && <span className="text-[11px] text-muted-foreground">{hint}</span>}
-    </div>
+      {hint && <span className="block text-[11px] text-muted-foreground">{hint}</span>}
+    </label>
   );
 }
 
@@ -239,6 +239,9 @@ export default function SettingsModal({ onClose }) {
             </div>
             <button
               type="button"
+              role="switch"
+              aria-checked={Boolean(sched.enabled)}
+              aria-label="Auto-fetch scanlogs"
               onClick={() => updateScheduling('enabled', !sched.enabled)}
               className={`relative h-6 w-11 rounded-full transition ${
                 sched.enabled ? 'bg-primary' : 'bg-muted'

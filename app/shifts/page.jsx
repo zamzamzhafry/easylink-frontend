@@ -7,6 +7,8 @@ import { getShiftIcon } from '@/components/schedule/shift-icon';
 import { useToast } from '@/components/ui/toast-provider';
 import { requestJson } from '@/lib/request-json';
 import { SHIFT_ICON_OPTIONS } from '@/lib/shift-icon-options';
+import { useAppLocale } from '@/components/app-shell';
+import { getUIText } from '@/lib/localization/ui-texts';
 import { shiftBadgeInlineStyle, shiftClassName } from '@/lib/shift-helpers';
 
 const EMPTY_FORM = {
@@ -238,6 +240,9 @@ function ShiftModal({ mode, shift, onClose, onSubmit }) {
 }
 
 export default function ShiftMakerPage() {
+  const { locale } = useAppLocale();
+  const resolvedLocale = locale === 'id' ? 'id' : 'en';
+  const t = useCallback((path) => getUIText(path, resolvedLocale), [resolvedLocale]);
   const { success, warning } = useToast();
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -342,13 +347,13 @@ export default function ShiftMakerPage() {
               {loading ? (
                 <tr>
                   <td colSpan={6} className="px-4 py-8 text-center text-xs text-slate-500">
-                    Loading shifts...
+                    {t('shiftsPage.table.loading')}
                   </td>
                 </tr>
               ) : rows.length === 0 ? (
                 <tr>
                   <td colSpan={6} className="px-4 py-8 text-center text-xs text-slate-500">
-                    No shifts found.
+                    {t('shiftsPage.table.empty')}
                   </td>
                 </tr>
               ) : (

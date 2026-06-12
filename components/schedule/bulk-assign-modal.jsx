@@ -50,8 +50,11 @@ export default function BulkAssignModal({
     >
       <div className="space-y-4">
         <div>
-          <label className="mb-1 block text-xs text-slate-400">Group</label>
+          <label htmlFor="bulk-assign-group" className="mb-1 block text-xs text-slate-400">
+            Group
+          </label>
           <select
+            id="bulk-assign-group"
             value={groupId}
             onChange={(event) => setGroupId(event.target.value)}
             className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-white focus:border-teal-500 focus:outline-none"
@@ -66,8 +69,11 @@ export default function BulkAssignModal({
         </div>
 
         <div>
-          <label className="mb-1 block text-xs text-slate-400">Shift</label>
+          <label htmlFor="bulk-assign-shift" className="mb-1 block text-xs text-slate-400">
+            Shift
+          </label>
           <select
+            id="bulk-assign-shift"
             value={shiftId}
             onChange={(event) => setShiftId(event.target.value)}
             className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-white focus:border-teal-500 focus:outline-none"
@@ -84,8 +90,11 @@ export default function BulkAssignModal({
 
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="mb-1 block text-xs text-slate-400">From</label>
+            <label htmlFor="bulk-assign-from" className="mb-1 block text-xs text-slate-400">
+              From
+            </label>
             <input
+              id="bulk-assign-from"
               type="date"
               value={from}
               onChange={(event) => setFrom(event.target.value)}
@@ -93,8 +102,11 @@ export default function BulkAssignModal({
             />
           </div>
           <div>
-            <label className="mb-1 block text-xs text-slate-400">To</label>
+            <label htmlFor="bulk-assign-to" className="mb-1 block text-xs text-slate-400">
+              To
+            </label>
             <input
+              id="bulk-assign-to"
               type="date"
               value={to}
               onChange={(event) => setTo(event.target.value)}

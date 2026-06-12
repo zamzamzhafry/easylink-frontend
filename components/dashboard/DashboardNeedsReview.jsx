@@ -3,8 +3,8 @@ import { AlertTriangle, Clock, Fingerprint } from 'lucide-react';
 
 export function DashboardNeedsReview({ items }) {
   return (
-    <div className="overflow-hidden rounded-xl border border-slate-800 bg-slate-900">
-      <div className="flex items-center justify-between border-b border-slate-800 px-5 py-3">
+    <div className="overflow-hidden rounded-xl border border-border bg-card">
+      <div className="flex items-center justify-between border-b border-border px-5 py-3">
         <div className="flex items-center gap-2">
           <AlertTriangle className="h-4 w-4 text-amber-400" />
           <span className="text-sm font-semibold text-white">Needs Review</span>
@@ -19,23 +19,23 @@ export function DashboardNeedsReview({ items }) {
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-b border-slate-800 text-left">
-              <th className="px-5 py-2.5 text-xs font-medium uppercase tracking-wide text-slate-500">Nama</th>
-              <th className="px-4 py-2.5 text-xs font-medium uppercase tracking-wide text-slate-500">Tanggal</th>
-              <th className="px-4 py-2.5 text-xs font-medium uppercase tracking-wide text-slate-500">Masalah</th>
-              <th className="px-4 py-2.5 text-xs font-medium uppercase tracking-wide text-slate-500 text-right">Aksi</th>
+            <tr className="border-b border-border text-left">
+              <th className="px-5 py-2.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">Nama</th>
+              <th className="px-4 py-2.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">Tanggal</th>
+              <th className="px-4 py-2.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">Masalah</th>
+              <th className="px-4 py-2.5 text-xs font-medium uppercase tracking-wide text-muted-foreground text-right">Aksi</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-800/50">
+          <tbody className="divide-y divide-border/50">
             {items.length === 0 ? (
               <tr>
-                <td colSpan={4} className="px-5 py-8 text-center text-xs text-slate-500">
+                <td colSpan={4} className="px-5 py-8 text-center text-xs text-muted-foreground">
                   Tidak ada data yang perlu ditinjau.
                 </td>
               </tr>
             ) : (
               items.map((row, i) => (
-                <tr key={i} className="data-row hover:bg-slate-800/50">
+                <tr key={i} className="data-row hover:bg-muted/50">
                   <td className="px-5 py-2.5 text-white">
                     {row.karyawan_id ? (
                       <Link href={`/employees/${row.karyawan_id}`} className="hover:text-teal-300">
@@ -45,7 +45,7 @@ export function DashboardNeedsReview({ items }) {
                       row.nama
                     )}
                   </td>
-                  <td className="px-4 py-2.5 font-mono text-xs text-slate-400">
+                  <td className="px-4 py-2.5 font-mono text-xs text-muted-foreground">
                     {row.scan_date}
                   </td>
                   <td className="px-4 py-2.5">
@@ -62,7 +62,7 @@ export function DashboardNeedsReview({ items }) {
                   <td className="px-4 py-2.5 text-right">
                     <Link
                       href={`/attendance?from=${row.scan_date}&to=${row.scan_date}`}
-                      className="inline-flex rounded border border-slate-700 bg-slate-800 px-2 py-1 text-xs text-slate-300 transition-colors hover:border-slate-600 hover:text-white"
+                      className="inline-flex rounded border border-border bg-muted px-2 py-1 text-xs text-muted-foreground transition-colors hover:border-border hover:text-white"
                     >
                       Review
                     </Link>
