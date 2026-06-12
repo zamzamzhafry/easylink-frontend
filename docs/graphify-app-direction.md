@@ -1,6 +1,6 @@
 # Graphify App Direction Map
 
-Last updated: 2026-04-27
+Last updated: 2026-06-11
 
 This file is the readable, product-facing summary of the latest graphify pass for the `app/` surface. It is meant to answer one question clearly:
 
@@ -40,9 +40,12 @@ The app is moving toward five converging outcomes:
    - The machine, scanlog, queue, and recovery flows are clearly becoming a dedicated operational subsystem.
    - Reliability, bounded queues, dedupe, and recovery hooks matter more than raw device access convenience.
 
-4. **Auth is tightening toward a canonical 3-tier model.**
+4. **Auth is tightening toward a canonical 3-tier model, NIP-anchored.**
    - Repository plans point to `admin`, `group_leader`, and `employee` as the long-term policy model.
    - UI visibility and API authorization are being pulled toward one shared contract.
+   - Active direction (2026-06-11): collapse the three identity lanes (`account` / `employee_nip` / `legacy_pin`) into a single NIP-anchored lane backed by `tb_karyawan_auth`, with roles/leadership sourced exclusively from `karyawan_id`-keyed canonical tables (`tb_karyawan_roles`), removing the fragile machine-synced `tb_user_group_access` PIN path from authorization.
+   - Session subject moves to immutable `karyawan_id` (not NIP string) to avoid silent logout on HR NIP edits.
+   - Two live privilege-escalation bugs identified to ship first, independent of the redesign: per-group `is_leader` broadcasting across all of a user's groups, and admin role rows with non-NULL `group_id` granting global admin. See `docs/agent-context/oracle-auth-redesign-grill-2026-06-11.md`.
 
 5. **The data layer is heading toward normalization and read projections.**
    - Current attendance/reporting logic still leans on heavy runtime joins.
@@ -77,6 +80,9 @@ flowchart TD
   F --> F1[Canonical 3-tier roles]
   F --> F2[Shared UI and API authorization]
   F --> F3[Legacy compatibility bridge]
+  F --> F4[Single NIP-anchored login lane]
+  F --> F5[Roles from tb_karyawan_roles by karyawan_id]
+  F --> F6[Per-group is_leader scoping fix B1/B2]
 
   B1 --> G[Normalized attendance product]
   C2 --> G

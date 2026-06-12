@@ -10,7 +10,7 @@ tags:
 
 # Obsidian Index — EasyLink Active Work
 
-Last updated: 2026-05-30
+Last updated: 2026-06-11
 
 ## Purpose
 
@@ -25,13 +25,16 @@ This folder is Obsidian-ready working memory for current EasyLink efforts. It is
 
 ## Suggested reading order
 
-1. [[hop-b-sync-status]]
-2. [[attendance-performance-fixes]]
-3. [[auth-leader-schedule-map]]
-4. [[qa-review-checklist]]
+1. [[auth-leader-schedule-map]] (updated 2026-06-11 with 409 root cause + B1/B2 blockers)
+2. [[../agent-context/oracle-auth-redesign-grill-2026-06-11]]
+3. [[hop-b-sync-status]]
+4. [[attendance-performance-fixes]]
+5. [[qa-review-checklist]]
 
 ## Related repo docs
 
+- [[../agent-context/oracle-auth-redesign-grill-2026-06-11]]
+- [[../ui-ux-audit-findings-2026-06-11]]
 - [[../human-handoff-pull-rebuild-sync]]
 - [[../hop-b-scanlog-batch-contract]]
 - [[../hop-b-auth-contract]]
