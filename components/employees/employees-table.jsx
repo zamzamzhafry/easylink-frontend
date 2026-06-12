@@ -2,7 +2,7 @@
 
 import { AlertCircle, CheckCircle2, Pencil, Trash2 } from 'lucide-react';
 import { useAppLocale } from '@/components/app-shell';
-import { TableEmptyRow, TableHeadRow, TableLoadingRow } from '@/components/ui/table-shell';
+import { TableEmptyRow, TableHeadRow, TableLoadingRow, TableShell } from '@/components/ui/table-shell';
 import { getUIText } from '@/lib/localization/ui-texts';
 
 export default function EmployeesTable({ loading, rows, onEdit, onDelete }) {
@@ -31,7 +31,7 @@ export default function EmployeesTable({ loading, rows, onEdit, onDelete }) {
   };
 
   return (
-    <div className="table-shell">
+    <TableShell>
       <table className="w-full text-sm text-foreground">
         <thead>
           <TableHeadRow headers={TABLE_HEADERS} className="table-head-cell" />
@@ -123,17 +123,10 @@ export default function EmployeesTable({ loading, rows, onEdit, onDelete }) {
                       onClick={() => handleDelete(employee)}
                       className="ui-action-icon ui-action-icon--danger"
                       title={t('employeesTable.deleteAction')}
+                      aria-label={t('employeesTable.actions.delete')}
                     >
                       <Trash2 className="h-3 w-3" />
                     </button>
-
-                      <button
-                        type="button"
-                        onClick={() => handleDelete(employee)}
-                        className="ui-status-badge ui-status-badge-danger inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs transition-colors hover:bg-rose-500/20"
-                      >
-                        <Trash2 className="h-3 w-3" /> {t('employeesTable.actions.delete')}
-                      </button>
                     </div>
                   </td>
                 </tr>
@@ -142,6 +135,6 @@ export default function EmployeesTable({ loading, rows, onEdit, onDelete }) {
           )}
         </tbody>
       </table>
-    </div>
+    </TableShell>
   );
 }

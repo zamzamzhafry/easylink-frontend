@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { usePathname } from 'next/navigation';
 import {
   Activity,
@@ -39,6 +39,8 @@ import { getUIText } from '@/lib/localization/ui-texts';
 export default function Sidebar({
   collapsed = false,
   onToggle,
+  mobileOpen = false,
+  onMobileClose,
   currentUser = null,
   theme = 'dark',
   onThemeToggle,
@@ -48,6 +50,8 @@ export default function Sidebar({
   onViewModeCycle,
 }) {
   const path = usePathname();
+  // Mobile drawer always renders expanded, ignoring the persisted collapse state.
+  const effectiveCollapsed = collapsed && !mobileOpen;
   const resolvedLocale = locale === 'id' ? 'id' : 'en';
   const t = useCallback((path) => getUIText(path, resolvedLocale), [resolvedLocale]);
   const viewModeMeta = {
@@ -158,23 +162,54 @@ export default function Sidebar({
     window.location.href = '/login';
   };
 
+  useEffect(() => {
+    if (mobileOpen) onMobileClose?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [path]);
+
+  useEffect(() => {
+    if (!mobileOpen) return undefined;
+    const onKeyDown = (event) => {
+      if (event.key === 'Escape') onMobileClose?.();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [mobileOpen, onMobileClose]);
+
   return (
-    <aside
-      className={cn(
-        'app-sidebar fixed inset-y-0 left-0 z-40 flex flex-col border-r border-slate-800 bg-slate-900 transition-all duration-200',
-        collapsed ? 'w-20' : 'w-60'
+    <>
+      {mobileOpen && (
+        <button
+          type="button"
+          onClick={onMobileClose}
+          aria-label="Close navigation menu"
+          className="fixed inset-0 z-40 bg-black/50 lg:hidden"
+        />
       )}
-    >
+      <aside
+        className={cn(
+          'app-sidebar fixed inset-y-0 left-0 flex flex-col border-r border-slate-800 bg-slate-900 transition-all duration-200',
+          mobileOpen ? 'z-50 w-60 translate-x-0' : 'z-40 -translate-x-full lg:translate-x-0',
+          effectiveCollapsed ? 'lg:w-20' : 'lg:w-60'
+        )}
+      >
       <div className="app-sidebar-header flex h-16 items-center border-b border-slate-800 px-3">
         <button
           type="button"
           onClick={onToggle}
           className="app-sidebar-toggle inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-700 text-slate-300 transition-colors hover:border-slate-500 hover:text-white"
+          aria-label={
+            effectiveCollapsed
+              ? t('sidebar.actions.expandSidebar')
+              : t('sidebar.actions.collapseSidebar')
+          }
           title={
-            collapsed ? t('sidebar.actions.expandSidebar') : t('sidebar.actions.collapseSidebar')
+            effectiveCollapsed
+              ? t('sidebar.actions.expandSidebar')
+              : t('sidebar.actions.collapseSidebar')
           }
         >
-          {collapsed ? (
+          {effectiveCollapsed ? (
             <PanelLeftOpen className="h-4 w-4" />
           ) : (
             <PanelLeftClose className="h-4 w-4" />
@@ -184,7 +219,7 @@ export default function Sidebar({
         <div
           className={cn(
             'ml-3 flex items-center gap-3 overflow-hidden transition-all',
-            collapsed ? 'w-0 opacity-0' : 'w-auto opacity-100'
+            effectiveCollapsed ? 'w-0 opacity-0' : 'w-auto opacity-100'
           )}
         >
           <Fingerprint className="h-6 w-6 shrink-0 text-teal-400" />
@@ -195,12 +230,12 @@ export default function Sidebar({
           </span>
         </div>
 
-        {collapsed && <Fingerprint className="ml-2 h-5 w-5 text-teal-400" />}
+        {effectiveCollapsed && <Fingerprint className="ml-2 h-5 w-5 text-teal-400" />}
       </div>
 
       <nav className="app-sidebar-nav flex-1 space-y-2 overflow-y-auto px-2 py-4">
         {visibleSections.map((section) => {
-          if (collapsed) {
+          if (effectiveCollapsed) {
             return section.items.map(({ href, label, icon: Icon }) => {
               const active = path === href || (href !== '/' && path.startsWith(href));
               return (
@@ -208,6 +243,7 @@ export default function Sidebar({
                   key={href}
                   href={href}
                   title={label}
+                  aria-current={active ? 'page' : undefined}
                   className={cn(
                     'app-sidebar-link flex items-center justify-center rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-150',
                     active
@@ -260,6 +296,7 @@ export default function Sidebar({
                         key={href}
                         href={href}
                         title={label}
+                        aria-current={active ? 'page' : undefined}
                         className={cn(
                           'app-sidebar-link flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all duration-150',
                           active
@@ -286,20 +323,26 @@ export default function Sidebar({
           onClick={() => setShowSettings(true)}
           className={cn(
             'app-sidebar-settings mb-2 flex w-full items-center rounded-lg border border-slate-700 px-2.5 py-2 text-xs text-slate-300 transition-colors hover:border-slate-500 hover:text-white',
-            collapsed ? 'justify-center' : 'gap-2'
+            effectiveCollapsed ? 'justify-center' : 'gap-2'
           )}
+          aria-label={t('sidebar.actions.settings')}
           title={t('sidebar.actions.settings')}
         >
           <Settings className="h-3.5 w-3.5 shrink-0" />
-          {!collapsed && t('sidebar.actions.settings')}
+          {!effectiveCollapsed && t('sidebar.actions.settings')}
         </button>
         <button
           type="button"
           onClick={onThemeToggle}
           className={cn(
             'app-sidebar-theme-btn mb-2 flex w-full items-center rounded-lg border border-slate-700 px-2.5 py-2 text-xs text-slate-300 transition-colors hover:border-slate-500 hover:text-white',
-            collapsed ? 'justify-center' : 'gap-2'
+            effectiveCollapsed ? 'justify-center' : 'gap-2'
           )}
+          aria-label={
+            theme === 'dark'
+              ? t('sidebar.actions.switchToLightMode')
+              : t('sidebar.actions.switchToDarkMode')
+          }
           title={
             theme === 'dark'
               ? t('sidebar.actions.switchToLightMode')
@@ -311,7 +354,7 @@ export default function Sidebar({
           ) : (
             <Moon className="h-3.5 w-3.5 shrink-0 text-teal-500" />
           )}
-          {!collapsed &&
+          {!effectiveCollapsed &&
             (theme === 'dark' ? t('sidebar.actions.lightMode') : t('sidebar.actions.darkMode'))}
         </button>
         <button
@@ -319,24 +362,30 @@ export default function Sidebar({
           onClick={onViewModeCycle}
           className={cn(
             'app-sidebar-viewmode-btn mb-2 flex w-full items-center rounded-lg border border-slate-700 px-2.5 py-2 text-xs text-slate-300 transition-colors hover:border-slate-500 hover:text-white',
-            collapsed ? 'justify-center' : 'gap-2'
+            effectiveCollapsed ? 'justify-center' : 'gap-2'
           )}
+          aria-label={`Table layout: ${currentViewMode.label} (click to change)`}
           title={`Table layout: ${currentViewMode.label} (click to change)`}
         >
           <ViewModeIcon className="h-3.5 w-3.5 shrink-0 text-teal-400" />
-          {!collapsed && currentViewMode.label}
+          {!effectiveCollapsed && currentViewMode.label}
         </button>
         <div
           className={cn(
             'app-sidebar-locale mb-2 rounded-lg border border-slate-700 bg-slate-900/70 p-1',
-            collapsed ? 'flex justify-center' : ''
+            effectiveCollapsed ? 'flex justify-center' : ''
           )}
         >
-          {collapsed ? (
+          {effectiveCollapsed ? (
             <button
               type="button"
               onClick={() => onLocaleChange?.(resolvedLocale === 'en' ? 'id' : 'en')}
-              className="inline-flex h-7 min-w-10 items-center justify-center rounded-md border border-slate-600 px-2 text-[10px] font-semibold tracking-wide text-slate-200 transition-colors hover:border-slate-400 hover:text-white"
+              className="inline-flex h-7 min-w-10 items-center justify-center rounded-md border border-slate-600 px-2 text-xs font-semibold tracking-wide text-slate-200 transition-colors hover:border-slate-400 hover:text-white"
+              aria-label={
+                resolvedLocale === 'en'
+                  ? t('sidebar.locale.switchToBahasa')
+                  : t('sidebar.locale.switchToEnglish')
+              }
               title={
                 resolvedLocale === 'en'
                   ? t('sidebar.locale.switchToBahasa')
@@ -354,11 +403,12 @@ export default function Sidebar({
                 type="button"
                 onClick={() => onLocaleChange?.('en')}
                 className={cn(
-                  'h-7 rounded-md px-2 text-[10px] font-semibold tracking-wide transition-colors',
+                  'h-7 rounded-md px-2 text-xs font-semibold tracking-wide transition-colors',
                   resolvedLocale === 'en'
                     ? 'bg-teal-500/20 text-teal-300'
                     : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200'
                 )}
+                aria-label={t('sidebar.locale.switchToEnglish')}
                 title={t('sidebar.locale.switchToEnglish')}
               >
                 EN
@@ -367,11 +417,12 @@ export default function Sidebar({
                 type="button"
                 onClick={() => onLocaleChange?.('id')}
                 className={cn(
-                  'h-7 rounded-md px-2 text-[10px] font-semibold tracking-wide transition-colors',
+                  'h-7 rounded-md px-2 text-xs font-semibold tracking-wide transition-colors',
                   resolvedLocale === 'id'
                     ? 'bg-teal-500/20 text-teal-300'
                     : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200'
                 )}
+                aria-label={t('sidebar.locale.switchToBahasa')}
                 title={t('sidebar.locale.switchToBahasa')}
               >
                 ID
@@ -380,10 +431,10 @@ export default function Sidebar({
           )}
         </div>
 
-        {currentUser && !collapsed && (
+        {currentUser && !effectiveCollapsed && (
           <div className="app-sidebar-userbox mb-2 rounded-lg border border-slate-800 bg-slate-950/70 px-3 py-2">
             <div className="text-xs font-semibold text-white">{currentUser.nama}</div>
-            <div className="mt-0.5 inline-flex items-center gap-1 text-[11px] text-slate-500">
+            <div className="mt-0.5 inline-flex items-center gap-1 text-xs text-muted-foreground">
               {currentUser.is_admin ? (
                 <>
                   <ShieldCheck className="h-3 w-3" /> {t('sidebar.roles.admin')}
@@ -409,19 +460,24 @@ export default function Sidebar({
           onClick={logout}
           className={cn(
             'app-sidebar-logout flex w-full items-center rounded-lg border border-slate-700 px-2.5 py-2 text-xs text-slate-300 transition-colors hover:border-slate-500 hover:text-white',
-            collapsed ? 'justify-center' : 'gap-2'
+            effectiveCollapsed ? 'justify-center' : 'gap-2'
           )}
+          aria-label={t('sidebar.actions.logout')}
+          title={t('sidebar.actions.logout')}
         >
           <LogOut className="h-3.5 w-3.5 shrink-0" />
-          {!collapsed && t('sidebar.actions.logout')}
+          {!effectiveCollapsed && t('sidebar.actions.logout')}
         </button>
 
-        <div className={cn('mt-3 text-xs text-slate-600', collapsed ? 'text-center' : '')}>
-          {collapsed ? t('sidebar.version.short') : t('sidebar.version.full')}
+        <div
+          className={cn('mt-3 text-xs text-muted-foreground', effectiveCollapsed ? 'text-center' : '')}
+        >
+          {effectiveCollapsed ? t('sidebar.version.short') : t('sidebar.version.full')}
         </div>
       </div>
 
       {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
-    </aside>
+      </aside>
+    </>
   );
 }

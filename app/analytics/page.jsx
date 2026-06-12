@@ -3,7 +3,10 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Download, FileSpreadsheet, BarChart3, Activity, Clock, Users, TrendingUp } from 'lucide-react';
 import { useToast } from '@/components/ui/toast-provider';
+import InlineStatusPanel from '@/components/ui/inline-status-panel';
 import { requestJson } from '@/lib/request-json';
+import { useAppLocale } from '@/components/app-shell';
+import { getUIText } from '@/lib/localization/ui-texts';
 import {
   LineChart,
   Line,
@@ -43,6 +46,9 @@ function StatCard({ label, value, unit, color }) {
 }
 
 export default function AnalyticsPage() {
+  const { locale } = useAppLocale();
+  const resolvedLocale = locale === 'id' ? 'id' : 'en';
+  const t = useCallback((path) => getUIText(path, resolvedLocale), [resolvedLocale]);
   const { warning } = useToast();
   const [auth, setAuth] = useState(null);
   const [groups, setGroups] = useState([]);
@@ -60,6 +66,7 @@ export default function AnalyticsPage() {
     bradfordFactors: []
   });
   const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState('');
 
   const loadAuth = useCallback(async () => {
     try {
@@ -78,8 +85,9 @@ export default function AnalyticsPage() {
     } catch {
       setAuth(null);
       setGroups([]);
+      warning('Could not load groups. Some filters may be unavailable.', 'Groups request failed');
     }
-  }, []);
+  }, [warning]);
 
   useEffect(() => {
     loadAuth();
@@ -95,8 +103,9 @@ export default function AnalyticsPage() {
       setEmployees(Array.isArray(result?.employees) ? result.employees : []);
     } catch {
       setEmployees([]);
+      warning('Could not load employees for this group.', 'Employees request failed');
     }
-  }, [groupId]);
+  }, [groupId, warning]);
 
   useEffect(() => {
     loadEmployees();
@@ -117,8 +126,11 @@ export default function AnalyticsPage() {
         heatmap: Array.isArray(result?.heatmap) ? result.heatmap : [],
         bradfordFactors: Array.isArray(result?.bradfordFactors) ? result.bradfordFactors : []
       });
+      setLoadError('');
     } catch (error) {
-      warning(error.message || 'Failed to load analytics.', 'Analytics request failed');
+      const message = error.message || 'Failed to load analytics.';
+      setLoadError(message);
+      warning(message, 'Analytics request failed');
     } finally {
       setLoading(false);
     }
@@ -260,6 +272,19 @@ export default function AnalyticsPage() {
           </div>
         </div>
 
+        {loadError && (
+          <InlineStatusPanel
+            message={loadError}
+            variant="error"
+            actionLabel="Retry"
+            onAction={load}
+          />
+        )}
+
+        <div
+          aria-busy={loading}
+          className={`space-y-4 ${loading ? 'opacity-60 pointer-events-none transition-opacity' : 'transition-opacity'}`}
+        >
         {/* Stat Cards */}
         <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
           <StatCard
@@ -469,7 +494,7 @@ export default function AnalyticsPage() {
                 {data.bradfordFactors.length === 0 ? (
                   <tr>
                     <td colSpan={5} className="px-3 py-4 text-center text-slate-500">
-                      No data available
+                      {t('analyticsPage.bradford.empty')}
                     </td>
                   </tr>
                 ) : (
@@ -496,6 +521,7 @@ export default function AnalyticsPage() {
               </tbody>
             </table>
           </div>
+        </div>
         </div>
 
         {!auth && <p className="text-xs text-rose-400">Session not loaded. Please re-login.</p>}

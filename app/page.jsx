@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import { Clock, Fingerprint, Monitor, UserCheck, Users, UserX } from 'lucide-react';
+import { AlertTriangle, Clock, Fingerprint, Monitor, UserCheck, Users, UserX } from 'lucide-react';
 import pool from '@/lib/db';
 import { hasKaryawanColumn } from '@/lib/karyawan-schema';
 import { getAuthContextFromCookies } from '@/lib/auth-session';
@@ -53,16 +53,23 @@ async function getStats({ auth }) {
     return { clause: ` AND (${predicates.join(' OR ')})`, params };
   };
 
+  const failedSections = [];
+
   const totalScope = buildScopeClause('eg', 'k.pin');
-  const [[{ total }]] = await pool.query(
-    `SELECT COUNT(DISTINCT k.id) AS total
+  const [[{ total }]] = await pool
+    .query(
+      `SELECT COUNT(DISTINCT k.id) AS total
      FROM tb_karyawan k
      LEFT JOIN tb_employee_group eg ON eg.karyawan_id = k.id
      WHERE 1=1
        ${canFilterDeleted ? 'AND k.isDeleted = 0' : ''}
        ${totalScope.clause}`,
-    totalScope.params
-  );
+      totalScope.params
+    )
+    .catch(() => {
+      failedSections.push('Total Karyawan');
+      return [[{ total: 0 }]];
+    });
 
   const hadirScope = buildScopeClause('eg', 'sl.pin');
   const [[{ hadir }]] = await pool
@@ -75,7 +82,10 @@ async function getStats({ auth }) {
          ${hadirScope.clause}`,
       [today, ...hadirScope.params]
     )
-    .catch(() => [[{ hadir: 0 }]]);
+    .catch(() => {
+      failedSections.push('Hadir Hari Ini');
+      return [[{ hadir: 0 }]];
+    });
 
   const jadwalScope = buildScopeClause('eg', 'k.pin');
   const [[{ jadwal_hari }]] = await pool
@@ -91,7 +101,10 @@ async function getStats({ auth }) {
          ${jadwalScope.clause}`,
       [today, ...jadwalScope.params]
     )
-    .catch(() => [[{ jadwal_hari: 0 }]]);
+    .catch(() => {
+      failedSections.push('Jadwal Hari Ini');
+      return [[{ jadwal_hari: 0 }]];
+    });
 
   const lateScope = buildScopeClause('eg', 'logs.pin');
   const [[{ late_count }]] = await pool
@@ -113,9 +126,15 @@ async function getStats({ auth }) {
          ${lateScope.clause}`,
       [today, today, ...lateScope.params]
     )
-    .catch(() => [[{ late_count: 0 }]]);
+    .catch(() => {
+      failedSections.push('Terlambat');
+      return [[{ late_count: 0 }]];
+    });
 
-  const [[{ devices }]] = await pool.query('SELECT COUNT(*) AS devices FROM tb_device').catch(() => [[{ devices: 0 }]]);
+  const [[{ devices }]] = await pool.query('SELECT COUNT(*) AS devices FROM tb_device').catch(() => {
+    failedSections.push('Perangkat Aktif');
+    return [[{ devices: 0 }]];
+  });
 
   const trendFrom = sevenDaysAgo.toISOString().slice(0, 10);
   
@@ -129,7 +148,10 @@ async function getStats({ auth }) {
       ${trendHadirScope.clause}
     GROUP BY DATE(sl.scan_date)
     ORDER BY DATE(sl.scan_date) ASC
-  `, [trendFrom, today, ...trendHadirScope.params]).catch(() => [[]]);
+  `, [trendFrom, today, ...trendHadirScope.params]).catch(() => {
+    failedSections.push('Tren Kehadiran');
+    return [[]];
+  });
 
   const reviewFrom = threeDaysAgo.toISOString().slice(0, 10);
   
@@ -160,7 +182,10 @@ async function getStats({ auth }) {
       ${reviewScope.clause}
     GROUP BY sc.id, sc.tanggal, k.id, k.pin, u.nama, st.jam_masuk, st.jam_keluar, st.needs_scan, an.status, an.catatan
     ORDER BY sc.tanggal DESC, k.nama ASC
-  `, [reviewFrom, today, ...reviewScope.params]).catch(() => [[]]);
+  `, [reviewFrom, today, ...reviewScope.params]).catch(() => {
+    failedSections.push('Perlu Ditinjau');
+    return [[]];
+  });
 
   const needsReview = [];
   const lateMinutesThreshold = 15;
@@ -242,7 +267,8 @@ async function getStats({ auth }) {
     devices: Number(devices),
     pieData,
     barData,
-    needsReview
+    needsReview,
+    failedSections: Array.from(new Set(failedSections))
   };
 }
 
@@ -257,6 +283,7 @@ export default async function Dashboard() {
     redirect('/attendance');
   }
   const stats = await getStats({ auth });
+  const failedSections = stats.failedSections ?? [];
 
   // Auth — used to filter dashboard buttons
   const isAdmin = Boolean(auth?.is_admin);
@@ -349,6 +376,18 @@ export default async function Dashboard() {
           )}
         </div>
       </div>
+
+      {failedSections.length > 0 && (
+        <div className="flex items-start gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-400">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+          <div className="min-w-0">
+            <p className="font-medium">Sebagian data dashboard gagal dimuat.</p>
+            <p className="mt-0.5 text-xs text-amber-400/80">
+              Bagian terdampak: {failedSections.join(', ')}. Nilai ditampilkan mungkin tidak akurat — coba segarkan halaman.
+            </p>
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
         {cards.map(({ label, value, icon: Icon, color, bg, href }) => (

@@ -11,6 +11,7 @@ import {
   useState,
 } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
+import { Menu } from 'lucide-react';
 import RightOpsSidebar from '@/components/right-ops-sidebar';
 import Sidebar from '@/components/sidebar';
 import { getUIText } from '@/lib/localization/ui-texts';
@@ -48,6 +49,7 @@ export default function AppShell({ children }) {
   const router = useRouter();
   const isLoginPage = pathname === '/login';
   const [collapsed, setCollapsed] = useState(false);
+  const [mobileOpen, setMobileOpen] = useState(false);
   const [rightSidebarCollapsed, setRightSidebarCollapsed] = useState(() => {
     if (typeof window === 'undefined' || isLoginPage) return false;
     try {
@@ -208,6 +210,9 @@ export default function AppShell({ children }) {
     });
   };
 
+  const openMobileSidebar = useCallback(() => setMobileOpen(true), []);
+  const closeMobileSidebar = useCallback(() => setMobileOpen(false), []);
+
   const localeContextValue = useMemo(
     () => ({ locale, setLocale: handleLocaleChange }),
     [handleLocaleChange, locale]
@@ -247,9 +252,20 @@ export default function AppShell({ children }) {
   return (
     <AppLocaleContext.Provider value={localeContextValue}>
       <Fragment key={remountKey}>
+        <button
+          type="button"
+          onClick={openMobileSidebar}
+          aria-label="Open navigation menu"
+          aria-expanded={mobileOpen}
+          className="app-shell-mobile-toggle fixed left-3 top-3 z-50 inline-flex h-11 w-11 items-center justify-center rounded-lg border border-slate-700 bg-slate-900 text-slate-200 shadow-lg transition-colors hover:border-slate-500 hover:text-white lg:hidden"
+        >
+          <Menu className="h-5 w-5" />
+        </button>
         <Sidebar
           collapsed={collapsed}
           onToggle={toggleSidebar}
+          mobileOpen={mobileOpen}
+          onMobileClose={closeMobileSidebar}
           currentUser={authUser}
           theme={theme}
           onThemeToggle={toggleTheme}
@@ -261,7 +277,8 @@ export default function AppShell({ children }) {
         <main
           className={cn(
             'app-shell-main min-h-screen p-6 transition-all duration-200',
-            collapsed ? 'ml-20' : 'ml-60'
+            'ml-0',
+            collapsed ? 'lg:ml-20' : 'lg:ml-60'
           )}
         >
           {children}

@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useId, useMemo, useState } from 'react';
 import { Check, ChevronDown, Search } from 'lucide-react';
 import ModalShell from '@/components/ui/modal-shell';
 import { useToast } from '@/components/ui/toast-provider';
@@ -57,22 +57,27 @@ function buildUserLabel(user) {
 }
 
 function Field({ label, value, onChange, hint, type = 'text' }) {
+  const inputId = useId();
   return (
     <div>
-      <label className="mb-1 block text-xs text-slate-400">{label}</label>
+      <label htmlFor={inputId} className="mb-1 block text-xs text-muted-foreground">
+        {label}
+      </label>
       <input
+        id={inputId}
         type={type}
         value={value}
         onChange={(event) => onChange(event.target.value)}
         className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-white transition-colors focus:border-teal-500 focus:outline-none"
       />
-      {hint && <p className="mt-1 text-xs text-slate-600">{hint}</p>}
+      {hint && <p className="mt-1 text-xs text-muted-foreground">{hint}</p>}
     </div>
   );
 }
 
 export default function EditEmployeeModal({ mode = 'edit', employee, users = [], onClose, onSave }) {
   const { warning } = useToast();
+  const deviceUserInputId = useId();
   const isCreate = mode === 'create';
   const initialPin = employee?.pin ? String(employee.pin) : '';
   const selectedUser = users.find((user) => String(user.pin) === initialPin);
@@ -152,10 +157,13 @@ export default function EditEmployeeModal({ mode = 'edit', employee, users = [],
           onChange={(value) => setForm((prev) => ({ ...prev, nama_karyawan: value }))}
         />
         <div className="relative" onBlur={() => setTimeout(() => setDropdownOpen(false), 100)}>
-          <label className="mb-1 block text-xs text-slate-400">Device User Relation (tb_user)</label>
+          <label htmlFor={deviceUserInputId} className="mb-1 block text-xs text-muted-foreground">
+            Device User Relation (tb_user)
+          </label>
           <div className="relative">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-500" />
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
             <input
+              id={deviceUserInputId}
               value={userSearch}
               onFocus={() => setDropdownOpen(true)}
               onChange={(event) => {
@@ -166,7 +174,7 @@ export default function EditEmployeeModal({ mode = 'edit', employee, users = [],
               placeholder="Type PIN or user name..."
               className="w-full rounded-lg border border-slate-700 bg-slate-800 py-2 pl-9 pr-8 text-sm text-white transition-colors focus:border-teal-500 focus:outline-none"
             />
-            <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-500" />
+            <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
           </div>
 
           {dropdownOpen && (
@@ -179,12 +187,12 @@ export default function EditEmployeeModal({ mode = 'edit', employee, users = [],
                   setUserSearch('');
                   setDropdownOpen(false);
                 }}
-                className="flex w-full items-center justify-between border-b border-slate-800 px-3 py-2 text-left text-xs text-slate-400 transition-colors hover:bg-slate-800"
+                className="flex w-full items-center justify-between border-b border-slate-800 px-3 py-2 text-left text-xs text-muted-foreground transition-colors hover:bg-slate-800"
               >
                 <span>No linked user (NULL)</span>
               </button>
               {filteredUsers.length === 0 ? (
-                <p className="px-3 py-2 text-xs text-slate-500">No matching user.</p>
+                <p className="px-3 py-2 text-xs text-muted-foreground">No matching user.</p>
               ) : (
                 filteredUsers.map((user) => {
                   const isSelected = form.user_pin === String(user.pin);
@@ -206,7 +214,7 @@ export default function EditEmployeeModal({ mode = 'edit', employee, users = [],
               )}
             </div>
           )}
-          <p className="mt-1 text-xs text-slate-600">
+          <p className="mt-1 text-xs text-muted-foreground">
             {form.user_pin
               ? `Selected PIN: ${form.user_pin}`
               : 'Optional: leave empty when employee has no linked machine user.'}

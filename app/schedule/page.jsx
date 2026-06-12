@@ -19,6 +19,7 @@ import QuickSummariesTable from '@/components/schedule/quick-summaries-table';
 import ScheduleGrid from '@/components/schedule/schedule-grid';
 import ShiftLegend from '@/components/schedule/shift-legend';
 import { Button } from '@/components/ui/button';
+import InlineStatusPanel from '@/components/ui/inline-status-panel';
 import { useToast } from '@/components/ui/toast-provider';
 import { requestJson } from '@/lib/request-json';
 import { PAGE_SIZE_OPTIONS } from '@/lib/constants';
@@ -124,6 +125,7 @@ export default function SchedulePage() {
   const [quickSummariesLoading, setQuickSummariesLoading] = useState(false);
   const [quickSummariesError, setQuickSummariesError] = useState('');
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
   const [bulkModal, setBulkModal] = useState(false);
   const [importResult, setImportResult] = useState({ entries: [], errors: [] });
   const [uploadFileName, setUploadFileName] = useState('');
@@ -157,6 +159,7 @@ export default function SchedulePage() {
 
   const load = useCallback(async () => {
     setLoading(true);
+    setLoadError('');
     try {
       const [scheduleResult, attendanceResult] = await Promise.all([
         requestJson(`/api/schedule?from=${from}&to=${to}`),
@@ -188,7 +191,9 @@ export default function SchedulePage() {
           : []
       );
     } catch (error) {
-      warning(error.message || 'Failed to fetch schedule data.', 'Schedule request failed');
+      const message = error.message || 'Failed to fetch schedule data.';
+      setLoadError(message);
+      warning(message, 'Schedule request failed');
     } finally {
       setLoading(false);
     }
@@ -270,14 +275,19 @@ export default function SchedulePage() {
         });
         setHolidayMap(Object.fromEntries(map.entries()));
       })
-      .catch(() => {
-        if (!cancelled) setHolidayMap({});
+      .catch((error) => {
+        if (cancelled) return;
+        setHolidayMap({});
+        warning(
+          error.message || 'Failed to fetch holiday calendar.',
+          'Holiday markers unavailable'
+        );
       });
 
     return () => {
       cancelled = true;
     };
-  }, [from]);
+  }, [from, warning]);
 
   const setShift = async (employeeId, dateString, shiftId) => {
     const employee = data.employees.find((item) => Number(item.id) === Number(employeeId));
@@ -889,6 +899,13 @@ export default function SchedulePage() {
       {activeTab === 'plan' && (
         <div className="space-y-6">
           <ShiftLegend shifts={data.shifts} />
+
+          <InlineStatusPanel
+            message={loadError}
+            variant="error"
+            actionLabel="Retry"
+            onAction={load}
+          />
 
           <ScheduleGrid
             loading={loading}
