@@ -1,0 +1,100 @@
+karyawan_id	pin	nama	group_id	nama_group
+84	58	Aji Elistian, A.Md.Farm	NULL	NULL
+64	21	Asyiah,S.Tr.A.K	NULL	NULL
+17	89	Delvicia Penta Argeolinda. A.Md.Kep	NULL	NULL
+87	29	Denny Rahmat, A.Md.Kep	NULL	NULL
+70	NULL	Faiz Bintang Muktiprakoso,S.Tr.Kes	NULL	NULL
+55	14	Irine Milenia Luktitisari, A.Md.Kep	NULL	NULL
+89	16	Laras Widyastuti, SKM	NULL	NULL
+57	30	Lutfi Maysaroh,A.Md.Farm	NULL	NULL
+48	NULL	Muhammad Fikri Fatha Andy	NULL	NULL
+83	NULL	Ns Dary Luqman Hakim, S.Kep	NULL	NULL
+50	84	Ns. Enrico Damar Aji Ali, S.Kep	NULL	NULL
+46	41	Ratna Wiji Astuti, S.Gz	NULL	NULL
+60	NULL	Riki Saputra,A.Md.RMIK	NULL	NULL
+37	24	Satria Eka Sakti	NULL	NULL
+9999	NULL	Super Admin	NULL	NULL
+19	35	Yusuf Wahyudi, A.Md.Kep	NULL	NULL
+25	31	Anisa Ayudya Putri, A.Md.RMIK	13	Administrasi
+69	76	Fanny Taulany,A.Md.RMIK	13	Administrasi
+24	63	Teta Indah Oktaviana, A.Md.RMIK	13	Administrasi
+86	26	Arviana Dwi Angga, A.Md.RMIK	9	Casemix
+81	25	Nandika Ardimansyah, ST	9	Casemix
+29	17	Yustisia Karinta Nurmalitasari, S.K.M	9	Casemix
+129	129	Bungsu Kurnianingrum	28	CSS
+130	125	Eko Prasetyo	28	CSS
+127	127	Gudel Mulyani	28	CSS
+131	126	Mohamad Ana Iflana	28	CSS
+128	124	Muhamad  Fajri  Wicaksono	28	CSS
+125	122	Riswati	28	CSS
+126	128	Sutrisno	28	CSS
+4	88	dr. Bobby Satria Aji	2	Dokter Umum
+2	82	dr. Dini Pangestika	2	Dokter Umum
+47	47	dr. Febriana Syafitri	2	Dokter Umum
+3	81	dr. Ika Puspitasari	2	Dokter Umum
+1	130	dr. Nanang Handoko	2	Dokter Umum
+76	66	Herlambang Bayu Aji	21	Driver
+45	11	apt. Muhammad Nur Prasetyo, M.Farm	19	Farmasi
+20	20	apt. Septi Permadani, S. Farm	19	Farmasi
+53	78	Elsa Limpat Sapto Aji, AMd.Farm	19	Farmasi
+22	67	Khusnul Azizatun N, A.Md., Farm	19	Farmasi
+21	9	Luna Dwi Septyani, A. Md. Farm	19	Farmasi
+34	44	Ina Aulia Hanifah, S.Tr.Kes, Ftr	16	Fisioterapi
+78	48	Ainis Salamah,A.Md.Kep	23	Instalasi Gawat Darurat
+52	52	Amar Makrub, A.Md.Kep	23	Instalasi Gawat Darurat
+13	59	Didik Andy Nugroho, A.Md.Kep	23	Instalasi Gawat Darurat
+73	28	Hasyim Faturachman,A.Md.Kep	23	Instalasi Gawat Darurat
+42	49	Ns. Ivonda Rendya Praskara, S.Kep	23	Instalasi Gawat Darurat
+56	4	Ns. Khairul Amrullah, S.Kep	23	Instalasi Gawat Darurat
+7	38	Ns.Erma Prehantini, S.Kep	23	Instalasi Gawat Darurat
+88	13	Bayu Ihda Mahesti, S.Tr.Gz, Dietisien	15	Instalasi Gizi
+27	32	Ami Indah Krisdayanti, S.H.	18	Kasir
+79	80	Ardhitama Nopa Kusuma,S.M	18	Kasir
+62	34	Hafizh Fath Razaq,S.E	18	Kasir
+80	5	Rico Dwi Cahyo,S.M	18	Kasir
+35	NULL	Satria Hanung Anugerah, S.Ked	29	Kerohanian
+28	15	Nadifa Salsabila Nizar, S. Ak., M. Ak.	17	Keuangan
+77	46	Santosa,S.Ak	17	Keuangan
+23	65	Al Dilladyas Kusuma Putri, A,Md.A.K	7	Laboratorium
+44	8	Ani Setyani, A.Md	7	Laboratorium
+92	45	Mutiara Indah Sekar Kinasih	7	Laboratorium
+30	37	Dadang Andrian	20	Laundry
+85	42	Mochamad Hasan	20	Laundry
+8	19	Indah Yuli Puji Astuti, A.Md.Kep	10	Perawat Poli
+9	6	Intan Motiasari, A.Md.Kep	10	Perawat Poli
+12	39	Lusiana Fitriani, A.Md.Kep	10	Perawat Poli
+51	10	Ns. Diah Praneswari, S.Kep	10	Perawat Poli
+5	90	Ns. Sholikin, S.Kep	10	Perawat Poli
+40	73	Dewi Setyorini, A.Md.Kep	11	Perawat Rawat Inap
+43	64	Ns. Andika Riski Ferdianto, S.Kep	11	Perawat Rawat Inap
+41	75	Ns. Badriyatun Nadliroh, S.Kep	11	Perawat Rawat Inap
+82	74	Ns. Difki Candra Ristiyanto, S.Kep	11	Perawat Rawat Inap
+39	86	Ns. Dyah Ayu Setyaningsih, S.Kep	11	Perawat Rawat Inap
+59	NULL	Ns. Laktonia Hera Fattilda, S.Kep	11	Perawat Rawat Inap
+16	36	Ns. Nandiwardhana, S.Kep	11	Perawat Rawat Inap
+11	71	Ns. Nurul Aeni, S. Kep	11	Perawat Rawat Inap
+54	85	Ns. Yunis Yollanda Sari, S.Kep	11	Perawat Rawat Inap
+74	97	Ns.Rahma Fanisa,S.Kep	11	Perawat Rawat Inap
+38	72	Pupung Kristika, A.Md.Kep	11	Perawat Rawat Inap
+10	7	Ns. Leny Widi Susanti, S. Kep	24	PPI
+75	12	Anisya Pratiwi Wulandari,A.Md.RMIK	8	Rekam Medis
+61	40	Salma Zainudin Zidane,A.Md.RMIK	8	Rekam Medis
+33	43	Achmad Ryfai	5	Security
+32	61	Kasbi	5	Security
+49	77	Muhamad Irfan	5	Security
+63	79	Prayoga Adi Santoso	5	Security
+91	62	Rizky Dzul Khoirul	5	Security
+90	27	Tubagus Jayusman	5	Security
+26	18	Rosalia, S.Ak	14	Sekretaris
+36	23	Endri Sugiyanto	22	Teknisi
+72	60	Akbar Waskitojati Pamungkas,S.Tr.Kes	12	Tim IBS
+18	54	Andik Prasetyo, A.Md.Kep	12	Tim IBS
+68	56	Ani Trisnawati,A.Md.Kep	12	Tim IBS
+71	55	Himba Kusuma,S.Tr.Kes	12	Tim IBS
+58	57	Ilyas Triadi Lutfianto, A.Md.Kep	12	Tim IBS
+65	83	Maulana Ade Prasetyo,A.Md.Kep	12	Tim IBS
+66	53	Ns. Bintang Viga Handika,S.Kep	12	Tim IBS
+6	87	Ns. Dwika Lestariana, S.Kep	12	Tim IBS
+14	52	Ns. Fuad Alfatoni, S. Kep	12	Tim IBS
+67	50	Ns. Lia Murdaningsih,S.Tr.Kep	12	Tim IBS
+15	51	Ns. Yudistira Adi Pratama, S.Kep	12	Tim IBS

@@ -510,9 +510,15 @@ export async function createAuthContextByNip(
       [user.karyawan_id]
     );
     const roleRows = Array.isArray(roles) ? (roles as any[]) : [];
-    const is_admin = roleRows.some((r) => r.role_key === 'admin');
-    const is_leader = roleRows.some((r) => ['group_leader', 'scheduler'].includes(r.role_key));
-    const is_hr = roleRows.some((r) => r.role_key === 'hr');
+    const LEADER_ROLE_KEYS = ['group_leader', 'scheduler'];
+    const isGlobalRow = (r: any) => r.group_id === null || r.group_id === undefined;
+
+    // B2: admin/hr are global ONLY when granted by a global-scope role row
+    // (group_id IS NULL). A group-scoped admin/hr row must not confer global rights.
+    const is_admin = roleRows.some((r) => r.role_key === 'admin' && isGlobalRow(r));
+    const is_hr = roleRows.some((r) => r.role_key === 'hr' && isGlobalRow(r));
+    // Top-level is_leader is true if leader anywhere (global row or any group row).
+    const is_leader = roleRows.some((r) => LEADER_ROLE_KEYS.includes(r.role_key));
 
     const legacyFlagSnapshot: LegacyAuthFlagSnapshot = {
       privilege: is_admin ? 4 : 1,
@@ -529,19 +535,39 @@ export async function createAuthContextByNip(
 
     let groups: GroupAccess[] = [];
     if (!is_admin && !is_hr) {
-      const scopedGroupIds = roleRows
-        .filter((r) => ['group_leader', 'scheduler', 'viewer'].includes(r.role_key) && r.group_id)
-        .map((r) => Number(r.group_id));
+      // B1: resolve leadership PER GROUP from each group's own role row(s),
+      // not from a single account-wide role. Being leader of group A must not
+      // grant leader rights on group B where the employee is only a viewer.
+      const groupRoleMap = new Map<number, { is_leader: boolean }>();
+      for (const r of roleRows) {
+        if (isGlobalRow(r)) continue;
+        if (!['group_leader', 'scheduler', 'viewer'].includes(r.role_key)) continue;
+        const gid = Number(r.group_id);
+        const existing = groupRoleMap.get(gid) ?? { is_leader: false };
+        if (LEADER_ROLE_KEYS.includes(r.role_key)) existing.is_leader = true;
+        groupRoleMap.set(gid, existing);
+      }
+      const scopedGroupIds = [...groupRoleMap.keys()];
 
       if (scopedGroupIds.length > 0) {
         const [groupRows] = await connection.query(
           'SELECT id as group_id, nama_group FROM tb_group WHERE id IN (?)',
           [scopedGroupIds]
         );
-        const roleKey = roleRows.some((r) => ['group_leader', 'scheduler'].includes(r.role_key))
-          ? 'scheduler'
-          : 'viewer';
-        groups = buildScopedGroupAccess((groupRows as AccountGroupScopeRow[]) ?? [], roleKey);
+        const nameById = new Map<number, string | null>();
+        for (const row of (groupRows as AccountGroupScopeRow[]) ?? []) {
+          nameById.set(Number(row.group_id), row.nama_group || null);
+        }
+        groups = scopedGroupIds.map((gid) => {
+          const leaderOfGroup = groupRoleMap.get(gid)?.is_leader ?? false;
+          return {
+            group_id: gid,
+            nama_group: nameById.get(gid) ?? null,
+            can_schedule: leaderOfGroup,
+            can_dashboard: true,
+            is_leader: leaderOfGroup,
+          };
+        });
       }
 
       // Fallback: if no groups from roles, check tb_user_group_access
