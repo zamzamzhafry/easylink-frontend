@@ -429,6 +429,15 @@ export default function ScanlogPage() {
           onAction={retry}
         />
 
+        <InlineStatusPanel
+          message={
+            appliedFilters.source === 'canonical' && !loading && !loadError && records.length === 0
+              ? 'Canonical store has no events yet (SDK ingest pending). Switch Source to "Legacy Scanlog Table" to view historical scan data.'
+              : null
+          }
+          variant="warning"
+        />
+
         {/* Table */}
         <TableShell>
           <table className="w-full text-sm">
