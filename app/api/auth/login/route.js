@@ -5,12 +5,30 @@ import {
   createAuthContextByLoginId,
   createAuthContextByNip,
   findAuthAccountByLoginId,
+  isPlaceholderEmployeeNip,
   setAuthCookie,
   updateAuthAccountLastLogin,
 } from '@/lib/auth-session';
 import { buildNormalizedAuthUser } from '@/lib/auth-hardening-helpers';
 import { resolveAuthenticatedLane } from '@/lib/auth-login-helpers';
 import { verifyPassword, hashPassword } from '@/lib/password';
+import {
+  checkLoginRateLimit,
+  getLoginClientIp,
+  LOGIN_RATE_LIMIT_MAX,
+} from '@/lib/auth-login-rate-limit';
+
+// Grill H5: rate-limit IN (below); CSRF token OUT — LAN-only + same-origin enforced in middleware.ts isValidOrigin().
+
+// Unified credential-failure: invalid-id and invalid-password MUST return byte-identical bodies to prevent enumeration.
+const INVALID_CREDENTIALS_MESSAGE = 'Invalid credentials';
+
+function invalidCredentialsResponse() {
+  return NextResponse.json(
+    { ok: false, error: INVALID_CREDENTIALS_MESSAGE },
+    { status: 401 }
+  );
+}
 
 async function finalizeLoginSuccess({
   authContext,
@@ -51,6 +69,24 @@ export async function POST(request) {
       return NextResponse.json({ ok: false, error: 'Login ID is required' }, { status: 400 });
     }
 
+    const clientIp = getLoginClientIp(request);
+    const limit = checkLoginRateLimit({ ip: clientIp, loginId });
+    if (!limit.allowed) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: `Too many login attempts. Try again in ${limit.retryAfterSeconds}s.`,
+        },
+        {
+          status: 429,
+          headers: {
+            'Retry-After': String(limit.retryAfterSeconds),
+            'X-RateLimit-Limit': String(LOGIN_RATE_LIMIT_MAX),
+          },
+        }
+      );
+    }
+
     const connection = await pool.getConnection();
 
     try {
@@ -63,7 +99,7 @@ export async function POST(request) {
       if (selectedSubjectType === 'account') {
         const { valid, needsRehash } = await verifyPassword(standaloneAccount.password_hash, password);
         if (!valid) {
-          return NextResponse.json({ ok: false, error: 'Invalid credentials' }, { status: 401 });
+          return invalidCredentialsResponse();
         }
         if (needsRehash) {
           const hashed = await hashPassword(password);
@@ -84,7 +120,7 @@ export async function POST(request) {
       } else {
         const [users] = await connection.query(
           `
-          SELECT auth.*, k.nama
+          SELECT auth.*, k.nama, k.nip AS karyawan_nip
           FROM tb_karyawan_auth auth
           JOIN tb_karyawan k ON auth.karyawan_id = k.id
           WHERE auth.nip = ? AND auth.is_active = 1
@@ -93,16 +129,18 @@ export async function POST(request) {
         );
 
         if (!Array.isArray(users) || users.length === 0) {
-          return NextResponse.json(
-            { ok: false, error: 'Invalid credentials or inactive account' },
-            { status: 401 }
-          );
+          return invalidCredentialsResponse();
         }
 
         const user = users[0];
+
+        if (isPlaceholderEmployeeNip(user.karyawan_nip)) {
+          return invalidCredentialsResponse();
+        }
+
         const { valid: nipValid, needsRehash: nipNeedsRehash } = await verifyPassword(user.password_hash, password);
         if (!nipValid) {
-          return NextResponse.json({ ok: false, error: 'Invalid credentials' }, { status: 401 });
+          return invalidCredentialsResponse();
         }
         if (nipNeedsRehash) {
           const hashed = await hashPassword(password);

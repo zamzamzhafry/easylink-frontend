@@ -1,0 +1,31 @@
+=== Task 18 (M2): bcrypt audit of tb_karyawan_auth.password_hash ===
+Date: 2026-06-13T02:56:11Z
+DB: demo_easylinksdk @ 127.0.0.1:3306
+Bcrypt check regex: ^\$2[abxy]?\$  (login lib accepts $2a$/$2b$/$2y$, rounds=12)
+
+--- Per-row dump (prefix = first 4 chars; rest masked) ---
+karyawan_id	prefix	is_active	is_empty	len
+9999	$2b$	0	0	60
+10003	$2b$	0	0	60
+10004		0	1	0
+10006	$2b$	1	0	60
+10007	$2b$	1	0	60
+10008	$2b$	1	0	60
+
+--- COUNT assertions ---
+ASSERT active non-bcrypt == 0 : 0
+INFO   total non-bcrypt (any state) : 1
+
+--- Findings ---
+PASS: invariant COUNT(password_hash NOT LIKE '$2%' AND is_active=1) = 0 holds.
+All 3 active rows (kar10006, kar10007, kar10008) are bcrypt ($2b$, len=60).
+Inactive rows kar9999, kar10003 are also bcrypt ($2b$, len=60) - no action.
+
+--- Documented exception (NOT rehashed) ---
+kar10004: password_hash='' (empty, len=0), is_active=0.
+  Reason: inactive row cannot authenticate (is_active=0 gates login).
+  verifyPassword() returns {valid:false} when stored empty & typed non-empty (lib/password.ts L27).
+  Decision: documented, left untouched per task MUST-NOT (no is_active change, no rehash of unknown/empty).
+
+--- Remediation log ---
+NONE. No active row required rehash. No UPDATE executed. No rows modified.

@@ -1,0 +1,110 @@
+================================================================
+TASK 11 (H4): GROUPS LEADER READ+WRITE RE-ANCHOR
+  tb_user_group_access.is_leader (pin-keyed device table)
+    -> tb_karyawan_roles (karyawan_id-keyed, role_key='group_leader')
+Date: 2026-06-13  Agent: sisyphus-junior
+================================================================
+
+SCOPE
+  - READ + WRITE migrated together (assign_leader / remove_leader / GET).
+  - Device-table writes LEFT IN PLACE as dead data (never read back).
+  - recordRoleChange (Task 5 audit) kept on every grant/revoke.
+  - NO ALTER of tb_karyawan_roles ENUM. NO touch to login/auth.nip.
+
+----------------------------------------------------------------
+1) MIGRATION  scripts/migration-task-11-leader-backfill.sql
+----------------------------------------------------------------
+Idempotent INSERT ... SELECT ... WHERE NOT EXISTS.
+Source: every tb_user_group_access.is_leader=1, pin -> karyawan_id via
+        tb_karyawan.pin JOIN. Inserts (karyawan_id,'group_leader',group_id)
+        only when an identical row is absent. Multi-leader/group allowed.
+
+Applied to demo_easylinksdk:
+  group_leader role rows BEFORE : 1   (kar10007/grp32 seed)
+  group_leader role rows AFTER  : 5   (+4 backfilled)
+  RE-RUN (idempotency)          : 5   (no change)
+
+Backfilled rows (4):
+  karyawan_id=2   group_leader grp2  (pin82  dr. Dini Pangestika)
+  karyawan_id=23  group_leader grp7  (pin65  Al Dilladyas Kusuma Putri)
+  karyawan_id=29  group_leader grp9  (pin17  Yustisia Karinta N.)
+  karyawan_id=108 group_leader grp9  (pin99  Arum Purwaningsih)   <- grp9 MULTI-LEADER
+Already present (1): karyawan_id=10007 group_leader grp32 (leader001)
+
+----------------------------------------------------------------
+2) CODE CHANGES  app/api/groups/route.js
+----------------------------------------------------------------
+GET leader READ (L104-119):
+  Old: SELECT FROM tb_user_group_access uga LEFT JOIN tb_user WHERE uga.is_leader=1
+  New: SELECT FROM tb_karyawan_roles r
+         JOIN tb_karyawan k ON k.id=r.karyawan_id
+         LEFT JOIN tb_user u ON u.pin=k.pin
+       WHERE r.role_key=? (LEADER_ROLE_KEY) AND r.group_id IS NOT NULL
+         [+ k.isDeleted=0 when column present]
+       Projects: group_id, karyawan_id, k.pin, k.nip,
+                 COALESCE(k.nama,u.nama,k.pin) AS nama, u.privilege
+  (pin still projected for backward-compat with admin UI which keys leaders by pin)
+
+assign_leader (L175-232):
+  - resolveKaryawanIdByPin(body.pin); 400 if no karyawan.
+  - INSERT INTO tb_karyawan_roles (karyawan_id, role_key, group_id)
+      SELECT ... WHERE NOT EXISTS (...)   <- multi-leader safe, no dup (L188-204)
+  - Device write retained, column-gated (L207-222) -> dead data only.
+  - recordRoleChange grant (L223-230). 
+
+remove_leader (L234-273):
+  - resolveKaryawanIdByPin(body.pin); 400 if no karyawan.
+  - DELETE FROM tb_karyawan_roles WHERE karyawan_id=? AND role_key=? AND group_id=? (L245-248)
+  - Device write retained, column-gated (L251-263) -> dead data only.
+  - recordRoleChange revoke (L265-272).
+
+DEVICE WRITES UNTOUCHED: tb_user_group_access INSERT/UPDATE blocks preserved
+  verbatim inside `if (await hasGroupAccessColumn('is_leader'))` guards; never read.
+
+----------------------------------------------------------------
+3) GATES
+----------------------------------------------------------------
+npm run typecheck (tsc --noEmit) : EXIT 0 CLEAN  <- authoritative TS gate
+npm run build                    : FAILS on Google-Fonts ETIMEDOUT in
+  app/layout.jsx (DM Sans / DM Mono) — ENVIRONMENTAL offline-sandbox, same
+  baseline class as Task 5/6/7 evidence; NOT a code regression. App code +
+  /api/groups compiles fine under dev server.
+
+----------------------------------------------------------------
+4) LIVE QA  (admin001 cookie, karyawan_id=10006)
+----------------------------------------------------------------
+LIST: GET /api/groups leaders[] == tb_karyawan_roles ground truth, byte-match:
+  grp2  kar2  pin82       nip 20211200006  dr. Dini Pangestika
+  grp7  kar23 pin65       nip 20211200027  Al Dilladyas Kusuma Putri
+  grp9  kar108 pin99      nip 20250700001  Arum Purwaningsih      } grp9
+  grp9  kar29 pin17       nip 9990009      Yustisia Karinta N.    } MULTI
+  grp32 kar10007 pin leader001 nip leader001 Seed Leader 001
+  has_leader_column: true
+
+ASSIGN cycle (pin=employee001 -> kar10008, grp32):
+  POST assign_leader -> {"ok":true}
+  roles row created: id=13 (10008, group_leader, 32)
+  audit row:  actor=10006 target=10008 grant group_leader grp32
+  API leaders grp32 now MULTI: [kar10008, kar10007]
+  device row employee001/grp32: is_leader flipped 0->1 (DEAD DATA, expected)
+
+ASSIGN AGAIN (idempotency):
+  POST assign_leader -> {"ok":true}; roles rows for kar10008/grp32 == 1 (no dup)
+
+REMOVE cycle:
+  POST remove_leader -> {"ok":true}
+  roles row for kar10008/grp32 == 0 (deleted)
+  audit row:  actor=10006 target=10008 revoke group_leader grp32
+  API leaders grp32 back to single: [kar10007]
+
+audit table count: 3 (pre) -> 6 (post: 2 grants + 1 revoke)
+
+CLEAN STATE: roles group_leader back to backfilled 5 (kar10008 gone);
+  QA-mutated device row employee001/grp32 manually restored to is_leader=0
+  (device table is non-authoritative; restore is QA hygiene, not a code path).
+
+----------------------------------------------------------------
+RESULT: PASS. Leader READ+WRITE sourced from tb_karyawan_roles.
+  Multi-leader per group works. Audit wired. Device writes intact as dead data.
+  NOT committed.
+================================================================

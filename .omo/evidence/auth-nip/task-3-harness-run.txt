@@ -1,0 +1,60 @@
+=== EasyLink Auth QA Harness ===
+Login ID : employee001
+Cookie   : /tmp/qa-harness-employee001.cookie
+
+Health   : dev server UP (:3000 -> 200)
+
+=== Response ===
+HTTP Status : 200
+
+--- Parsed fields (jq) ---
+{
+  "subject_type": "employee_nip",
+  "karyawan_id": 10008,
+  "is_admin": false,
+  "is_leader": false,
+  "groups": [
+    {
+      "group_id": 32,
+      "nama_group": "Role Fixture Auth Group",
+      "can_schedule": false,
+      "can_dashboard": true,
+      "is_leader": false
+    }
+  ]
+}
+
+--- Raw body ---
+{
+  "ok": true,
+  "user": {
+    "pin": "employee001",
+    "nama": "Seed Employee 001",
+    "privilege": 1,
+    "is_admin": false,
+    "is_hr": false,
+    "is_leader": false,
+    "can_schedule": false,
+    "can_dashboard": false,
+    "groups": [
+      {
+        "group_id": 32,
+        "nama_group": "Role Fixture Auth Group",
+        "can_schedule": false,
+        "can_dashboard": true,
+        "is_leader": false
+      }
+    ],
+    "canonical_roles": [
+      "employee"
+    ],
+    "subject_type": "employee_nip",
+    "account_id": null,
+    "login_id": null,
+    "role_key": null,
+    "nip": "employee001",
+    "karyawan_id": 10008
+  }
+}
+
+=== Done ===

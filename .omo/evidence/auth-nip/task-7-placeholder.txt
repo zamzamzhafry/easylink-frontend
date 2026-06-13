@@ -1,0 +1,37 @@
+=== T7 PLACEHOLDER NIP BLOCK QA ===
+2026-06-13T02:41:41+00:00
+
+--- SEED (temp) ---
+karyawan_id=1 nip(auth)=QA_PH_TEST is_active=1 k.nip(real)=9990001 (placeholder)
+password reused from employee001 ('password')
+
+--- A) Placeholder login attempt (QA_PH_TEST / password) — MUST BE 401 unified 'Invalid credentials' ---
+{"ok":false,"error":"Invalid credentials"}
+HTTP_STATUS:401
+
+--- B) employee001 / password (alpha NIP) — MUST BE 200 ---
+{"ok":true,"user":{"pin":"employee001","nama":"Seed Employee 001","privilege":1,"is_admin":false,"is_hr":false,"is_leader":false,"can_schedule":false,"can_dashboard":false,"groups":[{"group_id":32,"nama_group":"Role Fixture Auth Group","can_schedule":false,"can_dashboard":true,"is_leader":false}],"canonical_roles":["employee"],"subject_type":"employee_nip","account_id":null,"login_id":null,"role_key":null,"nip":"employee001","karyawan_id":10008}}
+HTTP_STATUS line: HTTP_STATUS:200
+
+--- C) employee001 / WRONGPW — MUST BE 401 with identical body to A ---
+{"ok":false,"error":"Invalid credentials"}
+HTTP_STATUS:401
+
+--- D) BODY IDENTITY DIFF (A placeholder-block vs C wrong-password) ---
+placeholder-block body: {"ok":false,"error":"Invalid credentials"}
+wrong-password   body: {"ok":false,"error":"Invalid credentials"}
+IDENTICAL: YES
+
+--- CLEANUP CONFIRMATION ---
+Temp seed tb_karyawan_auth(nip='QA_PH_TEST', karyawan_id=1) DELETED.
+Post-delete count of QA_PH_TEST rows: 0 (verified via SQL above session).
+kar1 originally had ZERO auth rows pre-seed (/tmp/qa-ph-snapshot.tsv empty), so DELETE restores baseline.
+Nothing else mutated in DB.
+
+=== T7 RE-VERIFICATION (current tree) 2026-06-13T02:52:01+00:00 ===
+seed: kar1 auth.nip=QA_PH_T7 is_active=1, k.nip=9990001 (placeholder), hash copied from employee001 (pw='password')
+A) placeholder QA_PH_T7/password -> HTTP 401  {"ok":false,"error":"Invalid credentials"}  [expect 401 unified]
+C) employee001/WRONGPW          -> {"ok":false,"error":"Invalid credentials"}
+B) employee001/password         -> HTTP 200  [expect 200]
+BODY IDENTICAL (A placeholder-block == C wrong-pw): YES
+CLEANUP: DELETE QA_PH_T7 done; kar1 auth row count now = 0 (baseline 0 restored)

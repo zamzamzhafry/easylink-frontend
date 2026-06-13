@@ -25,6 +25,22 @@ const SECRET = (() => {
 const AUTH_ACCOUNT_TABLE = 'auth_accounts';
 const AUTH_ACCOUNT_SCOPE_TABLE = 'auth_account_group_scope';
 
+// Placeholder NIPs assigned to 44 staff that had NULL tb_karyawan.nip pre-backfill.
+// They MUST be blocked from logging in until HR backfills the real NIP.
+// Range is strictly numeric integer [PLACEHOLDER_NIP_MIN, PLACEHOLDER_NIP_MAX].
+// Map of placeholder NIP -> karyawan/name: /tmp/nip_placeholder_report.tsv
+export const PLACEHOLDER_NIP_MIN = 9990001;
+export const PLACEHOLDER_NIP_MAX = 9990044;
+
+export function isPlaceholderEmployeeNip(rawNip: unknown): boolean {
+  if (rawNip == null) return false;
+  const str = String(rawNip).trim();
+  if (!/^\d+$/.test(str)) return false;
+  const n = Number(str);
+  if (!Number.isInteger(n)) return false;
+  return n >= PLACEHOLDER_NIP_MIN && n <= PLACEHOLDER_NIP_MAX;
+}
+
 function parseEnabledFlag(raw: string | null | undefined, defaultEnabled = true) {
   if (raw == null) return defaultEnabled;
   const normalized = raw.trim().toLowerCase();
@@ -64,6 +80,21 @@ type GroupAccessRow = {
 type AccountGroupScopeRow = {
   group_id: number | string;
   nama_group: string | null;
+};
+
+// Shared row shape for createAuthContextByNip + createAuthContextByKaryawanId.
+// SELECT projection: a.karyawan_id, a.nip, k.nama, k.pin, k.nip AS karyawan_nip
+type KaryawanAuthRow = {
+  karyawan_id: number | string;
+  nip: string;
+  nama: string | null;
+  pin: string | null;
+  karyawan_nip: string | null;
+};
+
+type KaryawanRoleRow = {
+  role_key: string;
+  group_id: number | string | null;
 };
 
 export type AuthAccountRole = 'admin' | 'hr' | 'scheduler' | 'viewer';
@@ -498,18 +529,20 @@ export async function createAuthContextByNip(
     }
 
     const [users] = await connection.query(
-      'SELECT a.karyawan_id, a.nip, k.nama, k.pin FROM tb_karyawan_auth a JOIN tb_karyawan k ON a.karyawan_id = k.id WHERE a.nip = ? AND a.is_active = 1',
+      'SELECT a.karyawan_id, a.nip, k.nama, k.pin, k.nip AS karyawan_nip FROM tb_karyawan_auth a JOIN tb_karyawan k ON a.karyawan_id = k.id WHERE a.nip = ? AND a.is_active = 1',
       [nip]
     );
 
     if (!Array.isArray(users) || users.length === 0) return null;
-    const user = users[0] as any;
+    const user = (users as KaryawanAuthRow[])[0];
+
+    if (isPlaceholderEmployeeNip(user.karyawan_nip)) return null;
 
     const [roles] = await connection.query(
       'SELECT role_key, group_id FROM tb_karyawan_roles WHERE karyawan_id = ?',
       [user.karyawan_id]
     );
-    const roleRows = Array.isArray(roles) ? (roles as any[]) : [];
+    const roleRows: KaryawanRoleRow[] = Array.isArray(roles) ? (roles as KaryawanRoleRow[]) : [];
     const LEADER_ROLE_KEYS = ['group_leader', 'scheduler'];
     const isGlobalRow = (r: any) => r.group_id === null || r.group_id === undefined;
 
@@ -597,7 +630,7 @@ export async function createAuthContextByNip(
       nip: user.nip,
       pin: user.pin || user.nip,
       karyawan_id: Number(user.karyawan_id),
-      nama: user.nama,
+      nama: user.nama || user.nip,
       privilege: is_admin ? 4 : 1,
       is_admin,
       is_leader,
@@ -610,6 +643,142 @@ export async function createAuthContextByNip(
     };
   } catch (error) {
     console.error('Error in createAuthContextByNip:', error);
+    return null;
+  } finally {
+    if (shouldRelease && connection) connection.release();
+  }
+}
+
+// Mirrors createAuthContextByNip; keyed by immutable karyawan_id for the
+// re-anchor migration. Intentional SQL divergence: adds k.isDeleted = 0.
+export async function createAuthContextByKaryawanId(
+  karyawanId: number,
+  connectionParam: any = null
+): Promise<AuthContext | null> {
+  let connection = connectionParam;
+  let shouldRelease = false;
+
+  try {
+    if (!connection) {
+      connection = await pool.getConnection();
+      shouldRelease = true;
+    }
+
+    const [users] = await connection.query(
+      'SELECT a.karyawan_id, a.nip, k.nama, k.pin, k.nip AS karyawan_nip FROM tb_karyawan_auth a JOIN tb_karyawan k ON a.karyawan_id = k.id WHERE k.id = ? AND a.is_active = 1 AND k.isDeleted = 0',
+      [karyawanId]
+    );
+
+    if (!Array.isArray(users) || users.length === 0) return null;
+    const user = (users as KaryawanAuthRow[])[0];
+
+    if (isPlaceholderEmployeeNip(user.karyawan_nip)) return null;
+
+    const [roles] = await connection.query(
+      'SELECT role_key, group_id FROM tb_karyawan_roles WHERE karyawan_id = ?',
+      [user.karyawan_id]
+    );
+    const roleRows: KaryawanRoleRow[] = Array.isArray(roles) ? (roles as KaryawanRoleRow[]) : [];
+    const LEADER_ROLE_KEYS = ['group_leader', 'scheduler'];
+    const isGlobalRow = (r: any) => r.group_id === null || r.group_id === undefined;
+
+    // B2: admin/hr are global ONLY when granted by a global-scope role row
+    // (group_id IS NULL). A group-scoped admin/hr row must not confer global rights.
+    const is_admin = roleRows.some((r) => r.role_key === 'admin' && isGlobalRow(r));
+    const is_hr = roleRows.some((r) => r.role_key === 'hr' && isGlobalRow(r));
+    // Top-level is_leader is true if leader anywhere (global row or any group row).
+    const is_leader = roleRows.some((r) => LEADER_ROLE_KEYS.includes(r.role_key));
+
+    const legacyFlagSnapshot: LegacyAuthFlagSnapshot = {
+      privilege: is_admin ? 4 : 1,
+      is_admin,
+      is_leader,
+      is_hr,
+      can_schedule: is_admin || is_hr || is_leader,
+      can_dashboard: is_admin || is_hr || is_leader,
+    };
+    const canonical_roles = getCanonicalRolesFromLegacyAuth(
+      legacyFlagSnapshot,
+      roleRows.map((r) => r.role_key)
+    );
+
+    let groups: GroupAccess[] = [];
+    if (!is_admin && !is_hr) {
+      // B1: resolve leadership PER GROUP from each group's own role row(s),
+      // not from a single account-wide role. Being leader of group A must not
+      // grant leader rights on group B where the employee is only a viewer.
+      const groupRoleMap = new Map<number, { is_leader: boolean }>();
+      for (const r of roleRows) {
+        if (isGlobalRow(r)) continue;
+        if (!['group_leader', 'scheduler', 'viewer'].includes(r.role_key)) continue;
+        const gid = Number(r.group_id);
+        const existing = groupRoleMap.get(gid) ?? { is_leader: false };
+        if (LEADER_ROLE_KEYS.includes(r.role_key)) existing.is_leader = true;
+        groupRoleMap.set(gid, existing);
+      }
+      const scopedGroupIds = [...groupRoleMap.keys()];
+
+      if (scopedGroupIds.length > 0) {
+        const [groupRows] = await connection.query(
+          'SELECT id as group_id, nama_group FROM tb_group WHERE id IN (?)',
+          [scopedGroupIds]
+        );
+        const nameById = new Map<number, string | null>();
+        for (const row of (groupRows as AccountGroupScopeRow[]) ?? []) {
+          nameById.set(Number(row.group_id), row.nama_group || null);
+        }
+        groups = scopedGroupIds.map((gid) => {
+          const leaderOfGroup = groupRoleMap.get(gid)?.is_leader ?? false;
+          return {
+            group_id: gid,
+            nama_group: nameById.get(gid) ?? null,
+            can_schedule: leaderOfGroup,
+            can_dashboard: true,
+            is_leader: leaderOfGroup,
+          };
+        });
+      }
+
+      // Fallback: if no groups from roles, check tb_user_group_access
+      if (groups.length === 0 && (await hasTable('tb_user_group_access'))) {
+        const userPin = user.pin || user.nip;
+        if (userPin) {
+          const [ugaRows] = await connection.query(
+            `SELECT uga.group_id, g.nama_group, uga.can_schedule, uga.can_dashboard, uga.is_leader
+             FROM tb_user_group_access uga
+             LEFT JOIN tb_group g ON g.id = uga.group_id
+             WHERE uga.pin = ? AND uga.is_approved = 1`,
+            [userPin]
+          );
+          const ugaList = Array.isArray(ugaRows) ? (ugaRows as GroupAccessRow[]) : [];
+          groups = ugaList.map((row) => ({
+            group_id: Number(row.group_id),
+            nama_group: row.nama_group || null,
+            can_schedule: normalizeBoolean(row.can_schedule),
+            can_dashboard: normalizeBoolean(row.can_dashboard),
+            is_leader: normalizeBoolean(row.is_leader),
+          }));
+        }
+      }
+    }
+
+    return {
+      nip: user.nip,
+      pin: user.pin || user.nip,
+      karyawan_id: Number(user.karyawan_id),
+      nama: user.nama || user.nip,
+      privilege: is_admin ? 4 : 1,
+      is_admin,
+      is_leader,
+      is_hr,
+      can_schedule: is_admin || is_hr || is_leader,
+      can_dashboard: is_admin || is_hr || is_leader,
+      groups,
+      canonical_roles,
+      subject_type: 'employee_nip',
+    };
+  } catch (error) {
+    console.error('Error in createAuthContextByKaryawanId:', error);
     return null;
   } finally {
     if (shouldRelease && connection) connection.release();

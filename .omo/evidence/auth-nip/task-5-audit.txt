@@ -1,0 +1,35 @@
+=== Task 5 (M3) audit-row evidence ===
+timestamp_utc=2026-06-13T02:44:22Z
+
+--- DESCRIBE tb_role_change_audit ---
+id	int	NO	PRI	NULL	auto_increment
+actor_karyawan_id	int	YES	MUL	NULL	
+target_karyawan_id	int	NO	MUL	NULL	
+action	enum('grant','revoke')	NO		NULL	
+role_key	varchar(64)	NO	MUL	NULL	
+group_id	int	YES		NULL	
+created_at	datetime	NO		CURRENT_TIMESTAMP	DEFAULT_GENERATED
+
+--- Baseline count for target 10007 ---
+baseline=0
+
+--- POST assign_leader (pin=leader001, group_id=32) ---
+http=200 body={"ok":true}
+grant_count=1 (expect 1)
+
+--- POST remove_leader (pin=leader001, group_id=32) ---
+http=200 body={"ok":true}
+revoke_count=1 (expect 1)
+
+--- Final rows ---
+3	10006	10007	grant	group_leader	32	2026-06-13 02:44:23
+4	10006	10007	revoke	group_leader	32	2026-06-13 02:44:24
+
+--- Non-null verification (actor + role_key) ---
+3	grant	1	1
+4	revoke	1	1
+
+--- Restore seed state: re-assign leader001 to group 32 ---
+http=200 body={"ok":true}
+leader001	32	1
+(Note: this restore adds 1 extra 'grant' audit row, which is the audit table working as designed.)

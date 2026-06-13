@@ -1,0 +1,27 @@
+=== Task 6 (H5) — login rate-limit + unified credential error evidence ===
+Sat Jun 13 02:51:24 AM UTC 2026
+API: http://localhost:3000/api/auth/login
+Limit: 10 attempts / 60s sliding window, keyed ${ip}::${loginId} (lib/auth-login-rate-limit.js)
+
+=== A. 11 rapid bad-cred logins same IP+loginId — expect 1..10=401, 11=429 ===
+  attempts 1-10 -> HTTP 401  body={"ok":false,"error":"Invalid credentials"}
+  attempt  11   -> HTTP 429  body={"ok":false,"error":"Too many login attempts. Try again in 59s."}
+                  headers: Retry-After + X-RateLimit-Limit:10
+
+=== B. Different login_id same IP NOT blocked (per-account scoping) ===
+  bystander login_id -> HTTP 401 (NOT 429) — proves cap is per ip+loginId, not per IP.
+
+=== C. Unified credential error: invalid-id body == invalid-password body ===
+  invalid-id : {"ok":false,"error":"Invalid credentials"}
+  invalid-pw : {"ok":false,"error":"Invalid credentials"}
+  diff: EMPTY -> byte-identical, no user enumeration leak.
+
+=== D. Legit logins unaffected (success path intact) ===
+  admin001    -> 200 ok:true
+  leader001   -> 200 ok:true
+  employee001 -> 200 ok:true
+
+=== Gates ===
+  npm run typecheck : clean (tsc --noEmit)
+  npm run build     : clean (all routes compiled, Middleware 27.6kB)
+  node --test auth-*: 31 pass / 0 fail (incl tests/auth-login-rate-limit.test.js)

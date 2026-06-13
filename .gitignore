@@ -6,6 +6,7 @@ node_modules/
 !migration_v3_clean_slate_schema.sql
 !migration_v3_clean_slate_rollback.sql
 !migration_machine_user_polling.sql
+!scripts/migration-task-*.sql
 *.tsbuildinfo
 # .sisyphus/ intentionally tracked — AI knowledge (sessions, plans, notepads)
 .docs/

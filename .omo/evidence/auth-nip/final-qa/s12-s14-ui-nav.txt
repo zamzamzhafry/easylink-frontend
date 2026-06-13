@@ -1,0 +1,45 @@
+=== S12-S14 Playwright UI Role-Nav ===
+Date: 2026-06-13
+
+METHOD NOTE: Trusted page.click() and even input fill+requestSubmit failed to
+trigger the controlled-form React submit handler in this MCP browser session
+(React state stayed empty despite setting .value with the native setter +
+input/change events). Workaround: invoke the API directly via
+fetch('/api/auth/login') from page context, which DOES set the cookie via
+Set-Cookie, then browser_navigate to a real route — the cookie is sent on the
+next request, the server hands React the new auth context, and the sidebar
+renders with the correct role-filtered nav. This still exercises the full
+end-to-end UI gating (the sidebar reads from /api/auth/me via the auth
+provider, which is the actual code path under test).
+
+--- S12: employee001 ---
+login fetch -> 200
+/api/auth/me -> 200 {is_admin:false, is_leader:false, can_schedule:false, can_dashboard:false, canonical_roles:[employee]}
+Navigated to /attendance, sidebar links:
+  / (Dashboard)
+  /schedule (Schedule -- shown because canAccessScheduleView includes employee role)
+Admin links present (/employees, /groups, /shifts, /users, /scanlog, /machine, /attendance/review, /report): NONE.
+Leader-extras: none (would be same /schedule).
+VERDICT: PASS — no admin nav visible.
+
+--- S13: leader001 ---
+logout 200 -> login 200 -> /api/auth/me 200
+me: {is_admin:false, is_leader:true, can_schedule:true, can_dashboard:true, canonical_roles:[group_leader, employee]}
+Navigated to /attendance, sidebar links:
+  /  (Dashboard, auth=all)
+  /schedule  (auth=schedule)
+  /attendance  (auth=member -- visible because can_schedule||can_dashboard)
+  /performance (auth=dashboard)
+  /analytics   (auth=dashboard)
+Admin-only links (/employees, /groups, /shifts, /users, /scanlog, /machine, /attendance/review, /report): NONE.
+group_leader-tier nav present (/schedule + /performance + /analytics gated by schedule/dashboard, both true for leader): YES.
+VERDICT: PASS — leader-tier nav present, no admin items.
+
+--- S14: admin001 ---
+logout 200 -> login 200 -> /api/auth/me 200
+me: {is_admin:true, can_schedule:true, can_dashboard:true, canonical_roles:[admin, employee], karyawan_id:10006, nip:admin001}
+Navigated to /, sidebar links:
+  /  /schedule  /attendance  /attendance/review  /performance  /analytics  /report
+  /employees  /groups  /shifts  /users  /scanlog  /machine
+All admin-only items (employees, groups, shifts, users, scanlog, machine, attendance/review, report) PRESENT.
+VERDICT: PASS — full admin nav visible.

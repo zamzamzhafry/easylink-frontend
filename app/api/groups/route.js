@@ -8,6 +8,17 @@ import {
   getAuthContextFromCookies,
   unauthorizedResponse,
 } from '@/lib/auth-session';
+import { recordRoleChange } from '@/lib/auth-audit';
+
+const LEADER_ROLE_KEY = 'group_leader';
+
+async function resolveKaryawanIdByPin(pin) {
+  if (pin === undefined || pin === null || pin === '') return null;
+  const [rows] = await pool.query('SELECT id FROM tb_karyawan WHERE pin = ? LIMIT 1', [pin]);
+  if (!Array.isArray(rows) || rows.length === 0) return null;
+  const id = rows[0].id;
+  return Number.isInteger(id) && id > 0 ? id : null;
+}
 
 const schemaCache = new Map();
 
@@ -39,6 +50,9 @@ export async function GET() {
   if (authCheck.error) return authCheck.error;
 
   const canFilterDeleted = await hasKaryawanColumn('isDeleted');
+  // Device table column probe kept only for the response flag the admin UI
+  // still reads (has_leader_column). Leader source-of-truth now lives in
+  // tb_karyawan_roles (Task 11 / H4), not tb_user_group_access.is_leader.
   const hasLeader = await hasGroupAccessColumn('is_leader');
 
   const [groups] = await pool.query(`
@@ -85,25 +99,23 @@ export async function GET() {
     ORDER BY eg.group_id, nama_karyawan
   `);
 
-  const leaders = hasLeader
-    ? await pool.query(`
-        SELECT
-          uga.group_id,
-          uga.pin,
-          u.nama,
-          u.privilege,
-          uga.can_schedule,
-          uga.can_dashboard,
-          uga.is_approved
-        FROM tb_user_group_access uga
-        LEFT JOIN tb_user u ON u.pin = uga.pin
-        WHERE uga.is_leader = 1
-          AND uga.is_approved = 1
-        ORDER BY uga.group_id, u.nama, uga.pin
-      `)
-    : [[]];
-
-  const leaderRows = Array.isArray(leaders[0]) ? leaders[0] : [];
+  const [leaderRows] = await pool.query(
+    `SELECT
+      r.group_id,
+      r.karyawan_id,
+      k.pin,
+      k.nip,
+      COALESCE(k.nama, u.nama, k.pin) AS nama,
+      u.privilege
+    FROM tb_karyawan_roles r
+    JOIN tb_karyawan k ON k.id = r.karyawan_id
+    LEFT JOIN tb_user u ON u.pin = k.pin
+    WHERE r.role_key = ?
+      AND r.group_id IS NOT NULL
+      ${canFilterDeleted ? 'AND k.isDeleted = 0' : ''}
+    ORDER BY r.group_id, nama, r.karyawan_id`,
+    [LEADER_ROLE_KEY]
+  );
 
   return NextResponse.json({
     groups,
@@ -161,51 +173,102 @@ export async function POST(req) {
   }
 
   if (body.action === 'assign_leader') {
-    const hasLeader = await hasGroupAccessColumn('is_leader');
-    if (!hasLeader) {
+    const targetKaryawanId = await resolveKaryawanIdByPin(body.pin);
+    if (targetKaryawanId === null) {
       return NextResponse.json(
-        { ok: false, error: 'Column is_leader is missing. Run ALTER TABLE migration first.' },
+        { ok: false, error: 'No karyawan matches that pin.' },
         { status: 400 }
       );
     }
 
+    // Source-of-truth write: karyawan_id-keyed group_leader role.
+    // Multi-leader per group is allowed, so guard the INSERT on absence of
+    // an identical (karyawan_id, group_leader, group_id) row.
     await pool.query(
-      `INSERT INTO tb_user_group_access
-        (pin, group_id, can_schedule, can_dashboard, is_leader, is_approved, approved_by, approved_at)
-       VALUES (?, ?, 1, 1, 1, 1, ?, NOW())
-       ON DUPLICATE KEY UPDATE
-         can_schedule = 1,
-         can_dashboard = 1,
-         is_leader = 1,
-         is_approved = 1,
-         approved_by = VALUES(approved_by),
-         approved_at = VALUES(approved_at)`,
-      [body.pin, body.group_id, auth.pin]
+      `INSERT INTO tb_karyawan_roles (karyawan_id, role_key, group_id)
+       SELECT ?, ?, ?
+       FROM DUAL
+       WHERE NOT EXISTS (
+         SELECT 1 FROM tb_karyawan_roles
+         WHERE karyawan_id = ? AND role_key = ? AND group_id = ?
+       )`,
+      [
+        targetKaryawanId,
+        LEADER_ROLE_KEY,
+        body.group_id,
+        targetKaryawanId,
+        LEADER_ROLE_KEY,
+        body.group_id,
+      ]
     );
+
+    // Legacy device-table write retained as dead data only (machine/device
+    // still writes here); never read back. Best-effort, column-gated.
+    if (await hasGroupAccessColumn('is_leader')) {
+      await pool.query(
+        `INSERT INTO tb_user_group_access
+          (pin, group_id, can_schedule, can_dashboard, is_leader, is_approved, approved_by, approved_at)
+         VALUES (?, ?, 1, 1, 1, 1, ?, NOW())
+         ON DUPLICATE KEY UPDATE
+           can_schedule = 1,
+           can_dashboard = 1,
+           is_leader = 1,
+           is_approved = 1,
+           approved_by = VALUES(approved_by),
+           approved_at = VALUES(approved_at)`,
+        [body.pin, body.group_id, auth.pin]
+      );
+    }
+
+    await recordRoleChange({
+      actorKaryawanId: auth.karyawan_id ?? null,
+      targetKaryawanId,
+      action: 'grant',
+      roleKey: LEADER_ROLE_KEY,
+      groupId: body.group_id ?? null,
+    });
 
     return NextResponse.json({ ok: true });
   }
 
   if (body.action === 'remove_leader') {
-    const hasLeader = await hasGroupAccessColumn('is_leader');
-    if (!hasLeader) {
+    const targetKaryawanId = await resolveKaryawanIdByPin(body.pin);
+    if (targetKaryawanId === null) {
       return NextResponse.json(
-        { ok: false, error: 'Column is_leader is missing. Run ALTER TABLE migration first.' },
+        { ok: false, error: 'No karyawan matches that pin.' },
         { status: 400 }
       );
     }
 
+    // Source-of-truth revoke: drop the karyawan_id-keyed group_leader role.
     await pool.query(
-      `UPDATE tb_user_group_access
-       SET is_leader = 0,
-           can_schedule = 0,
-           can_dashboard = 1,
-           is_approved = 1,
-           approved_by = ?,
-           approved_at = NOW()
-       WHERE pin = ? AND group_id = ?`,
-      [auth.pin, body.pin, body.group_id]
+      `DELETE FROM tb_karyawan_roles
+       WHERE karyawan_id = ? AND role_key = ? AND group_id = ?`,
+      [targetKaryawanId, LEADER_ROLE_KEY, body.group_id]
     );
+
+    // Legacy device-table write retained as dead data only; never read back.
+    if (await hasGroupAccessColumn('is_leader')) {
+      await pool.query(
+        `UPDATE tb_user_group_access
+         SET is_leader = 0,
+             can_schedule = 0,
+             can_dashboard = 1,
+             is_approved = 1,
+             approved_by = ?,
+             approved_at = NOW()
+         WHERE pin = ? AND group_id = ?`,
+        [auth.pin, body.pin, body.group_id]
+      );
+    }
+
+    await recordRoleChange({
+      actorKaryawanId: auth.karyawan_id ?? null,
+      targetKaryawanId,
+      action: 'revoke',
+      roleKey: LEADER_ROLE_KEY,
+      groupId: body.group_id ?? null,
+    });
 
     return NextResponse.json({ ok: true });
   }
