@@ -31,6 +31,21 @@ From Task 1 preflight, still current. DB @ `127.0.0.1:3306`, user `easylink`.
 - Account lane: `admin01` / `Admin@123` in `auth_accounts` (separate from NIP lane).
 - **No scheduler, no hr rows exist** → why T4 shrinks to `viewer→employee` only.
 
+## Break-glass identity (T16, Amendment A)
+
+Canonical break-glass NIP-lane admin = **`admin001` / `password`** → `karyawan_id = 10006`.
+
+- `is_active = 1`, alpha-NIP (does NOT collide with placeholder block `9990001–9990044`).
+- Holds global `admin` role row in `tb_karyawan_roles` (`role_key='admin', group_id=NULL`).
+- Verified live (2026-06-13): login `admin001/password` → HTTP 200; cookie payload `{"sub":"10006","st":"karyawan_id","v":2}`; `/api/auth/me` returns `is_admin=true, karyawan_id=10006, subject_type='employee_nip'`.
+
+**Decommissioned (DO NOT use as break-glass):**
+- `kar9999 / ADMIN01` — `is_active = 0`, `k.nip = '9990044'` lives inside the placeholder block. Reactivating would self-lockout via `isPlaceholderEmployeeNip` guard.
+- `kar10003 / HRD01` — `is_active = 0`.
+- `kar10004 / 99999` — `is_active = 0`, empty password hash.
+
+Account-lane fallback (separate `auth_accounts` table) = **`admin01` / `Admin@123`** → still works post-T9 with `st='account'` cookie (auth_accounts has no `karyawan_id` FK; subject stays on `account:` lane until T16-follow-up T17 retires the lane).
+
 ## Roles after T11 backfill
 
 `tb_karyawan_roles` group_leader rows: **5** (was 1).
