@@ -1,0 +1,17 @@
+=== S5 Placeholder NIP block ===
+Date: 2026-06-13T03:15:45+00:00
+kar1 k.nip: 9990001
+Hash prefix: $2b$12$
+
+--- baseline kar1 auth count: 0
+Seeded kar1 auth.nip=QA_PH_F3
+After-seed kar1 auth rows: 1
+
+--- Placeholder login attempt ---
+HTTP 401
+Body: {"ok":false,"error":"Invalid credentials"}
+
+BYTE-IDENTICAL to wrong-pw body: YES (unified)
+
+--- CLEANUP ---
+Post-cleanup kar1 auth rows: 0

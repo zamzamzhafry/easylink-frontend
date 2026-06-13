@@ -1,0 +1,27 @@
+=== F3 Manual QA — S1-S4 curl ===
+Date: 2026-06-13T03:15:04+00:00
+
+### S1: employee001/password
+--- Scenario: employee001 / password
+HTTP 200
+Raw: {"ok":true,"user":{"pin":"employee001","nama":"Seed Employee 001","privilege":1,"is_admin":false,"is_hr":false,"is_leader":false,"can_schedule":false,"can_dashboard":false,"groups":[{"group_id":32,"nama_group":"Role Fixture Auth Group","can_schedule":false,"can_dashboard":true,"is_leader":false}],"canonical_roles":["employee"],"subject_type":"employee_nip","account_id":null,"login_id":null,"role_key":null,"nip":"employee001","karyawan_id":10008}}
+Parsed: {"subject_type":"employee_nip","karyawan_id":10008,"is_admin":false,"is_leader":false,"canonical_roles":["employee"],"groups":[{"group_id":32,"nama_group":"Role Fixture Auth Group","can_schedule":false,"can_dashboard":true,"is_leader":false}]}
+
+### S2: leader001/password
+--- Scenario: leader001 / password
+HTTP 200
+Raw: {"ok":true,"user":{"pin":"leader001","nama":"Seed Leader 001","privilege":1,"is_admin":false,"is_hr":false,"is_leader":true,"can_schedule":true,"can_dashboard":true,"groups":[{"group_id":32,"nama_group":"Role Fixture Auth Group","can_schedule":true,"can_dashboard":true,"is_leader":true}],"canonical_roles":["group_leader","employee"],"subject_type":"employee_nip","account_id":null,"login_id":null,"role_key":null,"nip":"leader001","karyawan_id":10007}}
+Parsed: {"subject_type":"employee_nip","karyawan_id":10007,"is_admin":false,"is_leader":true,"canonical_roles":["group_leader","employee"],"groups":[{"group_id":32,"nama_group":"Role Fixture Auth Group","can_schedule":true,"can_dashboard":true,"is_leader":true}]}
+
+### S3: admin001/password
+--- Scenario: admin001 / password
+HTTP 200
+Raw: {"ok":true,"user":{"pin":"admin001","nama":"Seed Admin 001","privilege":4,"is_admin":true,"is_hr":false,"is_leader":false,"can_schedule":true,"can_dashboard":true,"groups":[],"canonical_roles":["admin","employee"],"subject_type":"employee_nip","account_id":null,"login_id":null,"role_key":null,"nip":"admin001","karyawan_id":10006}}
+Parsed: {"subject_type":"employee_nip","karyawan_id":10006,"is_admin":true,"is_leader":false,"canonical_roles":["admin","employee"],"groups":[]}
+
+### S4: employee001/WRONGPW
+--- Scenario: employee001 / WRONGPW
+HTTP 401
+Raw: {"ok":false,"error":"Invalid credentials"}
+Parsed: {"subject_type":null,"karyawan_id":null,"is_admin":null,"is_leader":null,"canonical_roles":null,"groups":null}
+

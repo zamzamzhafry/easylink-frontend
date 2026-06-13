@@ -1,0 +1,315 @@
+=== S10/S11 Groups Leader API + Audit ===
+Date: 2026-06-13T03:17:15+00:00
+
+--- S10: GET /api/groups (admin001) ---
+HTTP 200
+{
+  "groups": [
+    {
+      "id": 1,
+      "nama_group": "Umum",
+      "deskripsi": "Default group for unassigned employees",
+      "member_count": 0
+    },
+    {
+      "id": 2,
+      "nama_group": "Dokter Umum",
+      "deskripsi": "On-call physicians",
+      "member_count": 10
+    },
+    {
+      "id": 5,
+      "nama_group": "Security",
+      "deskripsi": "",
+      "member_count": 6
+    },
+    {
+      "id": 6,
+      "nama_group": "SDM",
+      "deskripsi": "",
+      "member_count": 2
+    },
+    {
+      "id": 7,
+      "nama_group": "Laboratorium",
+      "deskripsi": "",
+      "member_count": 5
+    },
+    {
+      "id": 8,
+      "nama_group": "Rekam Medis",
+      "deskripsi": "",
+      "member_count": 3
+    },
+    {
+      "id": 9,
+      "nama_group": "Casemix",
+      "deskripsi": "",
+      "member_count": 4
+    },
+    {
+      "id": 10,
+      "nama_group": "Perawat Poli",
+      "deskripsi": "",
+      "member_count": 5
+    },
+    {
+      "id": 11,
+      "nama_group": "Perawat Rawat Inap",
+      "deskripsi": "",
+      "member_count": 14
+    },
+    {
+      "id": 12,
+      "nama_group": "Tim IBS",
+      "deskripsi": "",
+      "member_count": 13
+    },
+    {
+      "id": 13,
+      "nama_group": "Administrasi",
+      "deskripsi": "",
+      "member_count": 5
+    },
+    {
+      "id": 14,
+      "nama_group": "Sekretaris",
+      "deskripsi": "",
+      "member_count": 1
+    },
+    {
+      "id": 15,
+      "nama_group": "Instalasi Gizi",
+      "deskripsi": "",
+      "member_count": 2
+    },
+    {
+      "id": 16,
+      "nama_group": "Fisioterapi",
+      "deskripsi": "",
+      "member_count": 1
+    },
+    {
+      "id": 17,
+      "nama_group": "Keuangan",
+      "deskripsi": "",
+      "member_count": 3
+    },
+    {
+      "id": 18,
+      "nama_group": "Kasir",
+      "deskripsi": "",
+      "member_count": 4
+    },
+    {
+      "id": 19,
+      "nama_group": "Farmasi",
+      "deskripsi": "",
+      "member_count": 8
+    },
+    {
+      "id": 20,
+      "nama_group": "Laundry",
+      "deskripsi": "",
+      "member_count": 2
+    },
+    {
+      "id": 21,
+      "nama_group": "Driver",
+      "deskripsi": "",
+      "member_count": 2
+    },
+    {
+      "id": 22,
+      "nama_group": "Teknisi",
+      "deskripsi": "",
+      "member_count": 2
+    },
+    {
+      "id": 23,
+      "nama_group": "Instalasi Gawat Darurat",
+      "deskripsi": "ini adalah perawat igd",
+      "member_count": 10
+    },
+    {
+      "id": 24,
+      "nama_group": "PPI",
+      "deskripsi": "",
+      "member_count": 1
+    },
+    {
+      "id": 25,
+      "nama_group": "IT",
+      "deskripsi": "",
+      "member_count": 2
+    },
+    {
+      "id": 26,
+      "nama_group": "Kesling",
+      "deskripsi": "",
+      "member_count": 1
+    },
+    {
+      "id": 27,
+      "nama_group": "CSSD",
+      "deskripsi": "",
+      "member_count": 2
+    },
+    {
+      "id": 28,
+      "nama_group": "CSS",
+      "deskripsi": "",
+      "member_count": 7
+    },
+    {
+      "id": 29,
+      "nama_group": "Kerohanian",
+      "deskripsi": "",
+      "member_count": 1
+    },
+    {
+      "id": 32,
+      "nama_group": "Role Fixture Auth Group",
+      "deskripsi": "Deterministic group used by role/capability tests.",
+      "member_count": 2
+    }
+  ],
+  "members": [
+    {
+      "karyawan_id": 33,
+      "group_id": 5,
+      "nama": "Achmad Ryfai",
+      "pin": "43",
+      "nip": "9990012",
+      "privilege": 0
+    },
+    {
+      "karyawan_id": 78,
+      "group_id": 23,
+      "nama": "Ainis Salamah,A.Md.Kep",
+      "pin": "48",
+      "nip": "20240400001",
+      "privilege": 0
+    },
+    {
+      "karyawan_id": 72,
+      "group_id": 12,
+      "nama": "Akbar Waskitojati Pamungkas,S.Tr.Kes",
+      "pin": "60",
+      "nip": "20231100004",
+      "privilege": 0
+    },
+    {
+      "karyawan_id": 23,
+      "group_id": 7,
+      "nama": "Al Dilladyas Kusuma Putri, A,Md.A.K",
+
+--- All leader entries (flattened) ---
+
+Total leader entries (sum across all groups): 0
+
+--- DB ground truth (tb_karyawan_roles WHERE role_key='group_leader') ---
+2	group_leader	2
+23	group_leader	7
+29	group_leader	9
+108	group_leader	9
+10007	group_leader	32
+DB row count: 5
+
+--- grp9 multi-leader DB check ---
+29	group_leader	9
+108	group_leader	9
+--- grp9 multi-leader API check ---
+
+--- S11: assign_leader + remove_leader audit ---
+Baseline tb_role_change_audit count: 6
+Pre-cycle MAX(id): 8
+
+Assigning pin=leader001 to group=9
+assign HTTP 200 body={"ok":true}
+
+Removing pin=leader001 from group=9
+remove HTTP 200 body={"ok":true}
+
+--- audit rows since baseline (id > 8) ---
+9	10006	10007	grant	group_leader	9	2026-06-13 03:17:16
+10	10006	10007	revoke	group_leader	9	2026-06-13 03:17:17
+
+Delta grants: 1 (expect 1)
+Delta revokes: 1 (expect 1)
+
+=== S10 RE-EXTRACT (leaders is top-level array, not nested) ===
+API leaders array length: 5
+API leaders content:
+[
+  {
+    "group_id": 2,
+    "karyawan_id": 2,
+    "pin": "82",
+    "nip": "20211200006",
+    "nama": "dr. Dini Pangestika",
+    "privilege": 0
+  },
+  {
+    "group_id": 7,
+    "karyawan_id": 23,
+    "pin": "65",
+    "nip": "20211200027",
+    "nama": "Al Dilladyas Kusuma Putri, A,Md.A.K",
+    "privilege": 0
+  },
+  {
+    "group_id": 9,
+    "karyawan_id": 108,
+    "pin": "99",
+    "nip": "20250700001",
+    "nama": "Arum Purwaningsih, AMd.RMIK",
+    "privilege": 0
+  },
+  {
+    "group_id": 9,
+    "karyawan_id": 29,
+    "pin": "17",
+    "nip": "9990009",
+    "nama": "Yustisia Karinta Nurmalitasari, S.K.M",
+    "privilege": 0
+  },
+  {
+    "group_id": 32,
+    "karyawan_id": 10007,
+    "pin": "leader001",
+    "nip": "leader001",
+    "nama": "Seed Leader 001",
+    "privilege": 1
+  }
+]
+
+grp9 leaders from API:
+[
+  {
+    "group_id": 9,
+    "karyawan_id": 108,
+    "pin": "99",
+    "nip": "20250700001",
+    "nama": "Arum Purwaningsih, AMd.RMIK",
+    "privilege": 0
+  },
+  {
+    "group_id": 9,
+    "karyawan_id": 29,
+    "pin": "17",
+    "nip": "9990009",
+    "nama": "Yustisia Karinta Nurmalitasari, S.K.M",
+    "privilege": 0
+  }
+]
+
+Group_ids w/ leader from API:
+[
+  2,
+  7,
+  9,
+  32
+]
+
+DB ground truth (5 rows): kar2/grp2, kar23/grp7, kar29/grp9, kar108/grp9, kar10007/grp32

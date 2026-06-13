@@ -58,5 +58,6 @@ or knock out before the first commit.
 
 ## Approval status
 
-All reviewers approve. **F1–F4 checkboxes remain unchecked pending explicit user okay**
-(Final Wave Approval Gate requires it — the orchestrator must not self-approve).
+All reviewers approve. **F1–F4 checked off 2026-06-13** after explicit user okay.
+C1 cleared (shared `KaryawanAuthRow`/`KaryawanRoleRow` types; `as any` 5→1 in `auth-session.ts`).
+C2 cleared (`tests/auth-session-by-karyawan-id.test.js`: 4 subtests, DB-skip-guarded, all pass against live `demo_easylinksdk`).

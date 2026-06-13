@@ -1,0 +1,227 @@
+AUTH NIP RE-ANCHOR MIGRATION — TASK 1 PREFLIGHT AUDIT
+Generated: 2026-06-13
+DB: demo_easylinksdk @ 127.0.0.1:3306
+All values from live SELECT/DESCRIBE/SHOW queries. NO mutations performed.
+
+========================================================================
+(a) admin01 tb_karyawan LINK
+========================================================================
+
+auth_accounts row (login_id='admin01'):
+  id=1, login_id=admin01, display_name='Admin VM', role_key=admin, is_active=1
+  password_hash=$2b$12$RBs/AlUEQhoHUsbilDfoyuBvPdUbt238Bk7yfF/Rz48zy1nu.p3rW
+
+auth_accounts schema: NO karyawan_id FK column.
+Linkage search method: tb_karyawan_auth.nip LIKE 'ADMIN01' (case-insensitive match to login_id).
+
+tb_karyawan_auth row matching nip='ADMIN01':
+  karyawan_id=9999, nip=ADMIN01, is_active=0 (INACTIVE), last_login=2026-05-11 13:03:27
+
+tb_karyawan row id=9999:
+  id=9999, nip=9990044, nama='Super Admin', isDeleted=0, isActiveDuty=1
+
+tb_karyawan_roles row karyawan_id=9999:
+  role_key=admin, group_id=NULL  ✓
+
+RESULT (a):
+  admin01 HAS tb_karyawan row: YES — karyawan_id=9999 (nip=9990044, nama='Super Admin')
+  tb_karyawan row exists: YES (id=9999)
+  tb_karyawan_auth row exists: YES (nip=ADMIN01) BUT is_active=0 (INACTIVE)
+  tb_karyawan_roles row exists: YES (admin/NULL global) ✓
+
+STEP-7 BLOCKER: PARTIAL — tb_karyawan link exists but tb_karyawan_auth.is_active=0.
+  The break-glass lane (auth_accounts login_id='admin01') will continue to work via its own
+  auth path. However the karyawan-side auth for admin (karyawan_id=9999, nip=ADMIN01) is
+  currently INACTIVE. If Step 7 requires karyawan_id=9999 to have an ACTIVE tb_karyawan_auth
+  row, remediation needed:
+    UPDATE tb_karyawan_auth SET is_active=1 WHERE karyawan_id=9999;
+  Additionally note: tb_karyawan_auth.nip='ADMIN01' (alpha string) while tb_karyawan.nip='9990044'.
+  These are inconsistent — the nip column in tb_karyawan_auth stores the login_id alias, not
+  the real NIP. This MUST be reconciled before the NIP re-anchor migration touches this row.
+
+========================================================================
+(b) Yustisia kar29
+========================================================================
+
+tb_karyawan id=29:
+  id=29, nip=9990009, nama='Yustisia Karinta Nurmalitasari, S.K.M'
+  isDeleted=0, isActiveDuty=1
+
+tb_karyawan_auth karyawan_id=29:
+  (empty — no row)
+
+tb_karyawan_roles karyawan_id=29:
+  (empty — no row)
+
+RESULT (b):
+  kar29 tb_karyawan row: YES, nip=9990009
+  kar29 tb_karyawan_auth row: NO
+  kar29 tb_karyawan_roles row: NO
+  → kar29 has NO auth credentials and NO role assigned.
+
+========================================================================
+(c) PLACEHOLDER NIPs (9990001–9990044)
+========================================================================
+
+Query: SELECT id,nip,nama FROM tb_karyawan WHERE nip BETWEEN '9990001' AND '9990044' ORDER BY nip
+Count: 44 rows (MATCHES expected 44)
+ID range: min_id=1, max_id=9999
+
+Rows (id → nip → nama):
+  1→9990001→dr. Nanang Handoko
+  5→9990002→Ns. Sholikin, S.Kep
+  17→9990003→Delvicia Penta Argeolinda. A.Md.Kep
+  24→9990004→Teta Indah Oktaviana, A.Md.RMIK
+  25→9990005→Anisa Ayudya Putri, A.Md.RMIK
+  26→9990006→Rosalia, S.Ak
+  27→9990007→Ami Indah Krisdayanti, S.H.
+  28→9990008→Nadifa Salsabila Nizar, S. Ak., M. Ak.
+  29→9990009→Yustisia Karinta Nurmalitasari, S.K.M
+  30→9990010→Dadang Andrian
+  32→9990011→Kasbi
+  33→9990012→Achmad Ryfai
+  34→9990013→Ina Aulia Hanifah, S.Tr.Kes, Ftr
+  35→9990014→Satria Hanung Anugerah, S.Ked
+  36→9990015→Endri Sugiyanto
+  37→9990016→Satria Eka Sakti
+  48→9990017→Muhammad Fikri Fatha Andy
+  49→9990018→Muhamad Irfan
+  60→9990019→Riki Saputra,A.Md.RMIK
+  61→9990020→Salma Zainudin Zidane,A.Md.RMIK
+  62→9990021→Hafizh Fath Razaq,S.E
+  63→9990022→Prayoga Adi Santoso
+  69→9990023→Fanny Taulany,A.Md.RMIK
+  70→9990024→Faiz Bintang Muktiprakoso,S.Tr.Kes
+  75→9990025→Anisya Pratiwi Wulandari,A.Md.RMIK
+  76→9990026→Herlambang Bayu Aji
+  77→9990027→Santosa,S.Ak
+  79→9990028→Ardhitama Nopa Kusuma,S.M
+  80→9990029→Rico Dwi Cahyo,S.M
+  81→9990030→Nandika Ardimansyah, ST
+  83→9990031→Ns Dary Luqman Hakim, S.Kep
+  85→9990032→Mochamad Hasan
+  86→9990033→Arviana Dwi Angga, A.Md.RMIK
+  89→9990034→Laras Widyastuti, SKM
+  90→9990035→Tubagus Jayusman
+  91→9990036→Rizky Dzul Khoirul
+  125→9990037→Riswati
+  126→9990038→Sutrisno
+  127→9990039→Gudel Mulyani
+  128→9990040→Muhamad  Fajri  Wicaksono
+  129→9990041→Bungsu Kurnianingrum
+  130→9990042→Eko Prasetyo
+  131→9990043→Mohamad Ana Iflana
+  9999→9990044→Super Admin
+
+Short test rows (nip IN '9999','99999'):
+  id=10002, nip=9999
+  id=10004, nip=99999
+
+RESULT (c):
+  Placeholder count: 44/44 ✓ (CONFIRMED)
+  ID range: 1 – 9999 (non-contiguous, gaps expected from real data)
+  Note: id=9999 (nip=9990044, Super Admin) is a placeholder row AND the admin karyawan.
+  Short test nips present: nip='9999' (id=10002), nip='99999' (id=10004)
+
+========================================================================
+(d) SCHEMA
+========================================================================
+
+tb_karyawan columns (from DESCRIBE):
+  PK column: id (int, NOT NULL, AUTO_INCREMENT) ✓
+  isDeleted column: EXISTS — tinyint(1), NOT NULL, default 0 ✓
+  deletedAt column: EXISTS — datetime, nullable ✓
+  nip column: text, nullable
+
+SHOW INDEX FROM tb_karyawan WHERE Column_name='nip':
+  (empty — no result)
+
+RESULT (d) nip UNIQUE index: NO — nip has NO UNIQUE index on tb_karyawan.
+  ⚠ WARNING: nip is type TEXT (not VARCHAR). TEXT columns cannot have a standard unique index
+  without a prefix length. This is a migration concern — uniqueness constraint cannot be added
+  directly to TEXT column. Requires ALTER to VARCHAR first.
+
+tb_karyawan_auth schema:
+  karyawan_id: int, PRI (primary key)
+  nip: varchar(50), UNI (UNIQUE index) ✓
+  password_hash: varchar(255) ✓
+  is_active: tinyint(1) ✓
+  → nip column EXISTS and is UNIQUE ✓ (drop target confirmed)
+  → karyawan_id, is_active, password_hash all present ✓
+
+RESULT (d) summary:
+  tb_karyawan PK: id ✓
+  isDeleted: EXISTS, tinyint(1) ✓
+  tb_karyawan.nip UNIQUE index: NO ⚠ (TEXT type, no index)
+  tb_karyawan_auth.nip column: EXISTS, varchar(50), UNIQUE ✓
+  tb_karyawan_auth.karyawan_id: EXISTS ✓
+  tb_karyawan_auth.is_active: EXISTS ✓
+  tb_karyawan_auth.password_hash: EXISTS ✓
+
+========================================================================
+(e) BCRYPT COVERAGE
+========================================================================
+
+Non-bcrypt rows (password_hash NOT LIKE '$2%'):
+  COUNT = 1
+  Detail: karyawan_id=10004, nip=99999, hash_prefix=(empty string), is_active=0
+
+Total / active in tb_karyawan_auth:
+  total=6, active=3
+
+RESULT (e):
+  non-bcrypt count: 1 (karyawan_id=10004, nip=99999, hash is empty string, is_active=0)
+  total rows: 6
+  active rows: 3
+  bcrypt coverage of active rows: 3/3 = 100% ✓
+  Non-bcrypt row is INACTIVE — migration risk is LOW but MUST be handled (skip or flag).
+
+========================================================================
+SUMMARY TABLE
+========================================================================
+
+| Check | Result | Notes |
+|-------|--------|-------|
+| (a) admin01 tb_karyawan link | YES (karyawan_id=9999) | tb_karyawan_auth is_active=0; nip mismatch |
+| (a) admin01 tb_karyawan_roles | YES (admin/NULL) | ✓ |
+| (a) Step-7 blocker? | PARTIAL | is_active=0; nip='ADMIN01' not real NIP |
+| (b) kar29 tb_karyawan row | YES (nip=9990009) | |
+| (b) kar29 tb_karyawan_auth | NO | no credentials row |
+| (b) kar29 tb_karyawan_roles | NO | no role row |
+| (c) placeholder count | 44/44 ✓ | id range 1–9999 |
+| (c) short test nips present | YES | nip=9999(id=10002), nip=99999(id=10004) |
+| (d) tb_karyawan PK = id | YES ✓ | |
+| (d) isDeleted exists | YES ✓ | tinyint(1) |
+| (d) tb_karyawan.nip UNIQUE | NO ⚠ | TEXT type, no index at all |
+| (d) tb_karyawan_auth.nip | YES ✓ | varchar(50), UNIQUE |
+| (d) tb_karyawan_auth cols | YES ✓ | karyawan_id, is_active, password_hash all present |
+| (e) non-bcrypt count | 1 | karyawan_id=10004, INACTIVE, empty hash |
+| (e) total/active | 6/3 | all 3 active rows are bcrypt ✓ |
+
+========================================================================
+BLOCKERS / WARNINGS FOR MIGRATION PLANNING
+========================================================================
+
+STEP-7 BLOCKER (PARTIAL):
+  admin01 karyawan-side auth (karyawan_id=9999) has tb_karyawan_auth.is_active=0.
+  The auth_accounts break-glass lane functions independently, but if Step 7 activates or
+  validates karyawan-side auth, this row needs is_active set to 1.
+  ALSO: tb_karyawan_auth.nip='ADMIN01' (alpha) vs tb_karyawan.nip='9990044'.
+  The NIP re-anchor migration must decide how to handle karyawan_id=9999:
+    Option A: Treat it as a special system row, skip re-anchor.
+    Option B: Update tb_karyawan_auth.nip from 'ADMIN01' to '9990044' as part of migration.
+  Remediation rows needed if activating:
+    tb_karyawan_auth: SET is_active=1 WHERE karyawan_id=9999
+    tb_karyawan_auth: SET nip='9990044' WHERE karyawan_id=9999 (if re-anchoring)
+
+WARNING — tb_karyawan.nip is TEXT type (not VARCHAR):
+  Cannot add UNIQUE index to TEXT column directly.
+  Migration step adding uniqueness must ALTER nip to VARCHAR(50) first.
+
+WARNING — kar29 (Yustisia) has NO auth rows:
+  If migration assumes all karyawan rows have tb_karyawan_auth entries, kar29 will cause issues.
+  No credentials, no role — likely a data gap.
+
+WARNING — non-bcrypt inactive row:
+  karyawan_id=10004, nip=99999 has empty password_hash. is_active=0.
+  Migration should explicitly skip or tombstone this row.

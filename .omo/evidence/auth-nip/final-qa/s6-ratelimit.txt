@@ -1,0 +1,17 @@
+=== S6 Rate-Limit ===
+Date: 2026-06-13T03:16:00+00:00
+Login ID (non-existent, ensures we test pre-auth limit): ratelimit_test_1781320560
+Expected: attempts 1-10 -> 401, attempt 11 -> 429 with Retry-After
+
+Attempt 1: HTTP 401  body={"ok":false,"error":"Invalid credentials"}    
+Attempt 2: HTTP 401  body={"ok":false,"error":"Invalid credentials"}    
+Attempt 3: HTTP 401  body={"ok":false,"error":"Invalid credentials"}    
+Attempt 4: HTTP 401  body={"ok":false,"error":"Invalid credentials"}    
+Attempt 5: HTTP 401  body={"ok":false,"error":"Invalid credentials"}    
+Attempt 6: HTTP 401  body={"ok":false,"error":"Invalid credentials"}    
+Attempt 7: HTTP 401  body={"ok":false,"error":"Invalid credentials"}    
+Attempt 8: HTTP 401  body={"ok":false,"error":"Invalid credentials"}    
+Attempt 9: HTTP 401  body={"ok":false,"error":"Invalid credentials"}    
+Attempt 10: HTTP 401  body={"ok":false,"error":"Invalid credentials"}    
+Attempt 11: HTTP 429  body={"ok":false,"error":"Too many login attempts. Try again in 60s."}  retry-after: 60  x-ratelimit-limit: 10
+Attempt 12: HTTP 429  body={"ok":false,"error":"Too many login attempts. Try again in 60s."}  retry-after: 60  x-ratelimit-limit: 10

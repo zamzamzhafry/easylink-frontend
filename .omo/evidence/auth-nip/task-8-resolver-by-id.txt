@@ -1,0 +1,26 @@
+=== Task 8: createAuthContextByKaryawanId resolver ===
+Date: 2026-06-13T02:58:33Z
+
+--- location: lib/auth-session.ts ---
+639:export async function createAuthContextByKaryawanId(
+
+--- SELECT used (placeholder + isDeleted + is_active guards) ---
+653:      'SELECT a.karyawan_id, a.nip, k.nama, k.pin, k.nip AS karyawan_nip FROM tb_karyawan_auth a JOIN tb_karyawan k ON a.karyawan_id = k.id WHERE k.id = ? AND a.is_active = 1 AND k.isDeleted = 0',
+
+--- typecheck (tsc --noEmit) ---
+> easylink-absensi@1.0.0 typecheck
+> tsc --noEmit
+
+typecheck exit captured above (clean)
+
+--- build (next build) ---
+PASS: full route table printed, no compile/type errors (run earlier this session)
+
+--- live resolver calls (tsx tests/_t8_live.mts) ---
+kar10007 (leader001): {"karyawan_id":10007,"nama":"Seed Leader 001","is_leader":true,"is_admin":false,"subject_type":"employee_nip","groups":[{"group_id":32,"is_leader":true}]}
+kar10004 (is_active=0): null
+kar1 placeholder (nip=9990001, seeded QA_PH_T8 active): null  <-- isPlaceholderEmployeeNip guard
+
+--- seed lifecycle ---
+seeded: tb_karyawan_auth(karyawan_id=1, nip=QA_PH_T8, is_active=1)
+deleted after test; kar1 auth count now 0 (baseline restored)

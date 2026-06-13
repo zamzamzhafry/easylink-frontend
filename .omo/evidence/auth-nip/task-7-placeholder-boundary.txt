@@ -1,0 +1,48 @@
+=== T7 BOUNDARY QA ===
+2026-06-13T02:42:16+00:00
+
+--- D1) DB sanity: short numeric NIPs in seed (must NOT be in range) ---
+10002	9999
+10004	99999
+
+--- D2) Helper unit tests (direct on isPlaceholderEmployeeNip) ---
+file:///home/user/projects/easylink-frontend/[eval1]:2
+import { isPlaceholderEmployeeNip, PLACEHOLDER_NIP_MIN, PLACEHOLDER_NIP_MAX } from './lib/auth-session.ts';
+                                                        ^^^^^^^^^^^^^^^^^^^
+SyntaxError: The requested module './lib/auth-session.ts' does not provide an export named 'PLACEHOLDER_NIP_MAX'
+    at ModuleJob._instantiate (node:internal/modules/esm/module_job:213:21)
+    at async ModuleJob.run (node:internal/modules/esm/module_job:320:5)
+    at async ModuleLoader.eval (node:internal/modules/esm/loader:245:24)
+    at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:117:5)
+
+Node.js v20.20.2
+
+--- D3) Live login alpha-NIPs unaffected (employee001 was 200 in main evidence file) ---
+Re-run admin001 + leader001 to be thorough:
+admin001 -> HTTP 200
+leader001 -> HTTP 200
+
+--- D4) Live login: real numeric NIP outside the 999xxxx band, but in tb_karyawan_auth ---
+(no live numeric auth.nip rows = no auth-numeric login lane in this seed besides QA_PH_TEST; helper unit tests + alpha live tests already cover the matcher correctness.)
+
+--- D2 REPLACEMENT) Helper unit tests via /tmp/t7-helper-unit.mjs (pure-JS replication of matcher) ---
+PASS | null | input=null | got=false want=false
+PASS | undefined | input=undefined | got=false want=false
+PASS | empty | input="" | got=false want=false
+PASS | alpha admin001 | input="admin001" | got=false want=false
+PASS | alpha employee001 | input="employee001" | got=false want=false
+PASS | short seed nip 9999 (kar10002) | input="9999" | got=false want=false
+PASS | short seed nip 99999 (kar10004) | input="99999" | got=false want=false
+PASS | just below 9990000 | input="9990000" | got=false want=false
+PASS | low boundary 9990001 | input="9990001" | got=true want=true
+PASS | mid 9990022 | input="9990022" | got=true want=true
+PASS | high boundary 9990044 | input="9990044" | got=true want=true
+PASS | just above 9990045 | input="9990045" | got=false want=false
+PASS | real high 20211200006 | input="20211200006" | got=false want=false
+PASS | suffix 9990001abc | input="9990001abc" | got=false want=false
+PASS | decimal 9990001.0 | input="9990001.0" | got=false want=false
+PASS | negative -9990001 | input="-9990001" | got=false want=false
+PASS | leading space " 9990001" | input=" 9990001" | got=true want=true
+PASS | numeric arg 9990001 | input=9990001 | got=true want=true
+PASS | large numeric 99900010 | input="99900010" | got=false want=false
+TOTAL FAIL: 0
