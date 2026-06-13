@@ -12,18 +12,29 @@ $DB_PORT = getenv('DB_PORT') ?: '3306';
 $DB_USER = getenv('DB_USER') ?: 'root';
 $DB_PASS = getenv('DB_PASS') ?: '';
 $DB_NAME = getenv('DB_NAME') ?: 'demo_easylinksdk';
+$BRIDGE_DB_NAME = getenv('HOP_B_DB_NAME') ?: 'easylink_bridge';
 $TIMEOUT = 120;
 
-function get_pdo(): PDO {
-    global $DB_HOST, $DB_PORT, $DB_USER, $DB_PASS, $DB_NAME;
-    static $pdo = null;
-    if ($pdo) return $pdo;
-    $pdo = new PDO(
-        "mysql:host={$DB_HOST};port={$DB_PORT};dbname={$DB_NAME};charset=utf8mb4",
+function _pdo_for(string $db): PDO {
+    global $DB_HOST, $DB_PORT, $DB_USER, $DB_PASS;
+    static $cache = [];
+    if (isset($cache[$db])) return $cache[$db];
+    $cache[$db] = new PDO(
+        "mysql:host={$DB_HOST};port={$DB_PORT};dbname={$db};charset=utf8mb4",
         $DB_USER, $DB_PASS,
         [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC]
     );
-    return $pdo;
+    return $cache[$db];
+}
+
+function get_pdo(): PDO { global $DB_NAME; return _pdo_for($DB_NAME); }
+function get_bridge_pdo(): ?PDO {
+    global $BRIDGE_DB_NAME;
+    try { return _pdo_for($BRIDGE_DB_NAME); }
+    catch (\Throwable $e) {
+        el_log('WARN', 'bridge-db', 'bridge db unavailable', ['err' => $e->getMessage()]);
+        return null;
+    }
 }
 
 // --- Machine config from DB --------------------------------------------------
@@ -93,6 +104,42 @@ function bridge_post(array $machine, string $path, array $fields = []): array {
 }
 
 // --- Sync functions ----------------------------------------------------------
+/**
+ * Treat FService's `Result:false` + "No data" / "tidak ada" as success-with-empty,
+ * not as an error. Real bridge failures (curl fail, non-JSON) still fail.
+ */
+function _bridge_no_data(array $r): bool {
+    if (!$r['ok']) return false;
+    $msg = (string)($r['data']['message'] ?? '');
+    return stripos($msg, 'no data') !== false || stripos($msg, 'tidak') !== false;
+}
+
+/**
+ * Mirror one tb_scanlog row into easylink_bridge.raw_scanlog_staging so the
+ * Hop B worker (hop-b-batch-selector.php) can pick it up. Best-effort.
+ */
+function _stage_one(?PDOStatement $stage, string $sn, string $scanDateTs,
+                    string $pin, int $verify, int $io, int $work): void {
+    if (!$stage) return;
+    $ts = $scanDateTs !== '' ? strtotime($scanDateTs) : false;
+    if ($ts === false) {
+        el_log('WARN', 'stage', 'skip unparseable scan_date', ['raw' => $scanDateTs, 'pin' => $pin]);
+        return;
+    }
+    $date = date('Y-m-d', $ts);
+    $time = date('H:i:s', $ts);
+    $key  = "{$sn}|{$date}|{$time}|{$pin}|{$verify}|{$io}|{$work}";
+    try {
+        $stage->execute([
+            ':sn'=>$sn, ':sd'=>$date, ':st'=>$time,
+            ':pin'=>$pin, ':vm'=>$verify, ':io'=>$io, ':wc'=>$work,
+            ':sek'=>$key, ':fetched'=>$scanDateTs ?: date('Y-m-d H:i:s'),
+        ]);
+    } catch (\Throwable $e) {
+        el_log('WARN', 'stage', 'stage insert failed', ['err' => $e->getMessage(), 'key' => $key]);
+    }
+}
+
 function sync_users_to_db(array $machine): array {
     $isSession = true; $total = 0; $errors = [];
     try {
@@ -100,7 +147,12 @@ function sync_users_to_db(array $machine): array {
         $stmt = $pdo->prepare("INSERT INTO tb_user (pin,nama,pwd,rfid,privilege) VALUES (:pin,:nama,:pwd,:rfid,:priv) ON DUPLICATE KEY UPDATE nama=VALUES(nama),pwd=VALUES(pwd),rfid=VALUES(rfid),privilege=VALUES(privilege)");
         while ($isSession) {
             $r = bridge_post($machine, '/user/all/paging', ['limit' => 100]);
-            if (!$r['ok'] || empty($r['data']['Result'])) { $errors[] = $r['error'] ?? 'Result false'; break; }
+            if (!$r['ok']) { $errors[] = $r['error'] ?? 'bridge fail'; break; }
+            if (empty($r['data']['Result'])) {
+                if (_bridge_no_data($r)) { el_log('INFO','sync','users: no more data', ['sn'=>$machine['sn']??'?']); }
+                else { $errors[] = (string)($r['data']['message'] ?? 'Result false'); }
+                break;
+            }
             foreach (($r['data']['Data'] ?? []) as $row) {
                 $stmt->execute([':pin'=>$row['PIN']??'',':nama'=>$row['Name']??'',':pwd'=>$row['Password']??'',':rfid'=>$row['RFID']??'0',':priv'=>(int)($row['Privilege']??0)]);
                 $total++;
@@ -112,22 +164,42 @@ function sync_users_to_db(array $machine): array {
         $errors[] = $e->getMessage();
         el_log('ERROR', 'sync', 'sync_users exception', ['msg' => $e->getMessage(), 'sn' => $machine['sn'] ?? '?']);
     }
-    $res = ['ok' => empty($errors), 'synced' => $total, 'errors' => $errors];
+    $res = ['ok' => empty($errors) || $total > 0, 'synced' => $total, 'errors' => $errors];
     el_log($res['ok'] ? 'INFO' : 'ERROR', 'sync', 'sync_users done', $res + ['sn' => $machine['sn'] ?? '?']);
     return $res;
 }
 
 function sync_scanlogs_to_db(array $machine, bool $full = false): array {
     $endpoint = $full ? '/scanlog/all/paging' : '/scanlog/new';
-    $isSession = true; $total = 0; $errors = [];
+    $isSession = true; $total = 0; $staged = 0; $errors = [];
     try {
         $pdo = get_pdo();
+        $bridge = get_bridge_pdo();
         $stmt = $pdo->prepare("INSERT IGNORE INTO tb_scanlog (sn,scan_date,pin,verifymode,iomode,workcode) VALUES (:sn,:sd,:pin,:vm,:io,:wc)");
+        $stage = $bridge
+            ? $bridge->prepare("INSERT IGNORE INTO raw_scanlog_staging
+                  (sn, scan_date, scan_time, pin, verifymode, iomode, workcode,
+                   source_event_key, fetched_at)
+                  VALUES (:sn,:sd,:st,:pin,:vm,:io,:wc,:sek,:fetched)")
+            : null;
         while ($isSession) {
             $r = bridge_post($machine, $endpoint, ['limit' => 100]);
-            if (!$r['ok'] || empty($r['data']['Result'])) { $errors[] = $r['error'] ?? 'Result false'; break; }
+            if (!$r['ok']) { $errors[] = $r['error'] ?? 'bridge fail'; break; }
+            if (empty($r['data']['Result'])) {
+                if (_bridge_no_data($r)) { el_log('INFO','sync','scanlogs: no more data', ['sn'=>$machine['sn']??'?']); }
+                else { $errors[] = (string)($r['data']['message'] ?? 'Result false'); }
+                break;
+            }
             foreach (($r['data']['Data'] ?? []) as $row) {
-                $stmt->execute([':sn'=>$row['SN']??$machine['sn'],':sd'=>$row['ScanDate']??'',':pin'=>$row['PIN']??'',':vm'=>(int)($row['VerifyMode']??0),':io'=>(int)($row['IOMode']??0),':wc'=>$row['WorkCode']??'0']);
+                $sn = (string)($row['SN'] ?? $machine['sn']);
+                $sd = (string)($row['ScanDate'] ?? '');
+                $pin = (string)($row['PIN'] ?? '');
+                $vm = (int)($row['VerifyMode'] ?? 0);
+                $io = (int)($row['IOMode'] ?? 0);
+                $wc = (int)($row['WorkCode'] ?? 0);
+                $stmt->execute([':sn'=>$sn,':sd'=>$sd,':pin'=>$pin,':vm'=>$vm,':io'=>$io,':wc'=>$wc]);
+                _stage_one($stage, $sn, $sd, $pin, $vm, $io, $wc);
+                if ($stage && $stage->rowCount() > 0) $staged++;
                 $total++;
             }
             $isSession = !empty($r['data']['IsSession']);
@@ -137,9 +209,56 @@ function sync_scanlogs_to_db(array $machine, bool $full = false): array {
         $errors[] = $e->getMessage();
         el_log('ERROR', 'sync', 'sync_scanlogs exception', ['msg' => $e->getMessage(), 'sn' => $machine['sn'] ?? '?']);
     }
-    $res = ['ok' => empty($errors), 'synced' => $total, 'errors' => $errors];
+    $res = ['ok' => empty($errors) || $total > 0, 'synced' => $total, 'staged' => $staged, 'errors' => $errors];
     el_log($res['ok'] ? 'INFO' : 'ERROR', 'sync', 'sync_scanlogs done', $res + ['sn' => $machine['sn'] ?? '?', 'full' => $full]);
     return $res;
+}
+
+// --- Async Jobs --------------------------------------------------------------
+function _gen_job_id(): string {
+    return 'job_' . bin2hex(random_bytes(8));
+}
+
+function job_create(string $type, array $payload): array {
+    try {
+        $jobId = _gen_job_id();
+        $pdo = get_pdo();
+        $pdo->prepare("INSERT INTO fservice_jobs (job_id, type, payload, status) VALUES (?,?,?,'pending')")
+            ->execute([$jobId, $type, json_encode($payload, JSON_UNESCAPED_UNICODE)]);
+        // Spawn detached worker (Windows: cmd /C start /B  /  POSIX: nohup &)
+        $phpExe = getenv('PHP_EXE') ?: (defined('PHP_BINARY') ? PHP_BINARY : 'php');
+        $worker = __DIR__ . DIRECTORY_SEPARATOR . '..' . DIRECTORY_SEPARATOR . 'worker.php';
+        $worker = realpath($worker) ?: $worker;
+        if (stripos(PHP_OS, 'WIN') === 0) {
+            $cmd = 'cmd /C start /B "" "' . $phpExe . '" "' . $worker . '" ' . escapeshellarg($jobId) . ' > NUL 2>&1';
+        } else {
+            $cmd = 'nohup ' . escapeshellarg($phpExe) . ' ' . escapeshellarg($worker) . ' ' . escapeshellarg($jobId) . ' > /dev/null 2>&1 &';
+        }
+        el_log('INFO', 'job', 'spawn worker', ['job' => $jobId, 'type' => $type, 'cmd' => $cmd]);
+        $h = popen($cmd, 'r');
+        if ($h) pclose($h);
+        return ['ok' => true, 'job_id' => $jobId, 'type' => $type];
+    } catch (\Throwable $e) {
+        el_log('ERROR', 'job', 'job_create failed', ['err' => $e->getMessage()]);
+        return ['ok' => false, 'error' => $e->getMessage()];
+    }
+}
+
+function job_status(string $jobId): array {
+    try {
+        $stmt = get_pdo()->prepare("SELECT job_id, type, status, progress, result, last_error, created_at, started_at, finished_at FROM fservice_jobs WHERE job_id=?");
+        $stmt->execute([$jobId]);
+        $row = $stmt->fetch();
+        if (!$row) return ['ok' => false, 'error' => 'job not found'];
+        if (!empty($row['result'])) {
+            $decoded = json_decode((string)$row['result'], true);
+            $row['result'] = is_array($decoded) ? $decoded : null;
+        }
+        $row['ok'] = true;
+        return $row;
+    } catch (\Throwable $e) {
+        return ['ok' => false, 'error' => $e->getMessage()];
+    }
 }
 
 function get_db_stats(): array {
@@ -203,6 +322,49 @@ if (isset($_GET['action'])) {
             'lines' => count($tail),
             'tail'  => $tail,
         ], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        exit;
+    }
+
+    // Async job endpoints — no machine on the URL; machine comes from payload
+    if ($action === 'job_status') {
+        $jobId = (string)($_GET['job_id'] ?? '');
+        echo json_encode(job_status($jobId), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        exit;
+    }
+    if ($action === 'job_start') {
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') { echo json_encode(['ok'=>false,'error'=>'POST required']); exit; }
+        $body = json_decode(file_get_contents('php://input'), true) ?: $_POST;
+        $type = (string)($body['type'] ?? '');
+        $payload = $body['payload'] ?? [];
+        if (!is_array($payload)) $payload = [];
+        if (!in_array($type, ['sync_users','sync_scanlogs','hop_b_push'], true)) {
+            echo json_encode(['ok'=>false,'error'=>'unknown job type']);
+            exit;
+        }
+        // For sync_* fall back to first active machine if not specified
+        if (in_array($type, ['sync_users','sync_scanlogs'], true) && empty($payload['machine_id'])) {
+            $first = get_machines(true)[0] ?? null;
+            if ($first) $payload['machine_id'] = (int)$first['id'];
+        }
+        echo json_encode(job_create($type, $payload), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        exit;
+    }
+    if ($action === 'staging_stats') {
+        $b = get_bridge_pdo();
+        if (!$b) { echo json_encode(['ok'=>false,'error'=>'bridge db unavailable']); exit; }
+        try {
+            $total = (int)$b->query("SELECT COUNT(*) FROM raw_scanlog_staging")->fetchColumn();
+            $pending = (int)$b->query(
+                "SELECT COUNT(*) FROM raw_scanlog_staging r
+                 LEFT JOIN sync_batch_item i ON i.staging_id = r.id
+                 WHERE i.staging_id IS NULL"
+            )->fetchColumn();
+            $sent = (int)$b->query("SELECT COUNT(*) FROM sync_batch WHERE status='sent'")->fetchColumn();
+            $failed = (int)$b->query("SELECT COUNT(*) FROM sync_batch WHERE status IN ('failed','dead_letter')")->fetchColumn();
+            echo json_encode(['ok'=>true,'staged_total'=>$total,'staged_pending'=>$pending,'batches_sent'=>$sent,'batches_failed'=>$failed]);
+        } catch (\Throwable $e) {
+            echo json_encode(['ok'=>false,'error'=>$e->getMessage()]);
+        }
         exit;
     }
 
@@ -417,11 +579,32 @@ h1{font-size:1.5rem;margin-bottom:.25rem;color:#38bdf8}
   <p style="font-size:.75rem;color:#64748b" id="dbLatest">Latest: -</p>
   <div class="actions">
     <button class="btn btn-primary" onclick="doAction('db_stats')">Refresh Stats</button>
-    <button class="btn btn-success" onclick="doPost('sync_users')">Sync Users</button>
-    <button class="btn btn-success" onclick="doPost('sync_scanlogs')">Sync New Scanlogs</button>
-    <button class="btn btn-warning" onclick="doPost('sync_scanlogs','full=1')">Sync ALL Scanlogs</button>
+    <button class="btn btn-success" id="btn_sync_users" onclick="startJob('sync_users',{})">Sync Users</button>
+    <button class="btn btn-success" id="btn_sync_scanlogs" onclick="startJob('sync_scanlogs',{full:false})">Sync New Scanlogs</button>
+    <button class="btn btn-warning" id="btn_sync_scanlogs_full" onclick="startJob('sync_scanlogs',{full:true})">Sync ALL Scanlogs</button>
   </div>
+  <p style="font-size:.72rem;color:#64748b;margin-top:.4rem" id="syncJobInfo"></p>
   <div class="result" id="res_sync"></div>
+</div>
+
+<!-- Hop B Push to VM -->
+<div class="card">
+  <h2><span class="dot"></span> Push to VM (Hop B)</h2>
+  <div class="stats">
+    <div class="stat"><div class="val" id="stgPending">-</div><div class="lbl">Staged Pending</div></div>
+    <div class="stat"><div class="val" id="stgSent">-</div><div class="lbl">Batches Sent</div></div>
+    <div class="stat"><div class="val" id="stgFailed">-</div><div class="lbl">Batches Failed</div></div>
+  </div>
+  <p style="font-size:.72rem;color:#64748b;margin-bottom:.5rem">
+    Drains <code>raw_scanlog_staging</code> → VM <code>/api/scanlog/ingest</code>.
+    Requires <code>HOP_B_AUTH_TOKEN</code> + <code>HOP_B_INGEST_URL</code> env.
+  </p>
+  <div class="actions">
+    <button class="btn btn-primary" onclick="refreshStaging()">Refresh Staging</button>
+    <button class="btn btn-success" id="btn_hop_b" onclick="startJob('hop_b_push',{})">Push to VM</button>
+  </div>
+  <p style="font-size:.72rem;color:#64748b;margin-top:.4rem" id="hopBJobInfo"></p>
+  <div class="result" id="res_hop_b"></div>
 </div>
 
 <!-- Users -->
@@ -748,11 +931,95 @@ async function loadLogs(lines) {
   } catch(e) { toast('Logs error: ' + e.message, false); }
 }
 
+// --- Async Jobs (non-blocking) ---
+const JOB_UI = {
+  sync_users:    { btn: 'btn_sync_users',         info: 'syncJobInfo', result: 'res_sync',  label: 'Sync Users' },
+  sync_scanlogs: { btn: 'btn_sync_scanlogs',      info: 'syncJobInfo', result: 'res_sync',  label: 'Sync Scanlogs' },
+  hop_b_push:    { btn: 'btn_hop_b',              info: 'hopBJobInfo', result: 'res_hop_b', label: 'Push to VM' },
+};
+
+function jobButtonsByType(type) {
+  if (type === 'sync_scanlogs') return ['btn_sync_scanlogs','btn_sync_scanlogs_full'];
+  const u = JOB_UI[type];
+  return u ? [u.btn] : [];
+}
+
+async function startJob(type, payload) {
+  const ui = JOB_UI[type];
+  if (!ui) { toast('Unknown job: ' + type, false); return; }
+  const body = { type, payload: Object.assign({ machine_id: parseInt(currentMachine||'0',10) }, payload || {}) };
+  jobButtonsByType(type).forEach(id => { const b=document.getElementById(id); if (b) b.disabled = true; });
+  document.getElementById(ui.info).textContent = 'Starting…';
+  try {
+    const r = await fetch('?action=job_start', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
+    const j = await r.json();
+    if (!j.ok) { toast(ui.label + ' failed to start: ' + (j.error||'?'), false); jobButtonsByType(type).forEach(id => { const b=document.getElementById(id); if (b) b.disabled = false; }); return; }
+    document.getElementById(ui.info).textContent = 'Job ' + j.job_id + ' running…';
+    pollJob(j.job_id, type);
+  } catch(e) {
+    toast(ui.label + ' start failed: ' + e.message, false);
+    jobButtonsByType(type).forEach(id => { const b=document.getElementById(id); if (b) b.disabled = false; });
+  }
+}
+
+async function pollJob(jobId, type) {
+  const ui = JOB_UI[type];
+  let lastProgress = -1;
+  const interval = setInterval(async () => {
+    try {
+      const r = await fetch('?action=job_status&job_id=' + encodeURIComponent(jobId));
+      const j = await r.json();
+      if (!j.ok) { clearInterval(interval); toast(ui.label + ' status error', false); reEnable(type); return; }
+      if (j.progress !== undefined && j.progress !== lastProgress) {
+        document.getElementById(ui.info).textContent = 'Job ' + j.job_id + ' ' + j.status + ' progress=' + j.progress;
+        lastProgress = j.progress;
+      }
+      if (j.status === 'done' || j.status === 'error') {
+        clearInterval(interval);
+        const res = j.result || {};
+        showResult(ui.result, j);
+        if (j.status === 'done') {
+          const label = type === 'hop_b_push'
+            ? (ui.label + ': ' + (res.batches_sent||0) + ' batches, ' + (res.inserted_total||0) + ' inserted')
+            : (ui.label + ': ' + (res.synced||0) + ' rows');
+          toast(label, true);
+        } else {
+          toast(ui.label + ' error: ' + (res.error || j.last_error || 'unknown'), false);
+        }
+        reEnable(type);
+        // refresh associated stats
+        if (type === 'hop_b_push') refreshStaging();
+        else                       { doAction('db_stats'); refreshStaging(); }
+      }
+    } catch(e) {
+      clearInterval(interval);
+      toast(ui.label + ' poll error: ' + e.message, false);
+      reEnable(type);
+    }
+  }, 1500);
+}
+
+function reEnable(type) {
+  jobButtonsByType(type).forEach(id => { const b=document.getElementById(id); if (b) b.disabled = false; });
+}
+
+async function refreshStaging() {
+  try {
+    const r = await fetch('?action=staging_stats');
+    const j = await r.json();
+    if (!j.ok) { document.getElementById('stgPending').textContent = '!'; return; }
+    document.getElementById('stgPending').textContent = j.staged_pending ?? '-';
+    document.getElementById('stgSent').textContent    = j.batches_sent   ?? '-';
+    document.getElementById('stgFailed').textContent  = j.batches_failed ?? '-';
+  } catch(e) {}
+}
+
 // --- Init ---
 window.addEventListener('DOMContentLoaded', () => {
   doAction('dev_info');
   doAction('db_stats');
   loadMachines();
+  refreshStaging();
 });
 </script>
 </body>
