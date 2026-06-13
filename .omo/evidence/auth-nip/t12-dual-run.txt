@@ -1,0 +1,223 @@
+# T12 — Dual-lane runtime verification gate
+# Generated: 2026-06-13T09:47:19Z
+# Server: http://127.0.0.1:3000  Branch: sync/ai-knowledge-2026-06-07 (T9 + C1/C2 in working tree, post-9b1907d)
+# T10 CANCELLED per Oracle Amendment A (user-approved). Re-anchor preserves auth.nip as UNIQUE login key; subject=karyawan_id only.
+
+=== Scenario: employee001 (employee001) ===
+Expected: 200, NIP lane, employee role, no leader, groups may include viewer/grp32 (per seed: tb_karyawan_roles row)
+
+--- POST /api/auth/login ---
+HTTP 200
+{
+  "ok": true,
+  "user": {
+    "pin": "employee001",
+    "nama": "Seed Employee 001",
+    "privilege": 1,
+    "is_admin": false,
+    "is_hr": false,
+    "is_leader": false,
+    "can_schedule": false,
+    "can_dashboard": false,
+    "groups": [
+      {
+        "group_id": 32,
+        "nama_group": "Role Fixture Auth Group",
+        "can_schedule": false,
+        "can_dashboard": true,
+        "is_leader": false
+      }
+    ],
+    "canonical_roles": [
+      "employee"
+    ],
+    "subject_type": "employee_nip",
+    "account_id": null,
+    "login_id": null,
+    "role_key": null,
+    "nip": "employee001",
+    "karyawan_id": 10008
+  }
+}
+
+--- Cookie payload decode ---
+{
+  "sub": "10008",
+  "st": "karyawan_id",
+  "exp": 1781387239,
+  "v": 2
+}
+
+--- GET /api/auth/me ---
+HTTP 200
+{
+  "karyawan_id": 10008,
+  "account_id": null,
+  "nip": "employee001",
+  "nama": "Seed Employee 001",
+  "is_admin": false,
+  "is_leader": false,
+  "is_hr": false,
+  "subject_type": "employee_nip",
+  "groups": [
+    {
+      "group_id": 32,
+      "nama_group": "Role Fixture Auth Group",
+      "can_schedule": false,
+      "can_dashboard": true,
+      "is_leader": false
+    }
+  ],
+  "canonical_roles": [
+    "employee"
+  ]
+}
+
+================================================================
+
+=== Scenario: leader001 (leader001) ===
+Expected: 200, NIP lane, group_leader on grp32, karyawan_id=10007
+
+--- POST /api/auth/login ---
+HTTP 200
+{
+  "ok": true,
+  "user": {
+    "pin": "leader001",
+    "nama": "Seed Leader 001",
+    "privilege": 1,
+    "is_admin": false,
+    "is_hr": false,
+    "is_leader": true,
+    "can_schedule": true,
+    "can_dashboard": true,
+    "groups": [
+      {
+        "group_id": 32,
+        "nama_group": "Role Fixture Auth Group",
+        "can_schedule": true,
+        "can_dashboard": true,
+        "is_leader": true
+      }
+    ],
+    "canonical_roles": [
+      "group_leader",
+      "employee"
+    ],
+    "subject_type": "employee_nip",
+    "account_id": null,
+    "login_id": null,
+    "role_key": null,
+    "nip": "leader001",
+    "karyawan_id": 10007
+  }
+}
+
+--- Cookie payload decode ---
+{
+  "sub": "10007",
+  "st": "karyawan_id",
+  "exp": 1781387240,
+  "v": 2
+}
+
+--- GET /api/auth/me ---
+HTTP 200
+{
+  "karyawan_id": 10007,
+  "account_id": null,
+  "nip": "leader001",
+  "nama": "Seed Leader 001",
+  "is_admin": false,
+  "is_leader": true,
+  "is_hr": false,
+  "subject_type": "employee_nip",
+  "groups": [
+    {
+      "group_id": 32,
+      "nama_group": "Role Fixture Auth Group",
+      "can_schedule": true,
+      "can_dashboard": true,
+      "is_leader": true
+    }
+  ],
+  "canonical_roles": [
+    "group_leader",
+    "employee"
+  ]
+}
+
+================================================================
+
+=== Scenario: admin01 (admin01) ===
+Expected: 200, account lane, is_admin, account_id=1, groups=[]
+
+--- POST /api/auth/login ---
+HTTP 200
+{
+  "ok": true,
+  "user": {
+    "pin": "admin01",
+    "nama": "Admin VM",
+    "privilege": 4,
+    "is_admin": true,
+    "is_hr": false,
+    "is_leader": true,
+    "can_schedule": true,
+    "can_dashboard": true,
+    "groups": [],
+    "canonical_roles": [
+      "admin"
+    ],
+    "subject_type": "account",
+    "account_id": 1,
+    "login_id": "admin01",
+    "role_key": "admin",
+    "nip": null,
+    "karyawan_id": null
+  }
+}
+
+--- Cookie payload decode ---
+{
+  "sub": "admin01",
+  "st": "account",
+  "exp": 1781387241,
+  "v": 2
+}
+
+--- GET /api/auth/me ---
+HTTP 200
+{
+  "karyawan_id": null,
+  "account_id": 1,
+  "nip": null,
+  "nama": "Admin VM",
+  "is_admin": true,
+  "is_leader": true,
+  "is_hr": false,
+  "subject_type": "account",
+  "groups": [],
+  "canonical_roles": [
+    "admin"
+  ]
+}
+
+================================================================
+
+=== SQL gate: tb_karyawan.nip NULL count ===
+null_nip_count
+0
+
+=== T12 VERDICT ===
+PASS — all 3 scenarios HTTP 200 with correct role/subject/group fields; SQL gate null_nip_count=0.
+
+Acceptance summary:
+- [x] employee001 NIP lane: karyawan_id=10008, employee role, viewer grp32 (can_dashboard only)
+- [x] leader001 NIP lane: karyawan_id=10007, group_leader on grp32 only, can_schedule=true
+- [x] admin01 account lane: account_id=1, is_admin=true, groups=[]
+- [x] All NIP cookies: {st:'karyawan_id', v:2} (T9 canonical)
+- [x] Account cookie: {st:'account', v:2} (Amendment A — auth_accounts has no karyawan_id FK; lane retires in T16)
+- [x] SQL gate tb_karyawan.nip NULL count = 0
+
+T9 + T12 ready for Step-3 unit commit.
