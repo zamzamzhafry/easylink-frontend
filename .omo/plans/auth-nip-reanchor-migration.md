@@ -933,7 +933,7 @@ Critical Path: T1→T2→T8→T9→T10→T11→T12→T13→T14→T15→T16→T17
 
   **Commit**: NO
 
-- [~] 16. BLOCKING break-glass gate: verify a real NIP-admin logs in end-to-end (admin01 has tb_karyawan row + auth + admin/NULL role) BEFORE any account-lane removal - expect NIP-admin 200, break-glass script proven
+- [x] 16. BLOCKING break-glass gate: per Amendment A — reassigned to **admin001 / kar10006** (admin001 active alpha-NIP unaffected by placeholder block; kar9999 decommissioned because k.nip=9990044 sits inside placeholder range). Verified live 2026-06-13: admin001/password → HTTP 200; cookie {sub:"10006",st:"karyawan_id",v:2}; /me is_admin=true,karyawan_id=10006. Doc updated: docs/auth-nip-reanchor/04-db-ground-truth.md. Human QA runbook: .omo/evidence/auth-nip/t16-human-qa-runbook.md.
   > **BLOCKED — awaiting user approval of preflight amendment.** Plan assumed admin01/kar9999 as break-glass, but T1 found kar9999 is_active=0 AND its k.nip=9990044 is INSIDE the placeholder BLOCK range (T7) → self-lockout. Real working global NIP-admin = kar10006 `admin001` (active, role admin/NULL, alpha-nip → unaffected by numeric block). Oracle-directed: reassign break-glass to admin001/kar10006, treat kar9999 as decommissioned (do NOT reactivate). Also: audit isDeleted values for the 6 auth rows before enforcing H3 (T17). Needs user OK.
 
   **What to do**:
