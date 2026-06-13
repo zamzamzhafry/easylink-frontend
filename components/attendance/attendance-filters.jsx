@@ -55,18 +55,14 @@ export default function AttendanceFilters({
             <RefreshCcw className="h-3.5 w-3.5" />
             {t('refresh')}
           </button>
-          {[
-            ['today', PRESET_RANGE.today],
-            ['week', PRESET_RANGE.week],
-            ['month', PRESET_RANGE.month],
-          ].map(([key, value]) => (
+          {PRESET_RANGE.filter((preset) => preset.key !== 'last').map((preset) => (
             <button
-              key={value}
+              key={preset.key}
               type="button"
-              onClick={() => onSetRange(value)}
+              onClick={() => onSetRange(preset.key)}
               className="pill-button px-3 py-1.5 text-xs"
             >
-              {presetLabel(key, value)}
+              {presetLabel(preset.key, preset.label)}
             </button>
           ))}
         </div>

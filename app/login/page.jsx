@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { Fingerprint, Lock, UserCircle2 } from 'lucide-react';
-import { useRouter } from 'next/navigation';
 import { useToast } from '@/components/ui/toast-provider';
 import { requestJson } from '@/lib/request-json';
 import { resetSessionCache, fetchAuthSession } from '@/hooks/use-auth-session';
@@ -10,7 +9,6 @@ import { useAppLocale } from '@/components/app-shell';
 import { getUIText } from '@/lib/localization/ui-texts';
 
 export default function LoginPage() {
-  const router = useRouter();
   const { warning, success } = useToast();
   const { locale } = useAppLocale();
   const resolvedLocale = locale === 'id' ? 'id' : 'en';
@@ -31,13 +29,13 @@ export default function LoginPage() {
     fetchAuthSession()
       .then((session) => {
         if (!mounted) return;
-        if (session?.user) router.replace(nextPath);
+        if (session?.user) window.location.assign(nextPath);
       })
       .catch(() => {});
     return () => {
       mounted = false;
     };
-  }, [nextPath, router]);
+  }, [nextPath]);
 
   const login = async (event) => {
     event.preventDefault();
@@ -55,8 +53,10 @@ export default function LoginPage() {
       });
       success('Login success.', 'Authenticated');
       resetSessionCache();
-      router.refresh();
-      router.replace(nextPath);
+      // Hard navigation guarantees the HttpOnly session cookie is attached to
+      // the document/RSC request, avoiding the router.refresh()+replace() race
+      // that left the server Dashboard reading no cookie and bouncing to /login.
+      window.location.assign(nextPath);
     } catch (error) {
       warning(error.message || 'Unable to login with provided credentials.', 'Login failed');
     } finally {
