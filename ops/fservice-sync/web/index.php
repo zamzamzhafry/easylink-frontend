@@ -4,6 +4,8 @@
  * Usage: php -S localhost:9090 index.php
  */
 
+require_once __DIR__ . '/../lib-log.php';
+
 // --- DB Config ---------------------------------------------------------------
 $DB_HOST = getenv('DB_HOST') ?: '127.0.0.1';
 $DB_PORT = getenv('DB_PORT') ?: '3306';
@@ -63,9 +65,30 @@ function bridge_post(array $machine, string $path, array $fields = []): array {
     $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
     $err  = curl_error($ch);
     curl_close($ch);
-    if ($resp === false) return ['ok' => false, 'error' => $err, 'http' => $code];
+
+    $rawSnippet = is_string($resp) ? substr($resp, 0, 500) : '(non-string)';
+    el_log('DEBUG', 'bridge', "POST $path", [
+        'url'       => $baseUrl . $path,
+        'machine'   => $machine['label'] ?? '?',
+        'sn'        => $machine['sn'] ?? '?',
+        'http'      => $code,
+        'curl_err'  => $err,
+        'body_len'  => is_string($resp) ? strlen($resp) : 0,
+        'body_head' => $rawSnippet,
+        'fields'    => array_diff_key($fields, ['sn' => 1]),
+    ]);
+
+    if ($resp === false) {
+        el_log('ERROR', 'bridge', "$path curl failed", ['curl_err' => $err, 'http' => $code]);
+        return ['ok' => false, 'error' => $err, 'http' => $code];
+    }
     $json = json_decode($resp, true);
-    if (!is_array($json)) return ['ok' => false, 'error' => 'Non-JSON response', 'raw' => substr($resp,0,500), 'http' => $code];
+    if (!is_array($json)) {
+        el_log('ERROR', 'bridge', "$path non-JSON", [
+            'http' => $code, 'body_head' => $rawSnippet,
+        ]);
+        return ['ok' => false, 'error' => 'Non-JSON response', 'raw' => $rawSnippet, 'http' => $code];
+    }
     return ['ok' => true, 'data' => $json, 'http' => $code];
 }
 
@@ -85,8 +108,13 @@ function sync_users_to_db(array $machine): array {
             $isSession = !empty($r['data']['IsSession']);
         }
         $pdo->prepare("UPDATE tb_device_config SET last_sync_users=?, last_sync_at=NOW() WHERE id=?")->execute([$total, $machine['id']]);
-    } catch (\Exception $e) { $errors[] = $e->getMessage(); }
-    return ['ok' => empty($errors), 'synced' => $total, 'errors' => $errors];
+    } catch (\Exception $e) {
+        $errors[] = $e->getMessage();
+        el_log('ERROR', 'sync', 'sync_users exception', ['msg' => $e->getMessage(), 'sn' => $machine['sn'] ?? '?']);
+    }
+    $res = ['ok' => empty($errors), 'synced' => $total, 'errors' => $errors];
+    el_log($res['ok'] ? 'INFO' : 'ERROR', 'sync', 'sync_users done', $res + ['sn' => $machine['sn'] ?? '?']);
+    return $res;
 }
 
 function sync_scanlogs_to_db(array $machine, bool $full = false): array {
@@ -105,8 +133,13 @@ function sync_scanlogs_to_db(array $machine, bool $full = false): array {
             $isSession = !empty($r['data']['IsSession']);
         }
         $pdo->prepare("UPDATE tb_device_config SET last_sync_scanlogs=?, last_sync_at=NOW() WHERE id=?")->execute([$total, $machine['id']]);
-    } catch (\Exception $e) { $errors[] = $e->getMessage(); }
-    return ['ok' => empty($errors), 'synced' => $total, 'errors' => $errors];
+    } catch (\Exception $e) {
+        $errors[] = $e->getMessage();
+        el_log('ERROR', 'sync', 'sync_scanlogs exception', ['msg' => $e->getMessage(), 'sn' => $machine['sn'] ?? '?']);
+    }
+    $res = ['ok' => empty($errors), 'synced' => $total, 'errors' => $errors];
+    el_log($res['ok'] ? 'INFO' : 'ERROR', 'sync', 'sync_scanlogs done', $res + ['sn' => $machine['sn'] ?? '?', 'full' => $full]);
+    return $res;
 }
 
 function get_db_stats(): array {
@@ -152,6 +185,26 @@ if (isset($_GET['action'])) {
     $machineId = intval($_GET['machine'] ?? 0);
     $machine = $machineId ? get_machine($machineId) : null;
     $result = [];
+
+    el_log('INFO', 'panel', "action=$action", [
+        'method'  => $_SERVER['REQUEST_METHOD'] ?? '?',
+        'machine' => $machineId,
+        'query'   => $_GET,
+    ]);
+
+    // logs endpoint - no machine needed
+    if ($action === 'logs_tail') {
+        $lines = intval($_GET['lines'] ?? 200);
+        $lines = max(1, min(2000, $lines));
+        $tail = el_log_tail($lines);
+        echo json_encode([
+            'ok'    => true,
+            'path'  => el_log_path(),
+            'lines' => count($tail),
+            'tail'  => $tail,
+        ], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        exit;
+    }
 
     // Actions that need a machine
     $needsMachine = ['dev_info','dev_settime','dev_init','dev_deladmin','scanlog_new','scanlog_all','scanlog_del','user_all','user_set','user_del','user_delall','log_del','sync_users','sync_scanlogs'];
@@ -399,6 +452,18 @@ h1{font-size:1.5rem;margin-bottom:.25rem;color:#38bdf8}
   </div>
 </div>
 
+<!-- Logs -->
+<div class="card">
+  <h2><span class="dot config"></span> Sync Logs</h2>
+  <p style="font-size:.75rem;color:#94a3b8;margin-bottom:.5rem" id="logsPath">Path: -</p>
+  <div class="actions">
+    <button class="btn btn-primary btn-sm" onclick="loadLogs(100)">Tail 100</button>
+    <button class="btn btn-primary btn-sm" onclick="loadLogs(500)">Tail 500</button>
+    <button class="btn btn-ghost btn-sm" onclick="document.getElementById('res_logs').classList.remove('show')">Hide</button>
+  </div>
+  <div class="result" id="res_logs"></div>
+</div>
+
 <!-- Danger Zone -->
 <div class="card danger-zone">
   <h2><span class="dot danger"></span> Danger Zone</h2>
@@ -456,12 +521,43 @@ let pendingDanger = null;
 function mid() { return currentMachine; }
 function mq() { return 'machine=' + mid(); }
 
+const _toastState = { active: new Map(), maxStack: 3, ttlMs: 3500 };
 function toast(msg, ok) {
-  const t = document.createElement('div');
-  t.className = 'toast ' + (ok ? 'toast-ok' : 'toast-err');
-  t.textContent = msg;
-  document.body.appendChild(t);
-  setTimeout(() => t.remove(), 3500);
+  const key = (ok ? 'OK::' : 'ERR::') + msg;
+  const existing = _toastState.active.get(key);
+  if (existing) {
+    // Dedup: bump count + reset timer instead of stacking a new node
+    existing.count += 1;
+    existing.el.textContent = msg + ' (' + existing.count + ')';
+    clearTimeout(existing.timer);
+    existing.timer = setTimeout(() => {
+      existing.el.remove();
+      _toastState.active.delete(key);
+    }, _toastState.ttlMs);
+    return;
+  }
+  // Cap concurrent toasts
+  if (_toastState.active.size >= _toastState.maxStack) {
+    const oldestKey = _toastState.active.keys().next().value;
+    const oldest = _toastState.active.get(oldestKey);
+    if (oldest) {
+      clearTimeout(oldest.timer);
+      oldest.el.remove();
+      _toastState.active.delete(oldestKey);
+    }
+  }
+  // Position stacked: top offset by index
+  const el = document.createElement('div');
+  el.className = 'toast ' + (ok ? 'toast-ok' : 'toast-err');
+  el.style.top = (1 + _toastState.active.size * 3.25) + 'rem';
+  el.textContent = msg;
+  document.body.appendChild(el);
+  const entry = { el, count: 1, timer: null };
+  entry.timer = setTimeout(() => {
+    el.remove();
+    _toastState.active.delete(key);
+  }, _toastState.ttlMs);
+  _toastState.active.set(key, entry);
 }
 
 function switchMachine() {
@@ -636,6 +732,20 @@ async function deleteMachine(id, label) {
   const j = await doPostJson('machine_delete', {id});
   if (j.ok) { toast('Deleted', true); loadMachines(); }
   else { toast('Error: '+(j.error||''), false); }
+}
+
+async function loadLogs(lines) {
+  try {
+    const r = await fetch('?action=logs_tail&lines=' + (lines||200));
+    const j = await r.json();
+    if (!j.ok) { toast('Logs load failed', false); return; }
+    document.getElementById('logsPath').textContent = 'Path: ' + (j.path || '-');
+    const el = document.getElementById('res_logs');
+    el.textContent = (j.tail || []).join('\n');
+    el.classList.add('show');
+    el.scrollTop = el.scrollHeight;
+    toast('Logs: ' + j.lines + ' lines', true);
+  } catch(e) { toast('Logs error: ' + e.message, false); }
 }
 
 // --- Init ---
