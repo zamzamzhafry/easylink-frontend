@@ -35,6 +35,7 @@ define('DB_PORT', getenv('DB_PORT') ?: '3306');
 define('DB_USER', getenv('DB_USER') ?: 'root');
 define('DB_PASS', getenv('DB_PASS') ?: '');
 define('DB_NAME', getenv('DB_NAME') ?: 'demo_easylinksdk');
+define('HOP_B_DB_NAME', getenv('HOP_B_DB_NAME') ?: 'easylink_bridge');
 
 define('PAGING_LIMIT', 100);
 define('REQUEST_TIMEOUT', 120); // seconds
@@ -96,13 +97,51 @@ function bridge_post(string $path, array $fields = []): ?array {
     return $decoded;
 }
 
-function get_pdo(): PDO {
-    $dsn = 'mysql:host=' . DB_HOST . ';port=' . DB_PORT . ';dbname=' . DB_NAME . ';charset=utf8mb4';
-    $pdo = new PDO($dsn, DB_USER, DB_PASS, [
+function _pdo_db(string $db): PDO {
+    $dsn = 'mysql:host=' . DB_HOST . ';port=' . DB_PORT . ';dbname=' . $db . ';charset=utf8mb4';
+    return new PDO($dsn, DB_USER, DB_PASS, [
         PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
         PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
     ]);
-    return $pdo;
+}
+
+function get_pdo(): PDO { return _pdo_db(DB_NAME); }
+
+function get_bridge_pdo(): ?PDO {
+    try { return _pdo_db(HOP_B_DB_NAME); }
+    catch (\Throwable $e) {
+        el_log('WARN', 'bridge-db', 'bridge db unavailable', ['err' => $e->getMessage()]);
+        echo "[WARN] " . HOP_B_DB_NAME . " unavailable: " . $e->getMessage() . " (staging skipped)\n";
+        return null;
+    }
+}
+
+/**
+ * Insert one scan row into easylink_bridge.raw_scanlog_staging so the Hop B
+ * worker (hop-b-batch-selector.php) can pick it up. Best-effort.
+ */
+function _stage_scan(?PDOStatement $stage, string $sn, string $scanDateTs,
+                     string $pin, int $verify, int $io, int $work): bool {
+    if (!$stage) return false;
+    $ts = $scanDateTs !== '' ? strtotime($scanDateTs) : false;
+    if ($ts === false) {
+        el_log('WARN', 'stage', 'skip unparseable scan_date', ['raw' => $scanDateTs, 'pin' => $pin]);
+        return false;
+    }
+    $date = date('Y-m-d', $ts);
+    $time = date('H:i:s', $ts);
+    $key  = "{$sn}|{$date}|{$time}|{$pin}|{$verify}|{$io}|{$work}";
+    try {
+        $stage->execute([
+            ':sn'=>$sn, ':sd'=>$date, ':st'=>$time, ':pin'=>$pin,
+            ':vm'=>$verify, ':io'=>$io, ':wc'=>$work,
+            ':sek'=>$key, ':fetched'=>$scanDateTs,
+        ]);
+        return $stage->rowCount() > 0;
+    } catch (\Throwable $e) {
+        el_log('WARN', 'stage', 'stage insert failed', ['err' => $e->getMessage(), 'key' => $key]);
+        return false;
+    }
 }
 
 // --- User Sync ---------------------------------------------------------------
@@ -161,32 +200,45 @@ function sync_scanlogs(PDO $pdo, bool $fullMode = false): int {
         INSERT IGNORE INTO tb_scanlog (sn, scan_date, pin, verifymode, iomode, workcode)
         VALUES (:sn, :scan_date, :pin, :verifymode, :iomode, :workcode)
     ");
+    $bridge = get_bridge_pdo();
+    $stage = $bridge ? $bridge->prepare(
+        "INSERT IGNORE INTO raw_scanlog_staging
+           (sn, scan_date, scan_time, pin, verifymode, iomode, workcode, source_event_key, fetched_at)
+         VALUES (:sn,:sd,:st,:pin,:vm,:io,:wc,:sek,:fetched)"
+    ) : null;
 
     $total = 0;
+    $staged = 0;
+
+    $consume = function(array $rows) use ($stmt, $stage, &$total, &$staged) {
+        foreach ($rows as $row) {
+            $sn = (string)($row['SN'] ?? FSERVICE_SN);
+            $sd = (string)($row['ScanDate'] ?? '');
+            $pin = (string)($row['PIN'] ?? '');
+            $vm = (int)($row['VerifyMode'] ?? 0);
+            $io = (int)($row['IOMode'] ?? 0);
+            $wc = (int)($row['WorkCode'] ?? 0);
+            $stmt->execute([
+                ':sn'=>$sn, ':scan_date'=>$sd, ':pin'=>$pin,
+                ':verifymode'=>$vm, ':iomode'=>$io, ':workcode'=>$wc,
+            ]);
+            if (_stage_scan($stage, $sn, $sd, $pin, $vm, $io, $wc)) $staged++;
+            $total++;
+        }
+    };
 
     // Try /scanlog/new first (incremental)
     $result = bridge_post($endpoint, ['limit' => PAGING_LIMIT]);
 
     if ($result && !empty($result['Result'])) {
-        $rows = $result['Data'] ?? [];
-        foreach ($rows as $row) {
-            $stmt->execute([
-                ':sn'         => $row['SN'] ?? FSERVICE_SN,
-                ':scan_date'  => $row['ScanDate'] ?? '',
-                ':pin'        => $row['PIN'] ?? '',
-                ':verifymode' => (int)($row['VerifyMode'] ?? 0),
-                ':iomode'     => (int)($row['IOMode'] ?? 0),
-                ':workcode'   => $row['WorkCode'] ?? '0',
-            ]);
-            $total++;
-        }
-        echo "[INFO] Incremental sync got $total records\n";
+        $consume($result['Data'] ?? []);
+        echo "[INFO] Incremental sync got $total records (staged=$staged)\n";
     }
 
     // --- Phase 2: fallback to /scanlog/all/paging if needed ---
     if ($fullMode || $total === 0) {
         if ($total === 0) {
-            echo "[WARN] No new scanlogs from /scanlog/new — falling back to /scanlog/all/paging\n";
+            echo "[INFO] No new scanlogs from /scanlog/new — falling back to /scanlog/all/paging\n";
         }
 
         $endpoint = '/scanlog/all/paging';
@@ -194,36 +246,31 @@ function sync_scanlogs(PDO $pdo, bool $fullMode = false): int {
 
         $isSession = true;
         $pageTotal = 0;
+        $before = $total;
 
         while ($isSession) {
             $result = bridge_post($endpoint, ['limit' => PAGING_LIMIT]);
 
             if (!$result || empty($result['Result'])) {
-                echo "[WARN] Scanlog all/paging returned Result=false or empty\n";
+                $msg = is_array($result) ? (string)($result['message'] ?? '') : '';
+                if (stripos($msg, 'no data') !== false || stripos($msg, 'tidak') !== false) {
+                    echo "[INFO] Scanlog all/paging: no more data\n";
+                } else {
+                    echo "[WARN] Scanlog all/paging returned Result=false: $msg\n";
+                }
                 break;
             }
 
-            $rows = $result['Data'] ?? [];
-            foreach ($rows as $row) {
-                $stmt->execute([
-                    ':sn'         => $row['SN'] ?? FSERVICE_SN,
-                    ':scan_date'  => $row['ScanDate'] ?? '',
-                    ':pin'        => $row['PIN'] ?? '',
-                    ':verifymode' => (int)($row['VerifyMode'] ?? 0),
-                    ':iomode'     => (int)($row['IOMode'] ?? 0),
-                    ':workcode'   => $row['WorkCode'] ?? '0',
-                ]);
-                $pageTotal++;
-            }
+            $consume($result['Data'] ?? []);
+            $pageTotal = $total - $before;
 
             $isSession = !empty($result['IsSession']);
         }
 
-        echo "[INFO] All scanlogs synced: $pageTotal records\n";
-        $total += $pageTotal;
+        echo "[INFO] All scanlogs synced this phase: $pageTotal records\n";
     }
 
-    echo "[INFO] Total scanlogs synced: $total\n";
+    echo "[INFO] Total scanlogs synced: $total (staged for Hop B: $staged)\n";
     return $total;
 }
 
