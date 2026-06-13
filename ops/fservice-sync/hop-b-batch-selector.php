@@ -861,7 +861,11 @@ function hop_b_mark_batch_sending(PDO $pdo, string $batchId, ?DateTimeImmutable 
 function hop_b_parse_success_ack(array $decodedBody, array $payload): array
 {
     $status = trim((string) ($decodedBody['status'] ?? ''));
-    $ackBatchId = trim((string) ($decodedBody['batch_id'] ?? ''));
+    // Server (lib/hop-b-ingest-handler.js) nests batch fields under "ack":
+    //   { status, code, message, request_id, ack: { batch_id, inserted_count, ... } }
+    // Older contract doc shows a flat shape. Support both, prefer ack.* first.
+    $ack = isset($decodedBody['ack']) && is_array($decodedBody['ack']) ? $decodedBody['ack'] : [];
+    $ackBatchId = trim((string) ($ack['batch_id'] ?? $decodedBody['batch_id'] ?? ''));
     $expectedBatchId = (string) $payload['batch_id'];
 
     if (!in_array($status, ['accepted', 'ok'], true)) {
@@ -872,9 +876,9 @@ function hop_b_parse_success_ack(array $decodedBody, array $payload): array
         throw new RuntimeException('ack batch_id mismatch');
     }
 
-    $inserted = $decodedBody['inserted_count'] ?? $decodedBody['accepted'] ?? null;
-    $duplicates = $decodedBody['duplicate_count'] ?? $decodedBody['duplicates'] ?? null;
-    $committedAt = $decodedBody['committed_at'] ?? null;
+    $inserted    = $ack['inserted_count']  ?? $decodedBody['inserted_count']  ?? $decodedBody['accepted']  ?? null;
+    $duplicates  = $ack['duplicate_count'] ?? $decodedBody['duplicate_count'] ?? $decodedBody['duplicates'] ?? null;
+    $committedAt = $ack['committed_at']    ?? $decodedBody['committed_at']    ?? null;
 
     if (!is_int($inserted) && !ctype_digit((string) $inserted)) {
         throw new RuntimeException('ack inserted count missing');

@@ -22,6 +22,8 @@
  *   DB_NAME          - MySQL database (default: demo_easylinksdk)
  */
 
+require_once __DIR__ . '/lib-log.php';
+
 // --- Configuration -----------------------------------------------------------
 
 define('FSERVICE_HOST', getenv('FSERVICE_HOST') ?: 'localhost');
@@ -62,13 +64,31 @@ function bridge_post(string $path, array $fields = []): ?array {
     $error    = curl_error($ch);
     curl_close($ch);
 
+    $rawSnippet = is_string($response) ? substr($response, 0, 500) : '(non-string)';
+    $url        = bridge_url($path);
+
+    el_log('DEBUG', 'bridge', "POST $path", [
+        'url'       => $url,
+        'http'      => $httpCode,
+        'curl_err'  => $error,
+        'body_len'  => is_string($response) ? strlen($response) : 0,
+        'body_head' => $rawSnippet,
+        'fields'    => array_diff_key($fields, ['sn' => 1]),
+    ]);
+
     if ($response === false || $httpCode !== 200) {
+        el_log('ERROR', 'bridge', "$path failed", [
+            'http' => $httpCode, 'curl_err' => $error, 'url' => $url,
+        ]);
         echo "[ERROR] $path failed: HTTP $httpCode - $error\n";
         return null;
     }
 
     $decoded = json_decode($response, true);
     if (!is_array($decoded)) {
+        el_log('ERROR', 'bridge', "$path non-JSON", [
+            'http' => $httpCode, 'body_head' => $rawSnippet, 'url' => $url,
+        ]);
         echo "[ERROR] $path returned non-JSON\n";
         return null;
     }
