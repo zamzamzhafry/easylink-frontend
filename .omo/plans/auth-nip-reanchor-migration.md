@@ -572,7 +572,7 @@ Critical Path: T1→T2→T8→T9→T10→T11→T12→T13→T14→T15→T16→T17
 
   **Commit**: NO (groups with T9/T10 as Step-3 unit, only if user asks)
 
-- [~] 9. lib/auth-session.ts + login route: Switch session SUBJECT to karyawan_id; keep nip:/account: cookie DECODE for one 12h TTL (PAYLOAD_COMPAT) - expect new logins store numeric karyawan_id, old cookies still resolve (BLOCKED: cascade on T10 Oracle amendment A/B/C; subject shape and resolver decoupling can't be finalized until user picks)
+- [x] 9. lib/auth-session.ts + login route: Switch session SUBJECT to karyawan_id; keep nip:/account: cookie DECODE for one 12h TTL (PAYLOAD_COMPAT) - DONE 2026-06-13 per Amendment A. NIP lane writes {st:'karyawan_id', sub:numeric}; account lane preserves {st:'account'} (auth_accounts has no karyawan_id FK; T16 retires). Legacy nip:/account: + bare formats decode behind LEGACY_SESSION_PAYLOAD_COMPAT (default on). Evidence: .omo/evidence/auth-nip/t9-numeric-subject.txt + t9-legacy-compat.txt
 
   **What to do**:
   - On successful login (both lanes), set cookie subject to `karyawan_id` (numeric), NOT `nip:` string (H1 immutable PK).
@@ -748,7 +748,7 @@ Critical Path: T1→T2→T8→T9→T10→T11→T12→T13→T14→T15→T16→T17
 
   **Commit**: NO (only if user asks)
 
-- [~] 12. Dual-run verification: both NIP lane (employee001/leader001) AND account lane (admin01) return 200 in same window; confirm 0 NULL nips - expect both lanes live, backfill complete (BLOCKED: requires T9 subject switch to verify; cascade on T10 amendment)
+- [x] 12. Dual-run verification: both NIP lane (employee001/leader001) AND account lane (admin01) return 200 in same window; confirm 0 NULL nips - DONE 2026-06-13. All 3 scenarios HTTP 200 with correct karyawan_id/account_id/role/groups; SQL null_nip_count=0. Evidence: .omo/evidence/auth-nip/t12-dual-run.txt
 
   **What to do**:
   - With Step-3 + H2 + H4 merged and PAYLOAD_COMPAT on, verify BOTH lanes authenticate simultaneously (Metis: keep both lanes through Step 5).

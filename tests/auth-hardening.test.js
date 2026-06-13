@@ -15,6 +15,7 @@ describe('auth hardening helpers', () => {
     assert.equal(normalizeSubjectType('account'), 'account');
     assert.equal(normalizeSubjectType('employee_nip'), 'employee_nip');
     assert.equal(normalizeSubjectType('legacy_pin'), 'legacy_pin');
+    assert.equal(normalizeSubjectType('karyawan_id'), 'karyawan_id');
     assert.equal(normalizeSubjectType('weird'), undefined);
     assert.equal(normalizeSubjectType(null), undefined);
   });

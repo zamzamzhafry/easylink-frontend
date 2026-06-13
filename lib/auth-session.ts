@@ -98,7 +98,7 @@ type KaryawanRoleRow = {
 };
 
 export type AuthAccountRole = 'admin' | 'hr' | 'scheduler' | 'viewer';
-export type AuthSubjectType = 'account' | 'employee_nip' | 'legacy_pin';
+export type AuthSubjectType = 'account' | 'employee_nip' | 'legacy_pin' | 'karyawan_id';
 
 type AuthAccountRow = {
   id: number | string;
@@ -312,7 +312,9 @@ function decodeSession(token?: string | null): SessionPayload | null {
         ? 'employee_nip'
         : payload.subject.startsWith('pin:')
           ? 'legacy_pin'
-          : undefined;
+          : /^\d+$/.test(payload.subject)
+            ? 'karyawan_id'
+            : undefined;
 
     if (normalizedSubjectType && inferredSubjectType && normalizedSubjectType !== inferredSubjectType) {
       logSubjectTypeMismatch(inferredSubjectType, normalizedSubjectType);
@@ -339,6 +341,10 @@ function getSubjectValueForType(subject: string, subjectType: AuthSubjectType) {
   }
   if (subjectType === 'legacy_pin') {
     return subject.startsWith('pin:') ? subject.slice('pin:'.length) : subject;
+  }
+  if (subjectType === 'karyawan_id') {
+    // T9: subject is the bare numeric karyawan_id (no prefix). Trim defensively.
+    return String(subject ?? '').trim();
   }
   return subject;
 }
@@ -874,16 +880,33 @@ export async function getAuthContextFromCookies(): Promise<AuthContext | null> {
 
   const normalizedSubjectType = normalizeSubjectType(payload.subject_type);
 
+  // T9: canonical post-migration subject — numeric karyawan_id, ungated (the new normal).
+  // Both login lanes now write `st='karyawan_id'` + numeric `sub`. Account lane resolves karyawan_id
+  // from auth_accounts.karyawan_id (when linked); NIP lane from tb_karyawan_auth.karyawan_id.
+  if (normalizedSubjectType === 'karyawan_id') {
+    const raw = getSubjectValueForType(payload.subject, 'karyawan_id');
+    const id = Number(raw);
+    if (!Number.isFinite(id) || !Number.isInteger(id) || id <= 0) return null;
+    return createAuthContextByKaryawanId(id);
+  }
+
+  // In-flight pre-T9 cookies: explicit-typed payloads issued during a TTL window before this deploy.
+  // Gated by EASYLINK_ENABLE_LEGACY_SESSION_PAYLOAD_COMPAT (T13 flips OFF after 12h soak).
   if (normalizedSubjectType === 'account') {
+    if (!LEGACY_SESSION_PAYLOAD_COMPAT_ENABLED) return null;
     return createAuthContextByLoginId(getSubjectValueForType(payload.subject, 'account'));
   }
   if (normalizedSubjectType === 'employee_nip') {
+    if (!LEGACY_SESSION_PAYLOAD_COMPAT_ENABLED) return null;
     return createAuthContextByNip(getSubjectValueForType(payload.subject, 'employee_nip'));
   }
   if (normalizedSubjectType === 'legacy_pin') {
     if (!LEGACY_PIN_FALLBACK_ENABLED) return null;
     return createAuthContextByPin(getSubjectValueForType(payload.subject, 'legacy_pin'));
   }
+
+  // Untyped legacy payloads (st missing): prefix-inferred. Same compat gate.
+  if (!LEGACY_SESSION_PAYLOAD_COMPAT_ENABLED) return null;
 
   if (payload.subject.startsWith('account:')) {
     return createAuthContextByLoginId(payload.subject.slice('account:'.length));
@@ -894,10 +917,6 @@ export async function getAuthContextFromCookies(): Promise<AuthContext | null> {
   if (payload.subject.startsWith('pin:')) {
     if (!LEGACY_PIN_FALLBACK_ENABLED) return null;
     return createAuthContextByPin(payload.subject.slice('pin:'.length));
-  }
-
-  if (!LEGACY_SESSION_PAYLOAD_COMPAT_ENABLED) {
-    return null;
   }
 
   const accountContext = await createAuthContextByLoginId(payload.subject);

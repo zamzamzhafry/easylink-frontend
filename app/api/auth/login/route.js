@@ -41,7 +41,19 @@ async function finalizeLoginSuccess({
     user: buildNormalizedAuthUser(authContext),
   });
 
-  setAuthCookie(response, loginId, request, { subjectType });
+  // T9 (Amendment A): NIP lane writes immutable karyawan_id PK as subject.
+  // Account lane (auth_accounts table) has NO karyawan_id FK — stays on st='account' / sub='account:<login_id>'
+  // until T16 deprecates the standalone account lane. Both formats coexist; getAuthContextFromCookies
+  // accepts both.
+  const karyawanId = Number(authContext?.karyawan_id);
+  const hasKaryawanId =
+    Number.isFinite(karyawanId) && Number.isInteger(karyawanId) && karyawanId > 0;
+
+  if (subjectType === 'employee_nip' && hasKaryawanId) {
+    setAuthCookie(response, String(karyawanId), request, { subjectType: 'karyawan_id' });
+  } else {
+    setAuthCookie(response, loginId, request, { subjectType });
+  }
   return response;
 }
 
