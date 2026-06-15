@@ -13,6 +13,7 @@ import {
 } from '@/lib/pagination';
 import { getMigrationGateStatus } from '@/lib/flags/migration-flags';
 import { SCANLOG_CANONICAL_SOURCE } from '@/lib/scanlog-read-source';
+import { mergeSafeEventsIntoLegacy } from '@/lib/scanlog-legacy-mirror';
 
 function toBoundedInt(value, fallback, { min = 1, max = 100000 } = {}) {
   const parsed = Number.parseInt(String(value ?? ''), 10);
@@ -546,70 +547,6 @@ async function insertSafeEvents(rows, batchId) {
       ) VALUES ${placeholders}
     `,
     values
-  );
-
-  return Number(result.affectedRows || 0);
-}
-
-async function mergeSafeEventsIntoLegacy({ batchId, from, to }) {
-  if (!batchId && !from && !to) return 0;
-
-  const hasLegacy = await tableExists('tb_scanlog');
-  if (!hasLegacy) return 0;
-
-  const whereParts = [];
-  const whereParams = [];
-
-  const hasRange = Boolean(from || to);
-  if (hasRange) {
-    if (from) {
-      whereParts.push('DATE(se.scan_at) >= ?');
-      whereParams.push(from);
-    }
-
-    if (to) {
-      whereParts.push('DATE(se.scan_at) <= ?');
-      whereParams.push(to);
-    }
-  } else if (batchId) {
-    whereParts.push('se.batch_id = ?');
-    whereParams.push(batchId);
-  }
-
-  if (whereParts.length === 0) return 0;
-
-  const [result] = await pool.query(
-    `
-      INSERT INTO tb_scanlog (
-        sn,
-        scan_date,
-        pin,
-        verifymode,
-        iomode,
-        workcode
-      )
-      SELECT
-        se.sn,
-        se.scan_at,
-        se.pin,
-        COALESCE(se.verifymode, 0),
-        COALESCE(se.iomode, 0),
-        CAST(COALESCE(NULLIF(se.workcode, ''), '0') AS SIGNED)
-      FROM tb_scanlog_safe_events se
-      WHERE ${whereParts.join(' AND ')}
-        AND NOT EXISTS (
-          SELECT 1
-          FROM tb_scanlog sl
-          WHERE sl.sn = se.sn
-            AND sl.pin = se.pin
-            AND sl.scan_date = se.scan_at
-            AND COALESCE(sl.verifymode, 0) = COALESCE(se.verifymode, 0)
-            AND COALESCE(sl.iomode, 0) = COALESCE(se.iomode, 0)
-            AND COALESCE(CAST(sl.workcode AS SIGNED), 0) =
-                CAST(COALESCE(NULLIF(se.workcode, ''), '0') AS SIGNED)
-        )
-    `,
-    whereParams
   );
 
   return Number(result.affectedRows || 0);
