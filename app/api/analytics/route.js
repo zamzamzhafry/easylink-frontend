@@ -87,8 +87,8 @@ export async function GET(req) {
           MAX(TIME(sl.scan_date)) AS keluar,
           COUNT(*) AS scan_count
         FROM tb_scanlog sl
-        WHERE DATE(sl.scan_date) BETWEEN ? AND ?
-GROUP BY sl.pin, DATE_FORMAT(sl.scan_date, '%Y-%m-%d')
+        WHERE DATE_FORMAT(sl.scan_date, '%Y-%m-%d') BETWEEN ? AND ?
+        GROUP BY sl.pin, DATE_FORMAT(sl.scan_date, '%Y-%m-%d')
       ) logs
       LEFT JOIN tb_karyawan k ON k.pin = logs.pin ${canFilterDeleted ? 'AND k.isDeleted = 0' : ''}
       LEFT JOIN tb_user u ON u.pin = logs.pin
@@ -239,7 +239,7 @@ function calculateMetrics(rows, from, to, totalEmployeeCount) {
   });
 
   const totalEmployees = totalEmployeeCount;
-  const attendanceRate = presentCount > 0 ? (presentCount / (totalEmployees * getDayCount(from, to))) * 100 : 0;
+  const attendanceRate = presentCount > 0 && totalEmployees > 0 ? (presentCount / (totalEmployees * getDayCount(from, to))) * 100 : 0;
   const punctualityIndex = presentCount > 0 ? (onTimeCount / presentCount) * 100 : 0;
   const avgLateMinutes = lateCount > 0 ? totalLateMinutes / lateCount : 0;
 
@@ -269,13 +269,13 @@ async function calculateBradfordFactors(from, to, groupId, employeeId, allowedGr
       k.pin,
       g.nama_group AS \`group\`,
       COUNT(DISTINCT DATE(sc.tanggal)) AS scheduled_days,
-      COUNT(DISTINCT DATE(sl.scan_date)) AS present_days
+      COUNT(DISTINCT DATE_FORMAT(sl.scan_date, '%Y-%m-%d')) AS present_days
     FROM tb_karyawan k
     LEFT JOIN tb_employee_group eg ON eg.karyawan_id = k.id
     LEFT JOIN tb_group g ON g.id = eg.group_id
     LEFT JOIN tb_schedule sc ON sc.karyawan_id = k.id AND sc.tanggal BETWEEN ? AND ?
     LEFT JOIN tb_shift_type st ON st.id = sc.shift_id
-    LEFT JOIN tb_scanlog sl ON sl.pin = k.pin AND DATE(sl.scan_date) = sc.tanggal
+    LEFT JOIN tb_scanlog sl ON sl.pin = k.pin AND DATE_FORMAT(sl.scan_date, '%Y-%m-%d') = sc.tanggal
     WHERE st.needs_scan = 1 ${canFilterDeleted ? 'AND k.isDeleted = 0' : ''}
   `;
 
@@ -350,7 +350,7 @@ async function calculateWeeklyTrend(from, to, groupId, employeeId, allowedGroups
       YEARWEEK(sc.tanggal, 1) AS year_week,
       DATE_FORMAT(MIN(sc.tanggal), '%Y-W%v') AS week,
       COUNT(DISTINCT CONCAT(k.id, '-', sc.tanggal)) AS scheduled,
-      COUNT(DISTINCT CONCAT(sl.pin, '-', DATE(sl.scan_date))) AS present,
+      COUNT(DISTINCT CONCAT(sl.pin, '-', DATE_FORMAT(sl.scan_date, '%Y-%m-%d'))) AS present,
       SUM(CASE
         WHEN st.jam_masuk IS NOT NULL AND TIME(sl.scan_date) IS NOT NULL
           AND TIME(sl.scan_date) - st.jam_masuk <= '00:15:00'
@@ -365,7 +365,7 @@ async function calculateWeeklyTrend(from, to, groupId, employeeId, allowedGroups
     INNER JOIN tb_shift_type st ON st.id = sc.shift_id AND st.needs_scan = 1
     INNER JOIN tb_karyawan k ON k.id = sc.karyawan_id ${canFilterDeleted ? 'AND k.isDeleted = 0' : ''}
     LEFT JOIN tb_employee_group eg ON eg.karyawan_id = k.id
-    LEFT JOIN tb_scanlog sl ON sl.pin = k.pin AND DATE(sl.scan_date) = sc.tanggal
+    LEFT JOIN tb_scanlog sl ON sl.pin = k.pin AND DATE_FORMAT(sl.scan_date, '%Y-%m-%d') = sc.tanggal
     WHERE sc.tanggal BETWEEN ? AND ?
   `;
 

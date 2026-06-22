@@ -145,7 +145,7 @@ export async function GET(req) {
   }
 
   const punchFilters = [
-    'DATE(sl.scan_date) BETWEEN ? AND ?',
+    "DATE_FORMAT(sl.scan_date, '%Y-%m-%d') BETWEEN ? AND ?",
     canFilterDeleted ? 'k.isDeleted = 0' : null,
     ...employeeFilters,
   ]

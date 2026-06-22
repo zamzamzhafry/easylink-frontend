@@ -865,7 +865,7 @@ export async function createAuthContextByPin(pin: string): Promise<AuthContext |
       'SELECT isDeleted FROM tb_karyawan WHERE pin = ? LIMIT 1',
       [pin]
     );
-    const emp = Array.isArray(empRows) ? empRows[0] as any : null;
+    const emp = Array.isArray(empRows) ? (empRows[0] as { isDeleted: number } | undefined) : null;
     if (emp && Number(emp.isDeleted) === 1) {
       console.warn('[auth-session] PIN fallback blocked: employee deleted, pin:', pin);
       return null;
