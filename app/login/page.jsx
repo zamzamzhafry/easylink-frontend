@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { Fingerprint, Lock, UserCircle2 } from 'lucide-react';
+import { AlertTriangle, Fingerprint, Lock, UserCircle2 } from 'lucide-react';
 import { useToast } from '@/components/ui/toast-provider';
 import { requestJson } from '@/lib/request-json';
 import { resetSessionCache, fetchAuthSession } from '@/hooks/use-auth-session';
@@ -16,6 +16,7 @@ export default function LoginPage() {
   const [loginId, setLoginId] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const [errorMessage, setErrorMessage] = useState(null);
   const [nextPath, setNextPath] = useState('/');
 
   useEffect(() => {
@@ -45,6 +46,7 @@ export default function LoginPage() {
     }
 
     setLoading(true);
+    setErrorMessage(null);
     try {
       await requestJson('/api/auth/login', {
         method: 'POST',
@@ -58,7 +60,9 @@ export default function LoginPage() {
       // that left the server Dashboard reading no cookie and bouncing to /login.
       window.location.assign(nextPath);
     } catch (error) {
-      warning(error.message || 'Unable to login with provided credentials.', 'Login failed');
+      const msg = error.message || 'Unable to login with provided credentials.';
+      setErrorMessage(msg);
+      warning(msg, 'Login failed');
     } finally {
       setLoading(false);
     }
@@ -85,7 +89,7 @@ export default function LoginPage() {
               <UserCircle2 className="auth-input-icon pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2" />
               <input
                 value={loginId}
-                onChange={(event) => setLoginId(event.target.value)}
+                onChange={(event) => { setLoginId(event.target.value); setErrorMessage(null); }}
                 placeholder={t('loginPage.loginIdPlaceholder')}
                 id="login-id"
                 className="auth-input w-full rounded-lg border py-2.5 pl-10 pr-3 text-sm transition-colors focus:outline-none"
@@ -102,13 +106,20 @@ export default function LoginPage() {
               <input
                 type="password"
                 value={password}
-                onChange={(event) => setPassword(event.target.value)}
+                onChange={(event) => { setPassword(event.target.value); setErrorMessage(null); }}
                 placeholder={t('loginPage.passwordPlaceholder')}
                 id="login-password"
                 className="auth-input w-full rounded-lg border py-2.5 pl-10 pr-3 text-sm transition-colors focus:outline-none"
               />
             </div>
           </div>
+
+          {errorMessage && (
+            <div className="flex items-center gap-2 rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-sm text-rose-300">
+              <AlertTriangle className="h-4 w-4 shrink-0" />
+              <span>{errorMessage}</span>
+            </div>
+          )}
 
           <button
             type="submit"

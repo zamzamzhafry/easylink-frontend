@@ -242,9 +242,12 @@ async function getStats({ auth }) {
   const dateMap = new Map();
   let currentDate = new Date(sevenDaysAgo);
   const end = new Date(today);
+  const dayNames = ['Min', 'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab'];
   while (currentDate <= end) {
-    dateMap.set(currentDate.toISOString().slice(0, 10), {
-      date: currentDate.toISOString().slice(0, 10),
+    const dateStr = currentDate.toISOString().slice(0, 10);
+    dateMap.set(dateStr, {
+      date: dateStr,
+      label: dayNames[currentDate.getDay()],
       value: 0,
       color: '#10b981'
     });

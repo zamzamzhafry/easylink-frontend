@@ -81,11 +81,11 @@ export function usePaginatedResource({
       setError('');
 
       try {
-        const data = await fetchPageRef.current({
-          page: targetPage,
-          limit: targetLimit,
-          signal: controller.signal,
-        });
+      const data = await fetchPageRef.current({
+        page: targetPage,
+        limit: targetLimit,
+        signal: controller.signal,
+      });
 
         const normalized = normalizePayload(data, {
           page: targetPage,
@@ -106,8 +106,8 @@ export function usePaginatedResource({
         }
 
         return normalized;
-      } catch (err) {
-        if (err?.name === 'AbortError') {
+    } catch (err) {
+      if (err?.name === 'AbortError') {
           return null;
         }
 
