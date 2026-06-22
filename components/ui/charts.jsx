@@ -147,13 +147,23 @@ export function SvgBarChart({ data, targetLine, onBarClick, width = '100%', heig
         )}
       </svg>
 
-      {/* HTML Labels (easier for text rendering than SVG) */}
+      {/* X-axis labels */}
       <div
-        className="pointer-events-none absolute inset-0 flex flex-col justify-between"
+        className="absolute"
         style={{
-          padding: `${padding.top}% ${padding.right}% ${padding.bottom}% ${padding.left}%`,
+          left: `${padding.left}%`,
+          right: `${padding.right}%`,
+          bottom: '8px',
         }}
-      />
+      >
+        <div className="flex justify-between">
+          {data.map((item, index) => (
+            <span key={item.id || index} className="text-[10px] text-slate-500">
+              {item.label || item.date}
+            </span>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }
