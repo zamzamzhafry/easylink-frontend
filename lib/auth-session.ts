@@ -92,10 +92,43 @@ type KaryawanAuthRow = {
   karyawan_nip: string | null;
 };
 
-type KaryawanRoleRow = {
+type RawKaryawanRoleRow = {
   role_key: string;
   group_id: number | string | null;
 };
+
+export const GLOBAL_ROLE_KEYS = ['admin', 'hr'] as const;
+export const SCOPED_ROLE_KEYS = ['group_leader', 'scheduler', 'viewer'] as const;
+
+type GlobalRoleKey = (typeof GLOBAL_ROLE_KEYS)[number];
+type ScopedRoleKey = (typeof SCOPED_ROLE_KEYS)[number];
+
+type GlobalRoleRow = { role_key: GlobalRoleKey; group_id: null };
+type ScopedRoleRow = { role_key: ScopedRoleKey; group_id: number };
+export type KaryawanRoleRow = GlobalRoleRow | ScopedRoleRow;
+
+// B2 invariant enforced by construction: admin/hr must have null group_id,
+// scoped roles must have a numeric group_id. Invalid rows are dropped here
+// (the only place that decides what "global" means).
+function narrowRoleRow(raw: RawKaryawanRoleRow): KaryawanRoleRow | null {
+  const key = raw.role_key;
+  const gidRaw = raw.group_id;
+  const isNullGid = gidRaw === null || gidRaw === undefined;
+  if ((GLOBAL_ROLE_KEYS as readonly string[]).includes(key)) {
+    if (!isNullGid) return null;
+    return { role_key: key as GlobalRoleKey, group_id: null };
+  }
+  if ((SCOPED_ROLE_KEYS as readonly string[]).includes(key)) {
+    if (isNullGid) return null;
+    const gid = Number(gidRaw);
+    if (!Number.isFinite(gid) || !Number.isInteger(gid) || gid <= 0) return null;
+    return { role_key: key as ScopedRoleKey, group_id: gid };
+  }
+  return null;
+}
+
+const isGlobalRoleRow = (r: KaryawanRoleRow): r is GlobalRoleRow =>
+  r.group_id === null;
 
 export type AuthAccountRole = 'admin' | 'hr' | 'scheduler' | 'viewer';
 export type AuthSubjectType = 'account' | 'employee_nip' | 'legacy_pin' | 'karyawan_id';
@@ -118,24 +151,40 @@ export type GroupAccess = {
   is_leader: boolean;
 };
 
-export type AuthContext = {
+type AuthContextBase = {
   pin: string;
   nama: string;
   privilege: number;
   is_admin: boolean;
+  is_hr: boolean;
+  is_leader: boolean;
   can_schedule: boolean;
   can_dashboard: boolean;
-  is_leader: boolean;
-  is_hr?: boolean;
-  nip?: string;
-  karyawan_id?: number;
-  account_id?: number;
-  login_id?: string;
-  role_key?: AuthAccountRole | string;
-  subject_type?: AuthSubjectType;
   groups: GroupAccess[];
   canonical_roles: CanonicalEmployeeRole[];
 };
+
+export type AccountAuthContext = AuthContextBase & {
+  subject_type: 'account';
+  account_id: number;
+  login_id: string;
+  role_key: AuthAccountRole;
+};
+
+export type EmployeeAuthContext = AuthContextBase & {
+  subject_type: 'employee_nip';
+  karyawan_id: number;
+  nip: string;
+};
+
+export type LegacyPinAuthContext = AuthContextBase & {
+  subject_type: 'legacy_pin';
+};
+
+export type AuthContext =
+  | AccountAuthContext
+  | EmployeeAuthContext
+  | LegacyPinAuthContext;
 
 export type LegacyAuthFlagSnapshot = Pick<
   AuthContext,
@@ -535,7 +584,7 @@ export async function createAuthContextByNip(
     }
 
     const [users] = await connection.query(
-      'SELECT a.karyawan_id, a.nip, k.nama, k.pin, k.nip AS karyawan_nip FROM tb_karyawan_auth a JOIN tb_karyawan k ON a.karyawan_id = k.id WHERE a.nip = ? AND a.is_active = 1',
+      'SELECT a.karyawan_id, a.nip, k.nama, k.pin, k.nip AS karyawan_nip FROM tb_karyawan_auth a JOIN tb_karyawan k ON a.karyawan_id = k.id WHERE a.nip = ? AND a.is_active = 1 AND k.isDeleted = 0',
       [nip]
     );
 
@@ -548,14 +597,16 @@ export async function createAuthContextByNip(
       'SELECT role_key, group_id FROM tb_karyawan_roles WHERE karyawan_id = ?',
       [user.karyawan_id]
     );
-    const roleRows: KaryawanRoleRow[] = Array.isArray(roles) ? (roles as KaryawanRoleRow[]) : [];
+    const rawRoleRows: RawKaryawanRoleRow[] = Array.isArray(roles) ? (roles as RawKaryawanRoleRow[]) : [];
+    const roleRows: KaryawanRoleRow[] = rawRoleRows
+      .map(narrowRoleRow)
+      .filter((r): r is KaryawanRoleRow => r !== null);
     const LEADER_ROLE_KEYS = ['group_leader', 'scheduler'];
-    const isGlobalRow = (r: any) => r.group_id === null || r.group_id === undefined;
 
     // B2: admin/hr are global ONLY when granted by a global-scope role row
     // (group_id IS NULL). A group-scoped admin/hr row must not confer global rights.
-    const is_admin = roleRows.some((r) => r.role_key === 'admin' && isGlobalRow(r));
-    const is_hr = roleRows.some((r) => r.role_key === 'hr' && isGlobalRow(r));
+    const is_admin = roleRows.some((r) => r.role_key === 'admin' && isGlobalRoleRow(r));
+    const is_hr = roleRows.some((r) => r.role_key === 'hr' && isGlobalRoleRow(r));
     // Top-level is_leader is true if leader anywhere (global row or any group row).
     const is_leader = roleRows.some((r) => LEADER_ROLE_KEYS.includes(r.role_key));
 
@@ -579,7 +630,7 @@ export async function createAuthContextByNip(
       // grant leader rights on group B where the employee is only a viewer.
       const groupRoleMap = new Map<number, { is_leader: boolean }>();
       for (const r of roleRows) {
-        if (isGlobalRow(r)) continue;
+        if (isGlobalRoleRow(r)) continue;
         if (!['group_leader', 'scheduler', 'viewer'].includes(r.role_key)) continue;
         const gid = Number(r.group_id);
         const existing = groupRoleMap.get(gid) ?? { is_leader: false };
@@ -684,14 +735,16 @@ export async function createAuthContextByKaryawanId(
       'SELECT role_key, group_id FROM tb_karyawan_roles WHERE karyawan_id = ?',
       [user.karyawan_id]
     );
-    const roleRows: KaryawanRoleRow[] = Array.isArray(roles) ? (roles as KaryawanRoleRow[]) : [];
+    const rawRoleRows: RawKaryawanRoleRow[] = Array.isArray(roles) ? (roles as RawKaryawanRoleRow[]) : [];
+    const roleRows: KaryawanRoleRow[] = rawRoleRows
+      .map(narrowRoleRow)
+      .filter((r): r is KaryawanRoleRow => r !== null);
     const LEADER_ROLE_KEYS = ['group_leader', 'scheduler'];
-    const isGlobalRow = (r: any) => r.group_id === null || r.group_id === undefined;
 
     // B2: admin/hr are global ONLY when granted by a global-scope role row
     // (group_id IS NULL). A group-scoped admin/hr row must not confer global rights.
-    const is_admin = roleRows.some((r) => r.role_key === 'admin' && isGlobalRow(r));
-    const is_hr = roleRows.some((r) => r.role_key === 'hr' && isGlobalRow(r));
+    const is_admin = roleRows.some((r) => r.role_key === 'admin' && isGlobalRoleRow(r));
+    const is_hr = roleRows.some((r) => r.role_key === 'hr' && isGlobalRoleRow(r));
     // Top-level is_leader is true if leader anywhere (global row or any group row).
     const is_leader = roleRows.some((r) => LEADER_ROLE_KEYS.includes(r.role_key));
 
@@ -715,7 +768,7 @@ export async function createAuthContextByKaryawanId(
       // grant leader rights on group B where the employee is only a viewer.
       const groupRoleMap = new Map<number, { is_leader: boolean }>();
       for (const r of roleRows) {
-        if (isGlobalRow(r)) continue;
+        if (isGlobalRoleRow(r)) continue;
         if (!['group_leader', 'scheduler', 'viewer'].includes(r.role_key)) continue;
         const gid = Number(r.group_id);
         const existing = groupRoleMap.get(gid) ?? { is_leader: false };
@@ -864,9 +917,10 @@ export async function createAuthContextByPin(pin: string): Promise<AuthContext |
     nama: user.nama || `PIN ${user.pin}`,
     privilege,
     is_admin: isAdmin,
+    is_hr: false,
+    is_leader: leaderAccess,
     can_schedule: isAdmin || groupHasSchedule,
     can_dashboard: isAdmin || groupHasDashboard,
-    is_leader: leaderAccess,
     groups,
     canonical_roles,
     subject_type: 'legacy_pin',
@@ -1010,8 +1064,9 @@ export function isAllowedGroup(
 export function getRoleDisplayLabel(auth: AuthContext): string {
   if (auth.is_admin) return 'Admin';
   if (auth.is_hr) return 'HR';
-  if (auth.role_key === 'scheduler' || auth.is_leader) return 'Group Leader';
-  if (auth.role_key === 'viewer') return 'Viewer';
+  const accountRoleKey = auth.subject_type === 'account' ? auth.role_key : null;
+  if (accountRoleKey === 'scheduler' || auth.is_leader) return 'Group Leader';
+  if (accountRoleKey === 'viewer') return 'Viewer';
   if (auth.can_schedule || auth.can_dashboard) return 'Member';
   return 'Member';
 }

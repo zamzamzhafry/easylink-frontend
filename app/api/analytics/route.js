@@ -82,13 +82,13 @@ export async function GET(req) {
       FROM (
         SELECT
           sl.pin,
-          DATE(sl.scan_date) AS scan_date,
+      DATE_FORMAT(sl.scan_date, '%Y-%m-%d') AS scan_date,
           MIN(TIME(sl.scan_date)) AS masuk,
           MAX(TIME(sl.scan_date)) AS keluar,
           COUNT(*) AS scan_count
         FROM tb_scanlog sl
         WHERE DATE(sl.scan_date) BETWEEN ? AND ?
-        GROUP BY sl.pin, DATE(sl.scan_date)
+GROUP BY sl.pin, DATE_FORMAT(sl.scan_date, '%Y-%m-%d')
       ) logs
       LEFT JOIN tb_karyawan k ON k.pin = logs.pin ${canFilterDeleted ? 'AND k.isDeleted = 0' : ''}
       LEFT JOIN tb_user u ON u.pin = logs.pin
@@ -121,8 +121,32 @@ export async function GET(req) {
 
     const [attendanceRows] = await pool.query(baseQuery, params);
 
+    // Count total employees from tb_karyawan (not derived from scan logs)
+    // ponytail: separate COUNT query — deriving totalEmployees from attendanceRows
+    // misses employees who didn't scan, inflating attendanceRate.
+    let employeeCountQuery = `
+      SELECT COUNT(DISTINCT k.id) AS cnt
+      FROM tb_karyawan k
+      ${canFilterDeleted ? 'WHERE k.isDeleted = 0' : 'WHERE 1=1'}
+    `;
+    const employeeCountParams = [];
+    if (!auth.is_admin && allowedGroups && allowedGroups.length > 0) {
+      employeeCountQuery += ` AND EXISTS (SELECT 1 FROM tb_employee_group egf WHERE egf.karyawan_id = k.id AND egf.group_id IN (${allowedGroups.map(() => '?').join(',')}))`;
+      employeeCountParams.push(...allowedGroups);
+    }
+    if (Number.isInteger(groupId)) {
+      employeeCountQuery += ` AND EXISTS (SELECT 1 FROM tb_employee_group egf WHERE egf.karyawan_id = k.id AND egf.group_id = ?)`;
+      employeeCountParams.push(groupId);
+    }
+    if (Number.isInteger(employeeId)) {
+      employeeCountQuery += ' AND k.id = ?';
+      employeeCountParams.push(employeeId);
+    }
+    const [employeeCountRows] = await pool.query(employeeCountQuery, employeeCountParams);
+    const totalEmployeeCount = employeeCountRows[0]?.cnt || 0;
+
     // Calculate metrics
-    const metrics = calculateMetrics(attendanceRows, from, to);
+    const metrics = calculateMetrics(attendanceRows, from, to, totalEmployeeCount);
 
     // Calculate Bradford Factors
     const bradfordFactors = await calculateBradfordFactors(
@@ -173,8 +197,7 @@ export async function GET(req) {
   }
 }
 
-function calculateMetrics(rows, from, to) {
-  const employeeSet = new Set();
+function calculateMetrics(rows, from, to, totalEmployeeCount) {
   let presentCount = 0;
   let onTimeCount = 0;
   let totalLateMinutes = 0;
@@ -182,10 +205,6 @@ function calculateMetrics(rows, from, to) {
   let totalOvertimeMinutes = 0;
 
   rows.forEach((row) => {
-    if (row.karyawan_id) {
-      employeeSet.add(row.karyawan_id);
-    }
-
     const needsScan = Number(row.needs_scan ?? 1) === 1;
     if (!needsScan) return;
 
@@ -219,7 +238,7 @@ function calculateMetrics(rows, from, to) {
     }
   });
 
-  const totalEmployees = employeeSet.size;
+  const totalEmployees = totalEmployeeCount;
   const attendanceRate = presentCount > 0 ? (presentCount / (totalEmployees * getDayCount(from, to))) * 100 : 0;
   const punctualityIndex = presentCount > 0 ? (onTimeCount / presentCount) * 100 : 0;
   const avgLateMinutes = lateCount > 0 ? totalLateMinutes / lateCount : 0;

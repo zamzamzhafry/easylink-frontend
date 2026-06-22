@@ -216,8 +216,8 @@ async function buildDeltaReport({ safeExists = false } = {}) {
   };
 
   const safeLegacyMatchClause = `
-    sl.sn = se.sn
-    AND sl.pin = se.pin
+    CAST(sl.sn AS BINARY) = CAST(se.sn AS BINARY)
+    AND CAST(sl.pin AS BINARY) = CAST(se.pin AS BINARY)
     AND sl.scan_date = se.scan_at
     AND COALESCE(sl.verifymode, 0) = COALESCE(se.verifymode, 0)
     AND COALESCE(sl.iomode, 0) = COALESCE(se.iomode, 0)
@@ -225,8 +225,8 @@ async function buildDeltaReport({ safeExists = false } = {}) {
         CAST(COALESCE(NULLIF(se.workcode, ''), '0') AS SIGNED)
   `;
   const legacySafeMatchClause = `
-    se.sn = sl.sn
-    AND se.pin = sl.pin
+    CAST(se.sn AS BINARY) = CAST(sl.sn AS BINARY)
+    AND CAST(se.pin AS BINARY) = CAST(sl.pin AS BINARY)
     AND se.scan_at = sl.scan_date
     AND COALESCE(se.verifymode, 0) = COALESCE(sl.verifymode, 0)
     AND COALESCE(se.iomode, 0) = COALESCE(sl.iomode, 0)
@@ -256,7 +256,7 @@ async function buildDeltaReport({ safeExists = false } = {}) {
           se.sn,
           se.pin,
           se.scan_at,
-          DATE(se.scan_at) AS scan_date,
+          DATE_FORMAT(se.scan_at, '%Y-%m-%d') AS scan_date,
           TIME(se.scan_at) AS scan_time,
           COALESCE(se.verifymode, 0) AS verifymode,
           COALESCE(se.iomode, 0) AS iomode,
@@ -334,7 +334,7 @@ async function buildDeltaReport({ safeExists = false } = {}) {
         WHERE NOT EXISTS (
           SELECT 1
           FROM ${PROJECTION_VIEW_NAME} proj
-          WHERE proj.source_event_key = se.source_event_key
+          WHERE CAST(proj.source_event_key AS BINARY) = CAST(se.source_event_key AS BINARY)
         )
       `
     );
@@ -346,7 +346,7 @@ async function buildDeltaReport({ safeExists = false } = {}) {
           se.sn,
           se.pin,
           se.scan_at,
-          DATE(se.scan_at) AS scan_date,
+          DATE_FORMAT(se.scan_at, '%Y-%m-%d') AS scan_date,
           TIME(se.scan_at) AS scan_time,
           COALESCE(se.verifymode, 0) AS verifymode,
           COALESCE(se.iomode, 0) AS iomode,
@@ -355,7 +355,7 @@ async function buildDeltaReport({ safeExists = false } = {}) {
         WHERE NOT EXISTS (
           SELECT 1
           FROM ${PROJECTION_VIEW_NAME} proj
-          WHERE proj.source_event_key = se.source_event_key
+          WHERE CAST(proj.source_event_key AS BINARY) = CAST(se.source_event_key AS BINARY)
         )
         ORDER BY se.source_event_key ASC, se.scan_at ASC
         LIMIT ?
@@ -378,7 +378,7 @@ async function buildDeltaReport({ safeExists = false } = {}) {
         WHERE NOT EXISTS (
           SELECT 1
           FROM tb_scanlog_safe_events se
-          WHERE se.source_event_key = proj.source_event_key
+          WHERE CAST(se.source_event_key AS BINARY) = CAST(proj.source_event_key AS BINARY)
         )
       `
     );
@@ -399,7 +399,7 @@ async function buildDeltaReport({ safeExists = false } = {}) {
         WHERE NOT EXISTS (
           SELECT 1
           FROM tb_scanlog_safe_events se
-          WHERE se.source_event_key = proj.source_event_key
+          WHERE CAST(se.source_event_key AS BINARY) = CAST(proj.source_event_key AS BINARY)
         )
         ORDER BY proj.source_event_key ASC
         LIMIT ?
