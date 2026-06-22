@@ -87,7 +87,7 @@ export async function GET(req) {
 
   const query = `
     SELECT
-      DATE(sl.scan_date) AS scan_date,
+        DATE_FORMAT(sl.scan_date, '%Y-%m-%d') AS scan_date,
       TIME(sl.scan_date) AS scan_time,
       sl.pin,
       k.id AS karyawan_id,

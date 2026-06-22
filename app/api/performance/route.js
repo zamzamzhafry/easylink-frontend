@@ -100,13 +100,13 @@ export async function GET(req) {
     FROM (
       SELECT
         sl.pin,
-        DATE(sl.scan_date) AS scan_date,
+      DATE_FORMAT(sl.scan_date, '%Y-%m-%d') AS scan_date,
         MIN(TIME(sl.scan_date)) AS masuk,
         MAX(TIME(sl.scan_date)) AS keluar,
         COUNT(*) AS scan_count
       FROM tb_scanlog sl
       WHERE DATE(sl.scan_date) BETWEEN ? AND ?
-      GROUP BY sl.pin, DATE(sl.scan_date)
+GROUP BY sl.pin, DATE_FORMAT(sl.scan_date, '%Y-%m-%d')
     ) logs
     LEFT JOIN tb_karyawan k ON k.pin = logs.pin ${canFilterDeleted ? 'AND k.isDeleted = 0' : ''}
     LEFT JOIN tb_user u ON u.pin = logs.pin
@@ -237,5 +237,3 @@ export async function GET(req) {
     daily,
   });
 }
-
-

@@ -189,7 +189,7 @@ export async function GET(req) {
   const [punches] = await pool.query(
     `SELECT
        sl.pin,
-       DATE(sl.scan_date) AS scan_date,
+        DATE_FORMAT(sl.scan_date, '%Y-%m-%d') AS scan_date,
        TIME(sl.scan_date) AS scan_time,
        sl.scan_date AS scan_at,
        sl.sn,

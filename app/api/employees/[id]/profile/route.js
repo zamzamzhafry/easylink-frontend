@@ -109,7 +109,7 @@ export async function GET(request, { params }) {
   if (pin) {
     const [scanRows] = await pool.query(
       `SELECT
-         DATE(sl.scan_date) AS scan_date,
+        DATE_FORMAT(sl.scan_date, '%Y-%m-%d') AS scan_date,
          TIME(sl.scan_date) AS scan_time,
          sl.pin,
          sl.verifymode,

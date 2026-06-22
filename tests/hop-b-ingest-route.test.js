@@ -33,6 +33,7 @@ test('ingest accepts authorized valid batch and returns deterministic ack', asyn
   const expectedHash = computeHopBPayloadHash(payload);
   const receiptCalls = [];
   const writeCalls = [];
+  const mirrorCalls = [];
 
   const response = await handleHopBIngestPost(
     buildRequest(JSON.stringify(payload), {
@@ -71,6 +72,10 @@ test('ingest accepts authorized valid batch and returns deterministic ack', asyn
           committedAt: '2026-05-29T12:00:02Z',
         };
       },
+      async mergeSafeEventsIntoLegacy(input) {
+        mirrorCalls.push(input);
+        return 1;
+      },
     }
   );
 
@@ -90,6 +95,13 @@ test('ingest accepts authorized valid batch and returns deterministic ack', asyn
   assert.equal(writeCalls[0].ingestLogId, 77);
   assert.equal(writeCalls[0].sourceBatchId, payload.batch_id);
   assert.equal(writeCalls[0].records[0].source_sdk, payload.source_sdk);
+  assert.deepEqual(mirrorCalls, [
+    {
+      batchId: 77,
+      from: payload.records[0].scan_date,
+      to: payload.records[0].scan_date,
+    },
+  ]);
   assert.equal(json.status, 'ok');
   assert.equal(json.code, 'BATCH_ACCEPTED');
   assert.equal(json.message, 'Batch committed');
