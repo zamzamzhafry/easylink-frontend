@@ -78,7 +78,7 @@ async function getStats({ auth }) {
        FROM tb_scanlog sl
        LEFT JOIN tb_karyawan k ON k.pin = sl.pin ${canFilterDeleted ? 'AND k.isDeleted = 0' : ''}
        LEFT JOIN tb_employee_group eg ON eg.karyawan_id = k.id
-       WHERE DATE(sl.scan_date) = ?
+       WHERE DATE_FORMAT(sl.scan_date, '%Y-%m-%d') = ?
          ${hadirScope.clause}`,
       [today, ...hadirScope.params]
     )
@@ -113,7 +113,7 @@ async function getStats({ auth }) {
        FROM (
          SELECT sl.pin, MIN(TIME(sl.scan_date)) AS first_scan
          FROM tb_scanlog sl
-         WHERE DATE(sl.scan_date) = ?
+         WHERE DATE_FORMAT(sl.scan_date, '%Y-%m-%d') = ?
          GROUP BY sl.pin
        ) logs
        JOIN tb_karyawan k ON k.pin = logs.pin
@@ -140,14 +140,14 @@ async function getStats({ auth }) {
   
   const trendHadirScope = buildScopeClause('eg', 'sl.pin');
   const [trendRows] = await pool.query(`
-    SELECT DATE(sl.scan_date) as date, COUNT(DISTINCT sl.pin) as hadir
+    SELECT DATE_FORMAT(sl.scan_date, '%Y-%m-%d') as date, COUNT(DISTINCT sl.pin) as hadir
     FROM tb_scanlog sl
     LEFT JOIN tb_karyawan k ON k.pin = sl.pin ${canFilterDeleted ? 'AND k.isDeleted = 0' : ''}
     LEFT JOIN tb_employee_group eg ON eg.karyawan_id = k.id
-    WHERE DATE(sl.scan_date) >= ? AND DATE(sl.scan_date) <= ?
+    WHERE DATE_FORMAT(sl.scan_date, '%Y-%m-%d') >= ? AND DATE_FORMAT(sl.scan_date, '%Y-%m-%d') <= ?
       ${trendHadirScope.clause}
-    GROUP BY DATE(sl.scan_date)
-    ORDER BY DATE(sl.scan_date) ASC
+    GROUP BY DATE_FORMAT(sl.scan_date, '%Y-%m-%d')
+    ORDER BY DATE_FORMAT(sl.scan_date, '%Y-%m-%d') ASC
   `, [trendFrom, today, ...trendHadirScope.params]).catch(() => {
     failedSections.push('Tren Kehadiran');
     return [[]];
@@ -175,7 +175,7 @@ async function getStats({ auth }) {
     LEFT JOIN tb_user u ON u.pin = k.pin
     LEFT JOIN tb_employee_group eg ON eg.karyawan_id = k.id
     LEFT JOIN tb_attendance_note an ON an.pin = k.pin AND an.tanggal = sc.tanggal
-    LEFT JOIN tb_scanlog sl ON sl.pin = k.pin AND DATE(sl.scan_date) = sc.tanggal
+    LEFT JOIN tb_scanlog sl ON sl.pin = k.pin AND DATE_FORMAT(sl.scan_date, '%Y-%m-%d') = sc.tanggal
     WHERE sc.tanggal >= ? AND sc.tanggal <= ?
       AND st.needs_scan = 1
       AND an.status IS NULL

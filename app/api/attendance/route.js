@@ -312,7 +312,7 @@ export async function GET(req) {
         MAX(TIME(sl.scan_date)) AS keluar,
         COUNT(*) AS scan_count
       FROM tb_scanlog sl
-      WHERE DATE(sl.scan_date) BETWEEN ? AND ?
+      WHERE DATE_FORMAT(sl.scan_date, '%Y-%m-%d') BETWEEN ? AND ?
   `;
   const params = [dateFrom, dateTo];
 

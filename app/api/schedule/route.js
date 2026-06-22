@@ -152,12 +152,12 @@ export async function GET(req) {
   let scanQuery = `
     SELECT
       k.id AS karyawan_id,
-      DATE(sl.scan_date) AS tanggal,
+      DATE_FORMAT(sl.scan_date, '%Y-%m-%d') AS tanggal,
       COUNT(*) AS scan_count
     FROM tb_scanlog sl
     JOIN tb_karyawan k ON k.pin = sl.pin
     LEFT JOIN tb_employee_group eg ON eg.karyawan_id = k.id
-    WHERE DATE(sl.scan_date) BETWEEN ? AND ?
+    WHERE DATE_FORMAT(sl.scan_date, '%Y-%m-%d') BETWEEN ? AND ?
       ${canFilterDeleted ? 'AND k.isDeleted = 0' : ''}
   `;
   const scanParams = [from, to];
@@ -172,7 +172,7 @@ export async function GET(req) {
     scanParams.push(...allowedGroupIds);
   }
 
-  scanQuery += ' GROUP BY k.id, DATE(sl.scan_date)';
+  scanQuery += ' GROUP BY k.id, DATE_FORMAT(sl.scan_date, \'%Y-%m-%d\')';
 
   const [schedules] = await pool.query(schedulesQuery, scheduleParams);
   const [employees] = await pool.query(employeesQuery, employeeParams);

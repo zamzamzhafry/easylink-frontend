@@ -153,7 +153,7 @@ export async function GET(req) {
   const allowedGroups = getAttendanceGroupIds(auth);
   const accessibleGroupIds = Array.isArray(allowedGroups) ? allowedGroups : [];
 
-  const where = ['DATE(sl.scan_date) BETWEEN ? AND ?'];
+  const where = ["DATE_FORMAT(sl.scan_date, '%Y-%m-%d') BETWEEN ? AND ?"];
   const params = [from, to];
 
   if (pinFilter) {
@@ -212,7 +212,7 @@ export async function GET(req) {
      LEFT JOIN tb_user u ON u.pin = sl.pin
      LEFT JOIN tb_employee_group eg ON eg.karyawan_id = k.id
      LEFT JOIN tb_group g ON g.id = eg.group_id
-     LEFT JOIN tb_schedule sc ON sc.karyawan_id = k.id AND sc.tanggal = DATE(sl.scan_date)
+     LEFT JOIN tb_schedule sc ON sc.karyawan_id = k.id AND sc.tanggal = DATE_FORMAT(sl.scan_date, '%Y-%m-%d')
      LEFT JOIN tb_shift_type st ON st.id = sc.shift_id
      ${hiddenJoin}
      WHERE ${where.join(' AND ')}

@@ -49,7 +49,7 @@ export async function GET(req) {
       GROUP BY karyawan_id
     ) eg ON eg.karyawan_id = k.id
     LEFT JOIN tb_group          g  ON g.id = eg.group_id
-    LEFT JOIN tb_attendance_note an ON an.pin = sl.pin AND an.tanggal = DATE(sl.scan_date)
+    LEFT JOIN tb_attendance_note an ON an.pin = sl.pin AND an.tanggal = DATE_FORMAT(sl.scan_date, '%Y-%m-%d')
     WHERE sl.scan_date >= ? AND sl.scan_date < ?
   `;
 
