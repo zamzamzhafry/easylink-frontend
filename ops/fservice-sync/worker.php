@@ -57,6 +57,17 @@ function w_pdo(string $dbName): PDO {
 function w_main_pdo(): PDO { global $DB_NAME; return w_pdo($DB_NAME); }
 function w_bridge_pdo(): PDO { global $BRIDGE_DB_NAME; return w_pdo($BRIDGE_DB_NAME); }
 
+function config_get(string $key, string $default = ''): string {
+    try {
+        $stmt = w_main_pdo()->prepare("SELECT config_value FROM app_config WHERE config_key = ?");
+        $stmt->execute([$key]);
+        $val = $stmt->fetchColumn();
+        return $val !== false ? (string)$val : $default;
+    } catch (\Throwable $e) {
+        return $default;
+    }
+}
+
 // --- Job lifecycle helpers --------------------------------------------------
 
 function job_load(string $jobId): ?array {
@@ -91,6 +102,41 @@ function job_set_error(string $jobId, string $msg, array $result = []): void {
         json_encode($result, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
         $jobId,
     ]);
+}
+
+// Note: chain_followup_job queries fservice_jobs WHERE status IN ('pending','running')
+// AND type=? AND payload=? — requires idx_job_status (migration 004 covers this).
+
+function chain_followup_job(string $parentId, string $type, array $payload): void {
+    $pdo = w_main_pdo();
+    $payloadJson = json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+
+    $chk = $pdo->prepare(
+        "SELECT job_id FROM fservice_jobs
+         WHERE status IN ('pending','running') AND type = ? AND payload = ?
+         LIMIT 1"
+    );
+    $chk->execute([$type, $payloadJson]);
+    if ($chk->fetch()) {
+        el_log('INFO', 'chain', 'followup already exists, skip', ['parent' => $parentId, 'type' => $type]);
+        return;
+    }
+
+    $childId = 'job_' . bin2hex(random_bytes(8));
+    $pdo->prepare(
+        "INSERT INTO fservice_jobs (job_id, type, payload, status) VALUES (?, ?, ?, 'pending')"
+    )->execute([$childId, $type, $payloadJson]);
+
+    $phpExe = getenv('PHP_EXE') ?: (PHP_BINARY ?: 'php');
+    $worker = __FILE__;
+    if (stripos(PHP_OS, 'WIN') === 0) {
+        $cmd = 'cmd /C start /B "" "' . $phpExe . '" "' . $worker . '" ' . escapeshellarg($childId) . ' > NUL 2>&1';
+    } else {
+        $cmd = 'nohup ' . escapeshellarg($phpExe) . ' ' . escapeshellarg($worker) . ' ' . escapeshellarg($childId) . ' > /dev/null 2>&1 &';
+    }
+    el_log('INFO', 'chain', 'followup job', ['parent' => $parentId, 'type' => $type, 'child' => $childId]);
+    $h = popen($cmd, 'r');
+    if ($h) pclose($h);
 }
 
 // --- Bridge HTTP helper -----------------------------------------------------
@@ -251,6 +297,15 @@ function run_sync_scanlogs(string $jobId, array $payload): void {
         // if at least one row landed. Otherwise error.
         if ($total > 0) job_set_done($jobId, $result);
         else            job_set_error($jobId, implode('; ', $errors), $result);
+    }
+
+    // Auto-trigger Hop B push when enabled and rows were staged.
+    if ($total > 0 && config_get('auto_hop_b_push', '0') === '1') {
+        try {
+            chain_followup_job($jobId, 'hop_b_push', ['auto_chained' => true]);
+        } catch (\Throwable $e) {
+            el_log('WARN', 'chain', 'followup chain failed', ['parent' => $jobId, 'err' => $e->getMessage()]);
+        }
     }
 }
 

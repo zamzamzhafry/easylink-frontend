@@ -49,13 +49,13 @@ if exist "%PHP_EXE%" (
     )
 )
 
-echo [0/6] Using PHP: %PHP%
+echo [0/7] Using PHP: %PHP%
 echo.
 
 :: ============================================================================
-:: [1/6] Kill stale processes (clean slate)
+:: [1/7] Kill stale processes (clean slate)
 :: ============================================================================
-echo [1/6] Killing stale processes...
+echo [1/7] Killing stale processes...
 
 tasklist /FI "IMAGENAME eq FService.exe" 2>NUL | find /I "FService.exe" >NUL
 if !errorlevel! equ 0 (
@@ -79,9 +79,9 @@ echo       Clean slate ready.
 echo.
 
 :: ============================================================================
-:: [2/6] Start FService
+:: [2/7] Start FService
 :: ============================================================================
-echo [2/6] Starting FService...
+echo [2/7] Starting FService...
 if not exist "%FSERVICE_DIR%\FService.exe" (
     echo [ERROR] FService.exe not found at %FSERVICE_DIR%
     pause
@@ -93,17 +93,17 @@ echo       FService started.
 echo.
 
 :: ============================================================================
-:: [3/6] Test bridge connection (local FService)
+:: [3/7] Test bridge connection (local FService)
 :: ============================================================================
-echo [3/6] Testing bridge connection (FService :%FSERVICE_PORT%)...
+echo [3/7] Testing bridge connection (FService :%FSERVICE_PORT%)...
 %PHP% -r "echo @file_get_contents('http://localhost:%FSERVICE_PORT%/dev/info', false, stream_context_create(['http'=>['method'=>'POST','header'=>'Content-Type: application/x-www-form-urlencoded','content'=>'sn=%FSERVICE_SN%','timeout'=>10]])) ?: 'BRIDGE NOT RESPONDING';"
 echo.
 echo.
 
 :: ============================================================================
-:: [4/6] Hop B handshake (Windows -> VM app)
+:: [4/7] Hop B handshake (Windows -> VM app)
 :: ============================================================================
-echo [4/6] Hop B handshake to VM %VM_HOST%:%VM_PORT% ...
+echo [4/7] Hop B handshake to VM %VM_HOST%:%VM_PORT% ...
 if not exist "%HANDSHAKE_PS1%" (
     echo [WARN] handshake-test.ps1 not found at %HANDSHAKE_PS1%
     echo        Skipping handshake.
@@ -128,15 +128,24 @@ echo.
 :: ============================================================================
 :: [5/6] Start Control Panel web server
 :: ============================================================================
-echo [5/6] Starting Control Panel web server on :%PHP_PORT% ...
+echo [5/7] Starting Control Panel web server on :%PHP_PORT% ...
 start "EasyLink PHP Server" %PHP% -S localhost:%PHP_PORT% -t "%~dp0web"
 timeout /t 2 /nobreak >nul
 echo.
 
 :: ============================================================================
-:: [6/6] Open browser
+:: [6/7] Start FService watchdog daemon
 :: ============================================================================
-echo [6/6] Opening browser...
+echo [6/7] Starting FService watchdog daemon...
+start "EasyLink Watchdog" %PHP% "%~dp0fservice-watchdog.php" --daemon
+timeout /t 1 /nobreak >nul
+echo       Watchdog started (checks every 30s, restarts FService after 3 failures).
+echo.
+
+:: ============================================================================
+:: [7/7] Open browser
+:: ============================================================================
+echo [7/7] Opening browser...
 start "" "http://localhost:%PHP_PORT%"
 
 echo.
@@ -155,5 +164,6 @@ pause
 :: ============================================================================
 echo Stopping services...
 taskkill /FI "WINDOWTITLE eq EasyLink PHP Server" /F >nul 2>&1
+taskkill /FI "WINDOWTITLE eq EasyLink Watchdog" /F >nul 2>&1
 echo Stopped.
 endlocal

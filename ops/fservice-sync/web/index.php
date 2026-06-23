@@ -368,6 +368,55 @@ if (isset($_GET['action'])) {
         exit;
     }
 
+    if ($action === 'dead_letter_check') {
+        $b = get_bridge_pdo();
+        if (!$b) { echo json_encode(['ok'=>false,'error'=>'bridge db unavailable']); exit; }
+        try {
+            $count = (int)$b->query("SELECT COUNT(*) FROM sync_batch WHERE status='dead_letter'")->fetchColumn();
+            $items = $b->query(
+                "SELECT batch_id, device_sn, last_error, last_error_code, attempt_count, last_attempt_at
+                 FROM sync_batch WHERE status='dead_letter'
+                 ORDER BY last_attempt_at DESC LIMIT 20"
+            )->fetchAll();
+            echo json_encode(['ok'=>true,'count'=>$count,'items'=>$items]);
+        } catch (\Throwable $e) {
+            echo json_encode(['ok'=>false,'error'=>$e->getMessage()]);
+        }
+        exit;
+    }
+
+    if ($action === 'dead_letter_retry') {
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+            echo json_encode(['ok'=>false,'error'=>'POST required']); exit;
+        }
+        $b = get_bridge_pdo();
+        if (!$b) { echo json_encode(['ok'=>false,'error'=>'bridge db unavailable']); exit; }
+        $body = json_decode(file_get_contents('php://input'), true) ?: $_POST;
+        $batchId = (string)($body['batch_id'] ?? '');
+        $retryAll = !empty($body['retry_all']);
+
+        try {
+            if ($retryAll) {
+                $b->prepare(
+                    "UPDATE sync_batch SET status='pending', attempt_count=0, last_error=NULL, last_error_code=NULL, last_attempt_at=NULL
+                     WHERE status='dead_letter'"
+                )->execute();
+            } else {
+                if ($batchId === '') {
+                    echo json_encode(['ok'=>false,'error'=>'batch_id required']); exit;
+                }
+                $b->prepare(
+                    "UPDATE sync_batch SET status='pending', attempt_count=0, last_error=NULL, last_error_code=NULL, last_attempt_at=NULL
+                     WHERE status='dead_letter' AND batch_id=?"
+                )->execute([$batchId]);
+            }
+            echo json_encode(['ok'=>true]);
+        } catch (\Throwable $e) {
+            echo json_encode(['ok'=>false,'error'=>$e->getMessage()]);
+        }
+        exit;
+    }
+
     // Actions that need a machine
     $needsMachine = ['dev_info','dev_settime','dev_init','dev_deladmin','scanlog_new','scanlog_all','scanlog_del','user_all','user_set','user_del','user_delall','log_del','sync_users','sync_scanlogs'];
 
@@ -455,6 +504,38 @@ if (isset($_GET['action'])) {
             if (!$machine) { $result = ['ok'=>false,'error'=>'Machine not found']; break; }
             $result = bridge_post($machine, '/dev/info');
             break;
+        case 'fservice_health':
+            $statusFile = getenv('FSERVICE_STATUS_FILE') ?: __DIR__ . '/../status/fservice-health.json';
+            if (file_exists($statusFile)) {
+                $data = json_decode(file_get_contents($statusFile), true);
+                $result = ['ok' => true, 'data' => $data ?: []];
+            } else {
+                $result = ['ok' => true, 'data' => ['status' => 'unknown', 'message' => 'No watchdog data yet']];
+            }
+            break;
+        case 'job_history':
+            try {
+                $pdo = get_pdo();
+                $stmt = $pdo->prepare("SELECT * FROM fservice_jobs ORDER BY created_at DESC LIMIT 10");
+                $stmt->execute();
+                $jobs = $stmt->fetchAll(PDO::FETCH_ASSOC);
+                $result = ['ok' => true, 'jobs' => $jobs];
+            } catch (Exception $e) {
+                $result = ['ok' => false, 'error' => $e->getMessage()];
+            }
+            break;
+        case 'fservice_restart':
+            if (PHP_OS_FAMILY !== 'Windows') {
+                $result = ['ok' => false, 'error' => 'Windows only'];
+                break;
+            }
+            $fserviceExe = getenv('FSERVICE_EXE') ?: 'C:\\EasyLinkOps\\FService.exe';
+            exec('taskkill /F /IM FService.exe 2>nul');
+            sleep(2);
+            $cmd = 'start "" "' . escapeshellarg($fserviceExe) . '"';
+            exec($cmd, $output, $ret);
+            $result = ['ok' => ($ret === 0), 'message' => $ret === 0 ? 'Restarted' : 'Failed'];
+            break;
         default:
             $result = ['ok' => false, 'error' => 'Unknown action'];
     }
@@ -474,19 +555,42 @@ $defaultMachine = get_machines(true)[0] ?? null;
 <title>EasyLink Control Panel</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
-body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#0f172a;color:#e2e8f0;min-height:100vh;padding:1.5rem}
-h1{font-size:1.5rem;margin-bottom:.25rem;color:#38bdf8}
-.subtitle{color:#64748b;font-size:.85rem;margin-bottom:1rem}
-.machine-select{margin-bottom:1.25rem;display:flex;align-items:center;gap:.75rem;flex-wrap:wrap}
-.machine-select select{background:#1e293b;color:#e2e8f0;border:1px solid #475569;border-radius:.5rem;padding:.5rem .75rem;font-size:.85rem}
-.machine-select .badge{font-size:.7rem;padding:.25rem .5rem;border-radius:.25rem;background:#166534;color:#bbf7d0}
-.machine-select .badge.off{background:#7f1d1d;color:#fecaca}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#0f172a;color:#e2e8f0;min-height:100vh}
+
+/* Navbar */
+.navbar{background:#1e293b;border-bottom:1px solid #334155;padding:.75rem 1.5rem;position:sticky;top:0;z-index:50;display:flex;align-items:center;gap:1.5rem;flex-wrap:wrap}
+.navbar h1{font-size:1.1rem;color:#38bdf8;margin:0;white-space:nowrap}
+.navbar .nav-links{display:flex;gap:.25rem;flex:1;flex-wrap:wrap}
+.navbar .nav-btn{background:transparent;color:#94a3b8;border:none;padding:.5rem .85rem;border-radius:.375rem;font-size:.8rem;cursor:pointer;transition:all .15s;font-weight:500;white-space:nowrap}
+.navbar .nav-btn:hover{background:#334155;color:#f1f5f9}
+.navbar .nav-btn.active{background:#0ea5e9;color:#fff}
+.navbar .machine-badge{font-size:.7rem;padding:.35rem .6rem;border-radius:.375rem;background:#166534;color:#bbf7d0;display:flex;align-items:center;gap:.4rem}
+.navbar .machine-badge select{background:#0f172a;color:#e2e8f0;border:1px solid #475569;border-radius:.25rem;padding:.2rem .4rem;font-size:.7rem}
+
+/* Container */
+.container{padding:1.5rem;max-width:1400px;margin:0 auto}
+.page{display:none}
+.page.active{display:block}
+
+/* Page headers */
+.page-header{margin-bottom:1.5rem;padding-bottom:1rem;border-bottom:1px solid #334155}
+.page-header h2{font-size:1.5rem;color:#f1f5f9;margin-bottom:.25rem}
+.page-header p{color:#94a3b8;font-size:.9rem}
+
+/* Sections */
+.section{margin-bottom:2rem}
+.section-title{font-size:.9rem;color:#94a3b8;text-transform:uppercase;letter-spacing:.05em;margin-bottom:.75rem;font-weight:600}
+
+/* Grid & Cards */
 .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(360px,1fr));gap:1.25rem}
 .card{background:#1e293b;border:1px solid #334155;border-radius:.75rem;padding:1.25rem}
 .card h2{font-size:1rem;margin-bottom:.75rem;color:#f1f5f9;display:flex;align-items:center;gap:.5rem}
 .card h2 .dot{width:8px;height:8px;border-radius:50%;background:#22c55e}
 .card h2 .dot.danger{background:#ef4444}
 .card h2 .dot.config{background:#f59e0b}
+.card h2 .dot.warning{background:#f59e0b}
+
+/* Buttons */
 .btn{display:inline-flex;align-items:center;gap:.4rem;padding:.5rem 1rem;border:none;border-radius:.5rem;font-size:.8rem;font-weight:600;cursor:pointer;transition:all .15s}
 .btn-primary{background:#0ea5e9;color:#fff}.btn-primary:hover{background:#0284c7}
 .btn-success{background:#22c55e;color:#fff}.btn-success:hover{background:#16a34a}
@@ -496,22 +600,39 @@ h1{font-size:1.5rem;margin-bottom:.25rem;color:#38bdf8}
 .btn:disabled{opacity:.5;cursor:not-allowed}
 .btn-sm{padding:.35rem .65rem;font-size:.72rem}
 .actions{display:flex;flex-wrap:wrap;gap:.5rem;margin-top:.75rem}
+
+/* Results */
 .result{margin-top:.75rem;background:#0f172a;border:1px solid #334155;border-radius:.5rem;padding:.75rem;font-family:'Fira Code',monospace;font-size:.72rem;max-height:280px;overflow:auto;white-space:pre-wrap;word-break:break-all;display:none}
 .result.show{display:block}
-.danger-zone{border-color:#7f1d1d}
+
+/* Special zones */
+.danger-zone{border-color:#7f1d1d;background:#1a0f1a}
 .danger-zone h2{color:#fca5a5}
+.dead-letter-card{border-color:#7f1d1d;background:#1a0f1a}
+.dead-letter-card h2{color:#fca5a5}
+.dead-letter-item{padding:.5rem;border:1px solid #334155;border-radius:.375rem;margin-bottom:.5rem;font-size:.72rem}
+.dead-letter-item .meta{color:#94a3b8;margin-bottom:.25rem}
+.dead-letter-item .error{color:#fca5a5;font-family:monospace}
+
+/* Stats */
 .stats{display:flex;gap:1.5rem;margin:.75rem 0;flex-wrap:wrap}
 .stat{text-align:center}.stat .val{font-size:1.4rem;font-weight:700;color:#38bdf8}.stat .lbl{font-size:.68rem;color:#64748b;text-transform:uppercase}
+
+/* Forms */
 .form-row{display:flex;gap:.5rem;margin-bottom:.5rem;flex-wrap:wrap}
 .form-row label{font-size:.75rem;color:#94a3b8;min-width:80px;padding-top:.4rem}
 .form-row input,.form-row select{flex:1;min-width:120px;padding:.4rem .6rem;border-radius:.375rem;border:1px solid #475569;background:#0f172a;color:#e2e8f0;font-size:.8rem}
 .form-row input[type=checkbox]{flex:none;width:auto}
+
+/* Machine list */
 .machine-list{margin-top:.75rem}
 .machine-item{display:flex;align-items:center;justify-content:space-between;padding:.5rem .75rem;border:1px solid #334155;border-radius:.5rem;margin-bottom:.4rem;font-size:.8rem}
 .machine-item .info{display:flex;flex-direction:column;gap:.15rem}
 .machine-item .name{font-weight:600;color:#f1f5f9}
 .machine-item .meta{font-size:.7rem;color:#64748b}
 .machine-item .btns{display:flex;gap:.35rem}
+
+/* Modals */
 .confirm-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:100;align-items:center;justify-content:center}
 .confirm-overlay.show{display:flex}
 .confirm-box{background:#1e293b;border:1px solid #7f1d1d;border-radius:.75rem;padding:1.5rem;max-width:420px;width:90%}
@@ -523,142 +644,343 @@ h1{font-size:1.5rem;margin-bottom:.25rem;color:#38bdf8}
 .modal-overlay.show{display:flex}
 .modal-box{background:#1e293b;border:1px solid #334155;border-radius:.75rem;padding:1.5rem;max-width:500px;width:90%}
 .modal-box h3{color:#38bdf8;margin-bottom:1rem}
+
+/* Toasts */
 .toast{position:fixed;top:1rem;right:1rem;padding:.75rem 1.25rem;border-radius:.5rem;font-size:.85rem;font-weight:600;z-index:200;animation:fadeIn .2s}
 .toast-ok{background:#166534;color:#bbf7d0;border:1px solid #22c55e}
 .toast-err{background:#7f1d1d;color:#fecaca;border:1px solid #ef4444}
 @keyframes fadeIn{from{opacity:0;transform:translateY(-10px)}to{opacity:1;transform:translateY(0)}}
+
+/* Alert banner */
+.alert-banner{background:#7f1d1d;color:#fecaca;padding:.75rem 1rem;border-radius:.5rem;margin-bottom:1rem;display:none;align-items:center;justify-content:space-between;animation:pulse 2s infinite}
+.alert-banner.show{display:flex}
+.alert-banner button{background:#fecaca;color:#7f1d1d;border:none;padding:.5rem .75rem;border-radius:.375rem;font-size:.75rem;font-weight:600;cursor:pointer}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.6}}
+
+/* Health grid */
+.health-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:1rem}
+.health-card{background:#0f172a;border:1px solid #334155;border-radius:.5rem;padding:1rem}
+.health-card h3{font-size:.9rem;color:#f1f5f9;margin-bottom:.75rem}
+.health-stat{display:flex;justify-content:space-between;margin-bottom:.5rem;font-size:.8rem}
+.health-stat .label{color:#94a3b8}
+.health-stat .value{font-weight:600}
+.health-stat .value.ok{color:#22c55e}
+.health-stat .value.warn{color:#f59e0b}
+.health-stat .value.crit{color:#ef4444}
+
+/* Badge */
+.badge{display:inline-block;padding:.25rem .5rem;border-radius:.25rem;font-size:.7rem;background:#166534;color:#bbf7d0}
+.badge.off{background:#7f1d1d;color:#fecaca}
 </style>
 </head>
 <body>
-<h1>EasyLink Control Panel</h1>
-<p class="subtitle">Multi-Machine Management | Database: <?= htmlspecialchars($DB_NAME) ?></p>
 
-<!-- Machine Selector -->
-<div class="machine-select">
-  <label style="font-size:.8rem;color:#94a3b8">Active Machine:</label>
-  <select id="machineSelect" onchange="switchMachine()">
-    <?php foreach ($machines as $m): ?>
-    <option value="<?= $m['id'] ?>" <?= ($defaultMachine && $m['id']==$defaultMachine['id'])?'selected':'' ?>>
-      <?= htmlspecialchars($m['label']) ?> (<?= htmlspecialchars($m['sn']) ?>)
-    </option>
-    <?php endforeach; ?>
-    <?php if (empty($machines)): ?><option value="">No machines configured</option><?php endif; ?>
-  </select>
-  <?php if ($defaultMachine): ?>
-  <span class="badge"><?= $defaultMachine['bridge_host'] ?>:<?= $defaultMachine['bridge_port'] ?></span>
-  <?php endif; ?>
-  <button class="btn btn-ghost btn-sm" onclick="openMachineConfig()">Manage Machines</button>
-</div>
-
-<div class="grid">
-
-<!-- Device Info -->
-<div class="card">
-  <h2><span class="dot"></span> Device Info</h2>
-  <div class="stats" id="devStats">
-    <div class="stat"><div class="val" id="statUsers">-</div><div class="lbl">Users</div></div>
-    <div class="stat"><div class="val" id="statFP">-</div><div class="lbl">Fingerprints</div></div>
-    <div class="stat"><div class="val" id="statScans">-</div><div class="lbl">All Scans</div></div>
-    <div class="stat"><div class="val" id="statNew">-</div><div class="lbl">New Scans</div></div>
+<!-- Navbar -->
+<div class="navbar">
+  <h1>EasyLink Control Panel</h1>
+  <div class="nav-links">
+    <button class="nav-btn active" onclick="showPage('dashboard')">Dashboard</button>
+    <button class="nav-btn" onclick="showPage('sync')">Sync</button>
+    <button class="nav-btn" onclick="showPage('devices')">Devices</button>
+    <button class="nav-btn" onclick="showPage('health')">Health</button>
+    <button class="nav-btn" onclick="showPage('logs')">Logs</button>
   </div>
-  <p style="font-size:.75rem;color:#64748b" id="devTime">Device Time: -</p>
-  <div class="actions">
-    <button class="btn btn-primary" onclick="doAction('dev_info')">Refresh Info</button>
-    <button class="btn btn-success" onclick="doAction('dev_settime')">Sync Time</button>
-  </div>
-  <div class="result" id="res_dev_info"></div>
-</div>
-
-<!-- Database Sync -->
-<div class="card">
-  <h2><span class="dot"></span> Database Sync</h2>
-  <div class="stats" id="dbStats">
-    <div class="stat"><div class="val" id="dbUsers">-</div><div class="lbl">DB Users</div></div>
-    <div class="stat"><div class="val" id="dbScanlogs">-</div><div class="lbl">DB Scanlogs</div></div>
-  </div>
-  <p style="font-size:.75rem;color:#64748b" id="dbLatest">Latest: -</p>
-  <div class="actions">
-    <button class="btn btn-primary" onclick="doAction('db_stats')">Refresh Stats</button>
-    <button class="btn btn-success" id="btn_sync_users" onclick="startJob('sync_users',{})">Sync Users</button>
-    <button class="btn btn-success" id="btn_sync_scanlogs" onclick="startJob('sync_scanlogs',{full:false})">Sync New Scanlogs</button>
-    <button class="btn btn-warning" id="btn_sync_scanlogs_full" onclick="startJob('sync_scanlogs',{full:true})">Sync ALL Scanlogs</button>
-  </div>
-  <p style="font-size:.72rem;color:#64748b;margin-top:.4rem" id="syncJobInfo"></p>
-  <div class="result" id="res_sync"></div>
-</div>
-
-<!-- Hop B Push to VM -->
-<div class="card">
-  <h2><span class="dot"></span> Push to VM (Hop B)</h2>
-  <div class="stats">
-    <div class="stat"><div class="val" id="stgPending">-</div><div class="lbl">Staged Pending</div></div>
-    <div class="stat"><div class="val" id="stgSent">-</div><div class="lbl">Batches Sent</div></div>
-    <div class="stat"><div class="val" id="stgFailed">-</div><div class="lbl">Batches Failed</div></div>
-  </div>
-  <p style="font-size:.72rem;color:#64748b;margin-bottom:.5rem">
-    Drains <code>raw_scanlog_staging</code> → VM <code>/api/scanlog/ingest</code>.
-    Requires <code>HOP_B_AUTH_TOKEN</code> + <code>HOP_B_INGEST_URL</code> env.
-  </p>
-  <div class="actions">
-    <button class="btn btn-primary" onclick="refreshStaging()">Refresh Staging</button>
-    <button class="btn btn-success" id="btn_hop_b" onclick="startJob('hop_b_push',{})">Push to VM</button>
-  </div>
-  <p style="font-size:.72rem;color:#64748b;margin-top:.4rem" id="hopBJobInfo"></p>
-  <div class="result" id="res_hop_b"></div>
-</div>
-
-<!-- Users -->
-<div class="card">
-  <h2><span class="dot"></span> Machine Users</h2>
-  <div class="actions">
-    <button class="btn btn-primary" onclick="doAction('user_all','limit=100')">Get All Users</button>
-  </div>
-  <div class="result" id="res_user_all"></div>
-</div>
-
-<!-- Scanlogs -->
-<div class="card">
-  <h2><span class="dot"></span> Scan Logs</h2>
-  <div class="actions">
-    <button class="btn btn-primary" onclick="doAction('scanlog_new')">Get New Scanlogs</button>
-    <button class="btn btn-warning" onclick="doAction('scanlog_all','limit=50')">Get All (50)</button>
-  </div>
-  <div class="result" id="res_scanlog"></div>
-</div>
-
-<!-- Machine Config -->
-<div class="card">
-  <h2><span class="dot config"></span> Machine Config</h2>
-  <div class="machine-list" id="machineList">Loading...</div>
-  <div class="actions">
-    <button class="btn btn-success" onclick="openMachineForm()">+ Add Machine</button>
+  <div class="machine-badge">
+    <select id="machineSelect" onchange="switchMachine()">
+      <?php foreach ($machines as $m): ?>
+      <option value="<?= $m['id'] ?>" <?= ($defaultMachine && $m['id']==$defaultMachine['id'])?'selected':'' ?>>
+        <?= htmlspecialchars($m['label']) ?> (<?= htmlspecialchars($m['sn']) ?>)
+      </option>
+      <?php endforeach; ?>
+    </select>
   </div>
 </div>
 
-<!-- Logs -->
-<div class="card">
-  <h2><span class="dot config"></span> Sync Logs</h2>
-  <p style="font-size:.75rem;color:#94a3b8;margin-bottom:.5rem" id="logsPath">Path: -</p>
-  <div class="actions">
-    <button class="btn btn-primary btn-sm" onclick="loadLogs(100)">Tail 100</button>
-    <button class="btn btn-primary btn-sm" onclick="loadLogs(500)">Tail 500</button>
-    <button class="btn btn-ghost btn-sm" onclick="document.getElementById('res_logs').classList.remove('show')">Hide</button>
-  </div>
-  <div class="result" id="res_logs"></div>
+<div class="container">
+
+<!-- Alert Banner -->
+<div class="alert-banner" id="alertBanner">
+  <span id="alertMessage">⚠️ Dead letter batches detected</span>
+  <button onclick="document.querySelectorAll('.nav-btn')[3].click()">Review</button>
 </div>
 
-<!-- Danger Zone -->
-<div class="card danger-zone">
-  <h2><span class="dot danger"></span> Danger Zone</h2>
-  <p style="font-size:.75rem;color:#fca5a5;margin-bottom:.75rem">Destructive actions. Cannot be undone.</p>
-  <div class="actions">
-    <button class="btn btn-danger" onclick="confirmDanger('dev_init','INITIALIZE MACHINE','Factory-reset the device. All data on machine will be lost.')">Init Machine</button>
-    <button class="btn btn-danger" onclick="confirmDanger('dev_deladmin','DELETE ADMIN','Remove admin privileges from device.')">Delete Admin</button>
-    <button class="btn btn-danger" onclick="confirmDanger('user_delall','DELETE ALL USERS','Remove ALL users from the machine.')">Delete All Users</button>
-    <button class="btn btn-danger" onclick="confirmDanger('scanlog_del','DELETE ALL SCANLOGS','Remove ALL scan logs from the machine.')">Delete Scanlogs</button>
-    <button class="btn btn-danger" onclick="confirmDanger('log_del','DELETE DEVICE LOG','Remove device operation log.')">Delete Device Log</button>
+<!-- Page: Dashboard -->
+<div id="page-dashboard" class="page active">
+  <div class="page-header">
+    <h2>Dashboard</h2>
+    <p>System overview and quick actions</p>
   </div>
-  <div class="result" id="res_danger"></div>
+
+  <div class="grid">
+    <!-- Quick Stats -->
+    <div class="card">
+      <h2><span class="dot"></span> Database Stats</h2>
+      <div class="stats">
+        <div class="stat"><div class="val" id="dash-db-users">-</div><div class="lbl">DB Users</div></div>
+        <div class="stat"><div class="val" id="dash-db-scanlogs">-</div><div class="lbl">Scanlogs</div></div>
+      </div>
+      <p style="font-size:.75rem;color:#64748b" id="dash-db-latest">Latest: -</p>
+    </div>
+
+    <!-- Staging Stats -->
+    <div class="card">
+      <h2><span class="dot"></span> Staging Queue</h2>
+      <div class="stats">
+        <div class="stat"><div class="val" id="dash-stg-pending">-</div><div class="lbl">Pending</div></div>
+        <div class="stat"><div class="val" id="dash-stg-sent">-</div><div class="lbl">Sent</div></div>
+      </div>
+      <p style="font-size:.75rem;color:#64748b">Failed: <span id="dash-stg-failed" style="color:#ef4444">-</span></p>
+    </div>
+
+    <!-- Quick Actions -->
+    <div class="card">
+      <h2><span class="dot config"></span> Quick Actions</h2>
+      <div class="actions">
+        <button class="btn btn-primary" onclick="startJob('sync_scanlogs',{full:false})">Sync Scanlogs</button>
+        <button class="btn btn-primary" onclick="startJob('sync_users',{})">Sync Users</button>
+        <button class="btn btn-success" onclick="startJob('hop_b_push',{})">Push to VM</button>
+      </div>
+    </div>
+
+    <!-- Recent Jobs -->
+    <div class="card">
+      <h2><span class="dot config"></span> Recent Jobs</h2>
+      <div id="dash-recent-jobs" style="font-size:.72rem;color:#94a3b8;max-height:200px;overflow-y:auto">Loading...</div>
+    </div>
+  </div>
+</div>
+
+<!-- Page: Sync -->
+<div id="page-sync" class="page">
+  <div class="page-header">
+    <h2>Sync</h2>
+    <p>Database synchronization and Hop B push</p>
+  </div>
+
+  <div class="section">
+    <div class="section-title">Synchronization</div>
+    <div class="grid">
+      <!-- Database Sync -->
+      <div class="card">
+        <h2><span class="dot"></span> Database Sync</h2>
+        <p style="font-size:.75rem;color:#94a3b8;margin-bottom:.5rem">Pull from FService to local DB</p>
+        <div class="actions">
+          <button class="btn btn-primary" id="btn_sync_users" onclick="startJob('sync_users',{})">Sync Users</button>
+          <button class="btn btn-primary" id="btn_sync_scanlogs" onclick="startJob('sync_scanlogs',{full:false})">Sync New Scanlogs</button>
+          <button class="btn btn-warning" id="btn_sync_scanlogs_full" onclick="startJob('sync_scanlogs',{full:true})">Sync ALL Scanlogs</button>
+        </div>
+        <p style="font-size:.72rem;color:#64748b;margin-top:.4rem" id="syncJobInfo"></p>
+        <div class="result" id="res_sync"></div>
+      </div>
+
+      <!-- Hop B Push -->
+      <div class="card">
+        <h2><span class="dot"></span> Push to VM (Hop B)</h2>
+        <p style="font-size:.75rem;color:#94a3b8;margin-bottom:.5rem">Drains raw_scanlog_staging → VM /api/scanlog/ingest</p>
+        <p style="font-size:.72rem;color:#64748b;margin-bottom:.5rem">Requires HOP_B_AUTH_TOKEN + HOP_B_INGEST_URL env.</p>
+        <div class="stats">
+          <div class="stat"><div class="val" id="stgPending">-</div><div class="lbl">Pending</div></div>
+          <div class="stat"><div class="val" id="stgSent">-</div><div class="lbl">Sent</div></div>
+          <div class="stat"><div class="val" id="stgFailed">-</div><div class="lbl">Failed</div></div>
+        </div>
+        <div class="actions">
+          <button class="btn btn-success" id="btn_hop_b" onclick="startJob('hop_b_push',{})">Push to VM</button>
+          <button class="btn btn-ghost btn-sm" onclick="refreshStaging()">Refresh Stats</button>
+        </div>
+        <p style="font-size:.72rem;color:#64748b;margin-top:.4rem" id="hopBJobInfo"></p>
+        <div class="result" id="res_hop_b"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">Browse Data</div>
+    <div class="grid">
+      <!-- Machine Users -->
+      <div class="card">
+        <h2><span class="dot"></span> Machine Users</h2>
+        <div class="actions">
+          <button class="btn btn-primary" onclick="doAction('user_all','limit=100')">Get All Users</button>
+        </div>
+        <div class="result" id="res_user_all"></div>
+      </div>
+
+      <!-- Scan Logs -->
+      <div class="card">
+        <h2><span class="dot"></span> Scan Logs</h2>
+        <div class="actions">
+          <button class="btn btn-primary" onclick="doAction('scanlog_new')">Get New Scanlogs</button>
+          <button class="btn btn-warning" onclick="doAction('scanlog_all','limit=50')">Get All (50)</button>
+        </div>
+        <div class="result" id="res_scanlog"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Page: Devices -->
+<div id="page-devices" class="page">
+  <div class="page-header">
+    <h2>Devices</h2>
+    <p>Machine configuration and device management</p>
+  </div>
+
+  <div class="section">
+    <div class="section-title">Device Information</div>
+    <div class="card">
+      <h2><span class="dot"></span> Device Info</h2>
+      <div class="stats">
+        <div class="stat"><div class="val" id="statUsers">-</div><div class="lbl">Users</div></div>
+        <div class="stat"><div class="val" id="statFP">-</div><div class="lbl">Fingerprints</div></div>
+        <div class="stat"><div class="val" id="statScans">-</div><div class="lbl">All Scans</div></div>
+        <div class="stat"><div class="val" id="statNew">-</div><div class="lbl">New Scans</div></div>
+      </div>
+      <p style="font-size:.75rem;color:#64748b" id="devTime">Device Time: -</p>
+      <div class="actions">
+        <button class="btn btn-primary" onclick="doAction('dev_info')">Refresh Info</button>
+        <button class="btn btn-success" onclick="doAction('dev_settime')">Sync Time</button>
+      </div>
+      <div class="result" id="res_dev_info"></div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">Machine Configuration</div>
+    <div class="card">
+      <h2><span class="dot config"></span> Machine Config</h2>
+      <p style="font-size:.75rem;color:#94a3b8;margin-bottom:.5rem">Manage registered machines</p>
+      <div class="machine-list" id="machineList">Loading...</div>
+      <div class="actions">
+        <button class="btn btn-success" onclick="openMachineForm()">+ Add Machine</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">Danger Zone</div>
+    <div class="card danger-zone">
+      <h2><span class="dot danger"></span> Danger Zone</h2>
+      <p style="font-size:.75rem;color:#fca5a5;margin-bottom:.75rem">Destructive actions. Cannot be undone.</p>
+      <div class="actions">
+        <button class="btn btn-danger" onclick="confirmDanger('dev_init','INITIALIZE MACHINE','Factory-reset the device. All data on machine will be lost.')">Init Machine</button>
+        <button class="btn btn-danger" onclick="confirmDanger('dev_deladmin','DELETE ADMIN','Remove admin privileges from device.')">Delete Admin</button>
+        <button class="btn btn-danger" onclick="confirmDanger('user_delall','DELETE ALL USERS','Remove ALL users from the machine.')">Delete All Users</button>
+        <button class="btn btn-danger" onclick="confirmDanger('scanlog_del','DELETE ALL SCANLOGS','Remove ALL scan logs from the machine.')">Delete Scanlogs</button>
+        <button class="btn btn-danger" onclick="confirmDanger('log_del','DELETE DEVICE LOG','Remove device operation log.')">Delete Device Log</button>
+      </div>
+      <div class="result" id="res_danger"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Page: Health -->
+<div id="page-health" class="page">
+  <div class="page-header">
+    <h2>Health</h2>
+    <p>System status, pipeline, and dead letters</p>
+  </div>
+
+  <div class="section">
+    <div class="section-title">Service Status</div>
+    <div class="health-grid">
+      <!-- FService Status -->
+      <div class="health-card">
+        <h3>FService</h3>
+        <div class="health-stat">
+          <span class="label">Status</span>
+          <span class="value" id="hFserviceStatus">-</span>
+        </div>
+        <div class="health-stat">
+          <span class="label">Last Check</span>
+          <span class="value" id="hFserviceLastCheck">-</span>
+        </div>
+        <div class="health-stat">
+          <span class="label">Uptime</span>
+          <span class="value" id="hFserviceUptime">-</span>
+        </div>
+        <p style="font-size:.72rem;color:#64748b;margin-top:.5rem">
+          Watchdog: <span id="hWatchdogStatus">-</span>
+        </p>
+      </div>
+
+      <!-- Pipeline Status -->
+      <div class="health-card">
+        <h3>Pipeline</h3>
+        <div class="health-stat">
+          <span class="label">Pending</span>
+          <span class="value" id="hPending">-</span>
+        </div>
+        <div class="health-stat">
+          <span class="label">Sending</span>
+          <span class="value" id="hSending">-</span>
+        </div>
+        <div class="health-stat">
+          <span class="label">Sent</span>
+          <span class="value" id="hSent">-</span>
+        </div>
+        <div class="health-stat">
+          <span class="label">Failed</span>
+          <span class="value" id="hFailed">-</span>
+        </div>
+        <p style="font-size:.72rem;color:#64748b;margin-top:.5rem">
+          Dead letters: <span id="hDeadLetters" style="color:#ef4444">-</span>
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">Dead Letter Batches</div>
+    <div class="card dead-letter-card">
+      <h2><span class="dot danger"></span> Dead Letter Batches</h2>
+      <div id="deadLetterList">Loading...</div>
+      <div class="actions">
+        <button class="btn btn-primary btn-sm" onclick="checkDeadLetters()">Refresh</button>
+        <button class="btn btn-warning btn-sm" onclick="retryAllDeadLetters()">Retry All</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">Quick Actions</div>
+    <div class="card">
+      <div class="actions">
+        <button class="btn btn-primary" onclick="triggerManualSync()">Trigger Manual Sync</button>
+        <button class="btn btn-warning" onclick="restartFService()">Restart FService</button>
+        <button class="btn btn-danger" onclick="clearDeadLetters()">Clear Dead Letters</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Page: Logs -->
+<div id="page-logs" class="page">
+  <div class="page-header">
+    <h2>Logs</h2>
+    <p>Sync logs and job history</p>
+  </div>
+
+  <div class="section">
+    <div class="section-title">Sync Logs</div>
+    <div class="card">
+      <h2><span class="dot config"></span> Sync Logs</h2>
+      <p style="font-size:.75rem;color:#94a3b8;margin-bottom:.5rem" id="logsPath">Path: -</p>
+      <div class="actions">
+        <button class="btn btn-primary btn-sm" onclick="loadLogs(100)">Tail 100</button>
+        <button class="btn btn-primary btn-sm" onclick="loadLogs(500)">Tail 500</button>
+        <button class="btn btn-ghost btn-sm" onclick="document.getElementById('res_logs').classList.remove('show')">Hide</button>
+      </div>
+      <div class="result" id="res_logs"></div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">Job History</div>
+    <div class="card">
+      <h2><span class="dot config"></span> Recent Jobs</h2>
+      <div id="logs-recent-jobs" style="font-size:.72rem;color:#94a3b8;max-height:400px;overflow-y:auto">Loading...</div>
+    </div>
+  </div>
 </div>
 
 </div>
@@ -700,16 +1022,52 @@ h1{font-size:1.5rem;margin-bottom:.25rem;color:#38bdf8}
 <script>
 let currentMachine = <?= json_encode($defaultMachine['id'] ?? 0) ?>;
 let pendingDanger = null;
+let currentPage = 'dashboard';
 
 function mid() { return currentMachine; }
 function mq() { return 'machine=' + mid(); }
 
+// --- Page navigation ---
+function showPage(pageName) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('page-' + pageName).classList.add('active');
+  document.querySelector(`.nav-btn[onclick*="${pageName}"]`).classList.add('active');
+  currentPage = pageName;
+
+  // Load data for specific pages
+  if (pageName === 'dashboard') {
+    doAction('db_stats');
+    refreshStaging();
+    loadJobHistory('dash-recent-jobs', 5);
+  } else if (pageName === 'sync') {
+    refreshStaging();
+  } else if (pageName === 'devices') {
+    doAction('dev_info');
+    loadMachines();
+  } else if (pageName === 'health') {
+    loadHealthData();
+  } else if (pageName === 'logs') {
+    loadJobHistory('logs-recent-jobs', 50);
+  }
+}
+
+function switchMachine() {
+  currentMachine = document.getElementById('machineSelect').value;
+  // Refresh current page data
+  if (currentPage === 'dashboard') {
+    doAction('db_stats');
+  } else if (currentPage === 'devices') {
+    doAction('dev_info');
+  }
+}
+
+// --- Toast ---
 const _toastState = { active: new Map(), maxStack: 3, ttlMs: 3500 };
 function toast(msg, ok) {
   const key = (ok ? 'OK::' : 'ERR::') + msg;
   const existing = _toastState.active.get(key);
   if (existing) {
-    // Dedup: bump count + reset timer instead of stacking a new node
     existing.count += 1;
     existing.el.textContent = msg + ' (' + existing.count + ')';
     clearTimeout(existing.timer);
@@ -719,7 +1077,6 @@ function toast(msg, ok) {
     }, _toastState.ttlMs);
     return;
   }
-  // Cap concurrent toasts
   if (_toastState.active.size >= _toastState.maxStack) {
     const oldestKey = _toastState.active.keys().next().value;
     const oldest = _toastState.active.get(oldestKey);
@@ -729,7 +1086,6 @@ function toast(msg, ok) {
       _toastState.active.delete(oldestKey);
     }
   }
-  // Position stacked: top offset by index
   const el = document.createElement('div');
   el.className = 'toast ' + (ok ? 'toast-ok' : 'toast-err');
   el.style.top = (1 + _toastState.active.size * 3.25) + 'rem';
@@ -743,11 +1099,7 @@ function toast(msg, ok) {
   _toastState.active.set(key, entry);
 }
 
-function switchMachine() {
-  currentMachine = document.getElementById('machineSelect').value;
-  doAction('dev_info');
-}
-
+// --- API calls ---
 async function doAction(action, extra) {
   const url = '?action=' + action + '&' + mq() + (extra ? '&' + extra : '');
   try {
@@ -788,9 +1140,13 @@ function handleResult(action, j) {
     showResult('res_dev_info', j);
     toast(j.ok && j.data && j.data.Result ? 'Time synced' : 'Time sync failed', j.ok && j.data && j.data.Result);
   } else if (action === 'db_stats' && j.ok) {
-    document.getElementById('dbUsers').textContent = j.users ?? '-';
-    document.getElementById('dbScanlogs').textContent = j.scanlogs ?? '-';
-    document.getElementById('dbLatest').textContent = 'Latest: ' + (j.latest_scan || '-');
+    const users = j.users ?? '-';
+    const scanlogs = j.scanlogs ?? '-';
+    const latest = j.latest_scan || '-';
+    // Dashboard
+    document.getElementById('dash-db-users').textContent = users;
+    document.getElementById('dash-db-scanlogs').textContent = scanlogs;
+    document.getElementById('dash-db-latest').textContent = 'Latest: ' + latest;
     toast('DB stats loaded', true);
   } else if (action.startsWith('sync_')) {
     showResult('res_sync', j);
@@ -856,14 +1212,10 @@ async function loadMachines() {
       </div>
     </div>
   `).join('');
-  // Also update selector
-  const sel = document.getElementById('machineSelect');
-  sel.innerHTML = j.machines.filter(m=>m.is_active).map(m => `<option value="${m.id}" ${m.id==currentMachine?'selected':''}>${esc(m.label)} (${esc(m.sn)})</option>`).join('');
 }
 
 function esc(s) { const d=document.createElement('div'); d.textContent=s||''; return d.innerHTML; }
 
-function openMachineConfig() { loadMachines(); }
 function openMachineForm(data) {
   document.getElementById('machineFormTitle').textContent = data ? 'Edit Machine' : 'Add Machine';
   document.getElementById('mf_id').value = data?.id || '';
@@ -917,6 +1269,7 @@ async function deleteMachine(id, label) {
   else { toast('Error: '+(j.error||''), false); }
 }
 
+// --- Logs ---
 async function loadLogs(lines) {
   try {
     const r = await fetch('?action=logs_tail&lines=' + (lines||200));
@@ -931,7 +1284,7 @@ async function loadLogs(lines) {
   } catch(e) { toast('Logs error: ' + e.message, false); }
 }
 
-// --- Async Jobs (non-blocking) ---
+// --- Async Jobs ---
 const JOB_UI = {
   sync_users:    { btn: 'btn_sync_users',         info: 'syncJobInfo', result: 'res_sync',  label: 'Sync Users' },
   sync_scanlogs: { btn: 'btn_sync_scanlogs',      info: 'syncJobInfo', result: 'res_sync',  label: 'Sync Scanlogs' },
@@ -987,9 +1340,8 @@ async function pollJob(jobId, type) {
           toast(ui.label + ' error: ' + (res.error || j.last_error || 'unknown'), false);
         }
         reEnable(type);
-        // refresh associated stats
         if (type === 'hop_b_push') refreshStaging();
-        else                       { doAction('db_stats'); refreshStaging(); }
+        else { doAction('db_stats'); refreshStaging(); }
       }
     } catch(e) {
       clearInterval(interval);
@@ -1007,19 +1359,170 @@ async function refreshStaging() {
   try {
     const r = await fetch('?action=staging_stats');
     const j = await r.json();
-    if (!j.ok) { document.getElementById('stgPending').textContent = '!'; return; }
-    document.getElementById('stgPending').textContent = j.staged_pending ?? '-';
-    document.getElementById('stgSent').textContent    = j.batches_sent   ?? '-';
-    document.getElementById('stgFailed').textContent  = j.batches_failed ?? '-';
+    if (!j.ok) { return; }
+    const pending = j.staged_pending ?? '-';
+    const sent = j.batches_sent ?? '-';
+    const failed = j.batches_failed ?? '-';
+    // Sync page
+    const sp = document.getElementById('stgPending');
+    if (sp) sp.textContent = pending;
+    const ss = document.getElementById('stgSent');
+    if (ss) ss.textContent = sent;
+    const sf = document.getElementById('stgFailed');
+    if (sf) sf.textContent = failed;
+    // Dashboard
+    document.getElementById('dash-stg-pending').textContent = pending;
+    document.getElementById('dash-stg-sent').textContent = sent;
+    document.getElementById('dash-stg-failed').textContent = failed;
   } catch(e) {}
+}
+
+// --- Job History ---
+async function loadJobHistory(containerId, limit) {
+  try {
+    const r = await fetch('?action=job_history');
+    const j = await r.json();
+    if (!j.ok || !j.jobs) { document.getElementById(containerId).innerHTML = '<p style="color:#94a3b8">No recent jobs.</p>'; return; }
+    const jobs = j.jobs.slice(0, limit);
+    if (!jobs.length) { document.getElementById(containerId).innerHTML = '<p style="color:#94a3b8">No recent jobs.</p>'; return; }
+    document.getElementById(containerId).innerHTML = jobs.map(jo => {
+      const cls = jo.status === 'done' ? 'ok' : jo.status === 'error' ? 'crit' : 'warn';
+      const time = jo.created_at ? new Date(jo.created_at).toLocaleTimeString() : '-';
+      return '<div style="margin-bottom:.4rem;padding:.3rem .5rem;border:1px solid #334155;border-radius:.25rem">' +
+        '<span class="value ' + cls + '">' + esc(jo.status) + '</span> ' +
+        esc(jo.type) + ' <span style="color:#64748b">' + time + '</span>' +
+        (jo.progress ? ' (progress: ' + jo.progress + ')' : '') +
+        '</div>';
+    }).join('');
+  } catch(e) { document.getElementById(containerId).innerHTML = '<p style="color:#ef4444">Error loading jobs.</p>'; }
+}
+
+// --- Dead Letter Alerting ---
+let deadLetterPollInterval = null;
+
+async function checkDeadLetters() {
+  try {
+    const r = await fetch('?action=dead_letter_check');
+    const j = await r.json();
+    if (!j.ok) { document.getElementById('deadLetterList').textContent = 'Error: ' + (j.error || 'unknown'); return; }
+    const count = j.count || 0;
+    const banner = document.getElementById('alertBanner');
+    const msg = document.getElementById('alertMessage');
+    if (count > 0) {
+      banner.classList.add('show');
+      msg.textContent = '⚠️ ' + count + ' dead letter batch' + (count > 1 ? 'es' : '') + ' detected';
+      renderDeadLetters(j.items || []);
+    } else {
+      banner.classList.remove('show');
+      document.getElementById('deadLetterList').innerHTML = '<p style="color:#94a3b8;font-size:.8rem">No dead letter batches.</p>';
+    }
+    const hdl = document.getElementById('hDeadLetters');
+    if (hdl) hdl.textContent = count;
+  } catch(e) {
+    document.getElementById('deadLetterList').textContent = 'Error: ' + e.message;
+  }
+}
+
+function renderDeadLetters(items) {
+  const el = document.getElementById('deadLetterList');
+  if (!items.length) { el.innerHTML = '<p style="color:#94a3b8;font-size:.8rem">No dead letter batches.</p>'; return; }
+  el.innerHTML = items.map(it => `
+    <div class="dead-letter-item">
+      <div class="meta">
+        <strong>${esc(it.batch_id || '')}</strong> | Device: ${esc(it.device_sn || '?')} | Attempts: ${it.attempt_count || 0} | Last: ${it.last_attempt_at || '-'}
+      </div>
+      <div class="error">${esc(it.last_error || 'no error message')}</div>
+      <div style="margin-top:.25rem">
+        <button class="btn btn-warning btn-sm" onclick="retryDeadLetter('${esc(it.batch_id)}')">Retry</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+async function retryDeadLetter(batchId) {
+  if (!confirm('Retry dead letter batch ' + batchId + '?')) return;
+  try {
+    const r = await fetch('?action=dead_letter_retry', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({batch_id: batchId})});
+    const j = await r.json();
+    if (j.ok) { toast('Batch reset to pending', true); checkDeadLetters(); }
+    else { toast('Retry failed: ' + (j.error || '?'), false); }
+  } catch(e) { toast('Error: ' + e.message, false); }
+}
+
+async function retryAllDeadLetters() {
+  if (!confirm('Retry ALL dead letter batches?')) return;
+  try {
+    const r = await fetch('?action=dead_letter_retry', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({retry_all: true})});
+    const j = await r.json();
+    if (j.ok) { toast('All dead letters reset', true); checkDeadLetters(); }
+    else { toast('Retry failed: ' + (j.error || '?'), false); }
+  } catch(e) { toast('Error: ' + e.message, false); }
+}
+
+// --- Health Dashboard ---
+async function loadHealthData() {
+  try {
+    const r = await fetch('?action=staging_stats');
+    const j = await r.json();
+    if (j.ok) {
+      document.getElementById('hPending').textContent = j.staged_pending ?? '-';
+      document.getElementById('hSent').textContent = j.batches_sent ?? '-';
+      document.getElementById('hFailed').textContent = j.batches_failed ?? '-';
+      document.getElementById('hSending').textContent = '-';
+    }
+  } catch(e) {}
+  try {
+    const r = await fetch('?action=fservice_health');
+    const j = await r.json();
+    if (j.ok && j.data) {
+      const s = j.data.status || 'unknown';
+      const cls = s === 'ok' ? 'ok' : s === 'warning' ? 'warn' : 'crit';
+      document.getElementById('hFserviceStatus').textContent = s;
+      document.getElementById('hFserviceStatus').className = 'value ' + cls;
+      document.getElementById('hFserviceLastCheck').textContent = j.data.last_probe_at ? new Date(j.data.last_probe_at).toLocaleTimeString() : '-';
+      document.getElementById('hFserviceUptime').textContent = j.data.last_ok_at ? new Date(j.data.last_ok_at).toLocaleTimeString() : '-';
+      document.getElementById('hWatchdogStatus').textContent = j.data.consecutive_failures > 0 ? j.data.consecutive_failures + ' consecutive failures' : 'healthy';
+    } else {
+      document.getElementById('hFserviceStatus').textContent = 'unknown';
+      document.getElementById('hWatchdogStatus').textContent = 'no watchdog data';
+    }
+  } catch(e) {
+    document.getElementById('hFserviceStatus').textContent = 'error';
+  }
+  checkDeadLetters();
+}
+
+async function triggerManualSync() {
+  if (!confirm('Trigger manual sync_scanlogs + hop_b_push chain?')) return;
+  startJob('sync_scanlogs', {full: false});
+}
+
+async function restartFService() {
+  if (!confirm('Restart FService.exe via watchdog?')) return;
+  try {
+    const r = await fetch('?action=fservice_restart', {method:'POST'});
+    const j = await r.json();
+    toast(j.ok ? 'FService restarted' : ('Restart failed: ' + (j.error||'?')), j.ok);
+    setTimeout(loadHealthData, 3000);
+  } catch(e) { toast('Error: ' + e.message, false); }
+}
+
+async function clearDeadLetters() {
+  if (!confirm('Clear all dead letter records? This does NOT retry them.')) return;
+  toast('Not implemented yet', false);
+}
+
+function startDeadLetterPoll() {
+  if (deadLetterPollInterval) clearInterval(deadLetterPollInterval);
+  deadLetterPollInterval = setInterval(checkDeadLetters, 30000);
 }
 
 // --- Init ---
 window.addEventListener('DOMContentLoaded', () => {
-  doAction('dev_info');
   doAction('db_stats');
-  loadMachines();
   refreshStaging();
+  loadJobHistory('dash-recent-jobs', 5);
+  startDeadLetterPoll();
 });
 </script>
 </body>
