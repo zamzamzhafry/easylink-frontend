@@ -21,3 +21,6 @@ Postman/
 docs/learning/sdk-share-dumps/
 tmp/
 test-results/
+# Multi-brain port registry runtime (machine-local, per-session leases)
+.multibrain/port-registry.jsonl
+.multibrain/port-registry.lock
