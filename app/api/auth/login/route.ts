@@ -2,18 +2,13 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { z } from 'zod';
 import pool from '@/lib/db';
 import {
-  createAuthContextByLoginId,
   createAuthContextByNip,
-  findAuthAccountByLoginId,
   isPlaceholderEmployeeNip,
   setAuthCookie,
-  updateAuthAccountLastLogin,
   type AuthContext,
-  type AccountAuthContext,
   type EmployeeAuthContext,
 } from '@/lib/auth-session';
 import { buildNormalizedAuthUser } from '@/lib/auth-hardening-helpers';
-import { resolveAuthenticatedLane } from '@/lib/auth-login-helpers';
 import { verifyPassword, hashPassword } from '@/lib/password';
 import {
   checkLoginRateLimit,
@@ -121,102 +116,54 @@ export async function POST(request: NextRequest) {
     const connection = await pool.getConnection();
 
     try {
-      const standaloneAccount = await findAuthAccountByLoginId(loginId, connection);
-      const selectedSubjectType: LoginSubjectType = standaloneAccount ? 'account' : 'employee_nip';
+      const [usersRaw] = await connection.query(
+        `
+        SELECT auth.*, k.nama, k.nip AS karyawan_nip
+        FROM tb_karyawan_auth auth
+        JOIN tb_karyawan k ON auth.karyawan_id = k.id
+        WHERE auth.nip = ? AND auth.is_active = 1 AND k.isDeleted = 0
+      `,
+        [loginId]
+      );
 
-      let accountContext: AccountAuthContext | null = null;
-      let nipContext: EmployeeAuthContext | null = null;
-
-      if (selectedSubjectType === 'account' && standaloneAccount) {
-        const { valid, needsRehash } = await verifyPassword(standaloneAccount.password_hash, password);
-        if (!valid) {
-          return invalidCredentialsResponse();
-        }
-        if (needsRehash) {
-          const hashed = await hashPassword(password);
-          await connection.query('UPDATE auth_accounts SET password_hash = ? WHERE id = ?', [hashed, standaloneAccount.id]);
-        }
-
-        await updateAuthAccountLastLogin(Number(standaloneAccount.id), connection);
-        const ctx = await createAuthContextByLoginId(loginId, connection);
-
-        if (!ctx || ctx.subject_type !== 'account') {
-          return NextResponse.json(
-            { ok: false, error: 'Failed to create account session context' },
-            { status: 500 }
-          );
-        }
-        accountContext = ctx;
-
-        const nipCtx = await createAuthContextByNip(loginId, connection);
-        nipContext = nipCtx && nipCtx.subject_type === 'employee_nip' ? nipCtx : null;
-      } else {
-        const [usersRaw] = await connection.query(
-          `
-          SELECT auth.*, k.nama, k.nip AS karyawan_nip
-          FROM tb_karyawan_auth auth
-          JOIN tb_karyawan k ON auth.karyawan_id = k.id
-          WHERE auth.nip = ? AND auth.is_active = 1 AND k.isDeleted = 0
-        `,
-          [loginId]
-        );
-
-        const users = (Array.isArray(usersRaw) ? usersRaw : []) as KaryawanAuthLoginRow[];
-        if (users.length === 0) {
-          return invalidCredentialsResponse();
-        }
-
-        const user = users[0];
-
-        if (isPlaceholderEmployeeNip(user.karyawan_nip)) {
-          return invalidCredentialsResponse();
-        }
-
-        const { valid: nipValid, needsRehash: nipNeedsRehash } = await verifyPassword(user.password_hash, password);
-        if (!nipValid) {
-          return invalidCredentialsResponse();
-        }
-        if (nipNeedsRehash) {
-          const hashed = await hashPassword(password);
-          await connection.query('UPDATE tb_karyawan_auth SET password_hash = ? WHERE karyawan_id = ?', [hashed, user.karyawan_id]);
-        }
-
-        await connection.query('UPDATE tb_karyawan_auth SET last_login_at = NOW() WHERE karyawan_id = ?', [
-          user.karyawan_id,
-        ]);
-
-        const nipCtx = await createAuthContextByNip(loginId, connection);
-
-        if (!nipCtx || nipCtx.subject_type !== 'employee_nip') {
-          return NextResponse.json(
-            { ok: false, error: 'Failed to create session context' },
-            { status: 500 }
-          );
-        }
-        nipContext = nipCtx;
-
-        if (await findAuthAccountByLoginId(loginId, connection)) {
-          const ctx = await createAuthContextByLoginId(loginId, connection);
-          accountContext = ctx && ctx.subject_type === 'account' ? ctx : null;
-        }
+      const users = (Array.isArray(usersRaw) ? usersRaw : []) as KaryawanAuthLoginRow[];
+      if (users.length === 0) {
+        return invalidCredentialsResponse();
       }
 
-      const laneResult = (await resolveAuthenticatedLane({
-        loginId,
-        accountContext,
-        nipContext,
-        selectedSubjectType,
-      })) as LaneResult;
+      const user = users[0];
 
-      if (!laneResult.ok) {
-        return NextResponse.json({ ok: false, error: laneResult.error }, { status: laneResult.status });
+      if (isPlaceholderEmployeeNip(user.karyawan_nip)) {
+        return invalidCredentialsResponse();
+      }
+
+      const { valid, needsRehash } = await verifyPassword(user.password_hash, password);
+      if (!valid) {
+        return invalidCredentialsResponse();
+      }
+      if (needsRehash) {
+        const hashed = await hashPassword(password);
+        await connection.query('UPDATE tb_karyawan_auth SET password_hash = ? WHERE karyawan_id = ?', [hashed, user.karyawan_id]);
+      }
+
+      await connection.query('UPDATE tb_karyawan_auth SET last_login_at = NOW() WHERE karyawan_id = ?', [
+        user.karyawan_id,
+      ]);
+
+      const nipCtx = await createAuthContextByNip(loginId, connection);
+
+      if (!nipCtx || nipCtx.subject_type !== 'employee_nip') {
+        return NextResponse.json(
+          { ok: false, error: 'Failed to create session context' },
+          { status: 500 }
+        );
       }
 
       return finalizeLoginSuccess({
-        authContext: laneResult.authContext,
+        authContext: nipCtx,
         loginId,
         request,
-        subjectType: laneResult.subjectType,
+        subjectType: 'employee_nip',
       });
     } finally {
       connection.release();

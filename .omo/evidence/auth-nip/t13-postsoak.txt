@@ -1,0 +1,17 @@
+Task 13 — 12h soak gate + PAYLOAD_COMPAT=off
+Date: 2026-06-23
+T9 deploy: 2026-06-13T09:26:52Z (10+ days ago, well past 12h)
+
+Action:
+- Added EASYLINK_ENABLE_LEGACY_SESSION_PAYLOAD_COMPAT=false to .env
+- Dev server restarted
+
+Verification:
+1. Fresh login employee001/password → 200, subject_type=employee_nip, karyawan_id=10008 ✓
+2. /me with fresh cookie → 200 ✓
+3. Forged legacy nip:leader001 cookie (valid signature, future exp) → 401 ✓
+
+Legacy cookie format: {sub: 'nip:leader001', st: 'employee_nip', exp: <future>, v: 2}
+Result: rejected (PAYLOAD_COMPAT=off blocks nip:/account: decode)
+
+Status: COMPLETE

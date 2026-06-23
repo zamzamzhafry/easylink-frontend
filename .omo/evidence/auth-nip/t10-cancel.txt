@@ -1,0 +1,17 @@
+Task 10 — H2 column drop CANCELLED
+Date: 2026-06-23
+Amendment: A (Oracle verdict: decouple subject identity from credential lookup key)
+
+Reason:
+- tb_karyawan.nip = TEXT, no index, NOT unique (display/HR field)
+- tb_karyawan_auth.nip = varchar(50), UNIQUE (only unique credential handle)
+- Divergence proof: kar9999 auth.nip='ADMIN01' vs k.nip='9990044'
+- Dropping auth.nip + flipping to WHERE k.nip=? → ambiguous lookups, full scans, silent re-key
+
+Action:
+- CANCEL column drop (auth.nip stays as login key)
+- CANCEL JOIN-resolver flip (login keeps resolving via UNIQUE auth.nip)
+- T8/T9 already switched session subject to karyawan_id (subject identity decoupled from credential key)
+- No schema change, no code change, no migration
+
+Status: COMPLETE (cancelled per Amendment A, no further action needed)

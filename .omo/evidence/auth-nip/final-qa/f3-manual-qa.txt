@@ -1,0 +1,14 @@
+F3 Manual QA — 2026-06-23
+
+1. NIP employee001/password → HTTP 200, subject_type=employee_nip, karyawan_id=10008 [PASS]
+2. NIP leader001/password → HTTP 200, is_leader=true, groups=[{group_id:32}] [PASS]
+3. NIP admin001/password → HTTP 200, is_admin=true, groups=[] [PASS]
+4. Account admin01/Admin@123 → HTTP 401 (lane removed) [PASS]
+5. PIN 1234/1234 → HTTP 401 (PIN code deleted) [PASS]
+6. Soft-delete kar10008 → /me returns 401 within 1 request, reverted [PASS]
+7. Rate-limit → 429 on 11th rapid attempt from same IP [PASS]
+8. Placeholder NIP 9990001 → HTTP 401 (blocked by range) [PASS]
+9. Forged legacy nip: cookie → HTTP 401 (PAYLOAD_COMPAT off) [PASS]
+10. Forged legacy account: cookie → HTTP 401 (PAYLOAD_COMPAT off) [PASS]
+
+VERDICT: APPROVE (10/10 pass)

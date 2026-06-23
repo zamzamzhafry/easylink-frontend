@@ -47,10 +47,6 @@ function parseEnabledFlag(raw: string | null | undefined, defaultEnabled = true)
   return !['0', 'false', 'off', 'no', 'disabled'].includes(normalized);
 }
 
-const LEGACY_PIN_FALLBACK_ENABLED = parseEnabledFlag(
-  process.env.EASYLINK_ENABLE_LEGACY_PIN_FALLBACK,
-  true
-);
 const LEGACY_SESSION_PAYLOAD_COMPAT_ENABLED = parseEnabledFlag(
   process.env.EASYLINK_ENABLE_LEGACY_SESSION_PAYLOAD_COMPAT,
   true
@@ -61,12 +57,6 @@ type SessionPayload = {
   exp: number;
   payload_format: 'canonical' | 'legacy';
   subject_type?: AuthSubjectType;
-};
-
-type UserRow = {
-  pin: string;
-  nama: string | null;
-  privilege: number | string | null;
 };
 
 type GroupAccessRow = {
@@ -98,7 +88,7 @@ type RawKaryawanRoleRow = {
 };
 
 export const GLOBAL_ROLE_KEYS = ['admin', 'hr'] as const;
-export const SCOPED_ROLE_KEYS = ['group_leader', 'scheduler', 'viewer'] as const;
+export const SCOPED_ROLE_KEYS = ['group_leader', 'employee'] as const;
 
 type GlobalRoleKey = (typeof GLOBAL_ROLE_KEYS)[number];
 type ScopedRoleKey = (typeof SCOPED_ROLE_KEYS)[number];
@@ -130,7 +120,7 @@ function narrowRoleRow(raw: RawKaryawanRoleRow): KaryawanRoleRow | null {
 const isGlobalRoleRow = (r: KaryawanRoleRow): r is GlobalRoleRow =>
   r.group_id === null;
 
-export type AuthAccountRole = 'admin' | 'hr' | 'scheduler' | 'viewer';
+export type AuthAccountRole = 'admin' | 'hr' | 'employee';
 export type AuthSubjectType = 'account' | 'employee_nip' | 'legacy_pin' | 'karyawan_id';
 
 type AuthAccountRow = {
@@ -226,16 +216,7 @@ const ACCOUNT_ROLE_COMPAT = {
     can_dashboard: true,
     canonical_roles: ['group_leader'] as CanonicalEmployeeRole[],
   },
-  scheduler: {
-    privilege: 2,
-    is_admin: false,
-    is_hr: false,
-    is_leader: true,
-    can_schedule: true,
-    can_dashboard: true,
-    canonical_roles: ['group_leader'] as CanonicalEmployeeRole[],
-  },
-  viewer: {
+  employee: {
     privilege: 1,
     is_admin: false,
     is_hr: false,
@@ -253,8 +234,7 @@ export function normalizeAuthAccountRole(value: string | null | undefined): Auth
 
   if (normalized === 'admin') return 'admin';
   if (normalized === 'hr') return 'hr';
-  if (normalized === 'scheduler') return 'scheduler';
-  if (normalized === 'viewer') return 'viewer';
+  if (normalized === 'employee') return 'employee';
 
   return null;
 }
@@ -293,16 +273,6 @@ export function getCanonicalRolesFromLegacyAuth(
   ].filter(Boolean) as CanonicalEmployeeRole[];
 
   return [...new Set(canonicalRoles)];
-}
-
-const legacyAuthFallbackTelemetry = { hits: 0 };
-
-export function recordLegacyAuthFallbackHit() {
-  legacyAuthFallbackTelemetry.hits += 1;
-}
-
-export function getLegacyAuthFallbackHits() {
-  return legacyAuthFallbackTelemetry.hits;
 }
 
 const tableExistsCache = new Map<string, boolean>();
@@ -601,7 +571,7 @@ export async function createAuthContextByNip(
     const roleRows: KaryawanRoleRow[] = rawRoleRows
       .map(narrowRoleRow)
       .filter((r): r is KaryawanRoleRow => r !== null);
-    const LEADER_ROLE_KEYS = ['group_leader', 'scheduler'];
+    const LEADER_ROLE_KEYS = ['group_leader'];
 
     // B2: admin/hr are global ONLY when granted by a global-scope role row
     // (group_id IS NULL). A group-scoped admin/hr row must not confer global rights.
@@ -631,7 +601,7 @@ export async function createAuthContextByNip(
       const groupRoleMap = new Map<number, { is_leader: boolean }>();
       for (const r of roleRows) {
         if (isGlobalRoleRow(r)) continue;
-        if (!['group_leader', 'scheduler', 'viewer'].includes(r.role_key)) continue;
+        if (!['group_leader', 'employee'].includes(r.role_key)) continue;
         const gid = Number(r.group_id);
         const existing = groupRoleMap.get(gid) ?? { is_leader: false };
         if (LEADER_ROLE_KEYS.includes(r.role_key)) existing.is_leader = true;
@@ -660,27 +630,6 @@ export async function createAuthContextByNip(
         });
       }
 
-      // Fallback: if no groups from roles, check tb_user_group_access
-      if (groups.length === 0 && (await hasTable('tb_user_group_access'))) {
-        const userPin = user.pin || user.nip;
-        if (userPin) {
-          const [ugaRows] = await connection.query(
-            `SELECT uga.group_id, g.nama_group, uga.can_schedule, uga.can_dashboard, uga.is_leader
-             FROM tb_user_group_access uga
-             LEFT JOIN tb_group g ON g.id = uga.group_id
-             WHERE uga.pin = ? AND uga.is_approved = 1`,
-            [userPin]
-          );
-          const ugaList = Array.isArray(ugaRows) ? (ugaRows as GroupAccessRow[]) : [];
-          groups = ugaList.map((row) => ({
-            group_id: Number(row.group_id),
-            nama_group: row.nama_group || null,
-            can_schedule: normalizeBoolean(row.can_schedule),
-            can_dashboard: normalizeBoolean(row.can_dashboard),
-            is_leader: normalizeBoolean(row.is_leader),
-          }));
-        }
-      }
     }
 
     return {
@@ -739,7 +688,7 @@ export async function createAuthContextByKaryawanId(
     const roleRows: KaryawanRoleRow[] = rawRoleRows
       .map(narrowRoleRow)
       .filter((r): r is KaryawanRoleRow => r !== null);
-    const LEADER_ROLE_KEYS = ['group_leader', 'scheduler'];
+    const LEADER_ROLE_KEYS = ['group_leader'];
 
     // B2: admin/hr are global ONLY when granted by a global-scope role row
     // (group_id IS NULL). A group-scoped admin/hr row must not confer global rights.
@@ -769,7 +718,7 @@ export async function createAuthContextByKaryawanId(
       const groupRoleMap = new Map<number, { is_leader: boolean }>();
       for (const r of roleRows) {
         if (isGlobalRoleRow(r)) continue;
-        if (!['group_leader', 'scheduler', 'viewer'].includes(r.role_key)) continue;
+        if (!['group_leader', 'employee'].includes(r.role_key)) continue;
         const gid = Number(r.group_id);
         const existing = groupRoleMap.get(gid) ?? { is_leader: false };
         if (LEADER_ROLE_KEYS.includes(r.role_key)) existing.is_leader = true;
@@ -798,27 +747,6 @@ export async function createAuthContextByKaryawanId(
         });
       }
 
-      // Fallback: if no groups from roles, check tb_user_group_access
-      if (groups.length === 0 && (await hasTable('tb_user_group_access'))) {
-        const userPin = user.pin || user.nip;
-        if (userPin) {
-          const [ugaRows] = await connection.query(
-            `SELECT uga.group_id, g.nama_group, uga.can_schedule, uga.can_dashboard, uga.is_leader
-             FROM tb_user_group_access uga
-             LEFT JOIN tb_group g ON g.id = uga.group_id
-             WHERE uga.pin = ? AND uga.is_approved = 1`,
-            [userPin]
-          );
-          const ugaList = Array.isArray(ugaRows) ? (ugaRows as GroupAccessRow[]) : [];
-          groups = ugaList.map((row) => ({
-            group_id: Number(row.group_id),
-            nama_group: row.nama_group || null,
-            can_schedule: normalizeBoolean(row.can_schedule),
-            can_dashboard: normalizeBoolean(row.can_dashboard),
-            is_leader: normalizeBoolean(row.is_leader),
-          }));
-        }
-      }
     }
 
     return {
@@ -842,89 +770,6 @@ export async function createAuthContextByKaryawanId(
   } finally {
     if (shouldRelease && connection) connection.release();
   }
-}
-
-export async function createAuthContextByPin(pin: string): Promise<AuthContext | null> {
-  recordLegacyAuthFallbackHit();
-  console.warn('[auth-session] Legacy PIN fallback used for subject:', pin);
-
-  const [userRows] = await pool.query(
-    `SELECT pin, nama, privilege
-     FROM tb_user
-     WHERE pin = ?
-     LIMIT 1`,
-    [pin]
-  );
-  const user = (Array.isArray(userRows) ? userRows[0] : null) as UserRow | null;
-
-  if (!user) return null;
-
-  // Check if employee is still active (guard against stale privilege escalation)
-  if (await hasTable('tb_karyawan')) {
-    const [empRows] = await pool.query(
-      'SELECT isDeleted FROM tb_karyawan WHERE pin = ? LIMIT 1',
-      [pin]
-    );
-    const emp = Array.isArray(empRows) ? (empRows[0] as { isDeleted: number } | undefined) : null;
-    if (emp && Number(emp.isDeleted) === 1) {
-      console.warn('[auth-session] PIN fallback blocked: employee deleted, pin:', pin);
-      return null;
-    }
-  }
-
-  const privilege = Number(user.privilege ?? 0) || 0;
-  const isAdmin = privilege >= 4;
-  let groups: GroupAccess[] = [];
-
-  if (!isAdmin && (await hasTable('tb_user_group_access'))) {
-    const [rowsRaw] = await pool.query(
-      `SELECT uga.group_id,
-              g.nama_group,
-              uga.can_schedule,
-              uga.can_dashboard,
-              uga.is_leader
-       FROM tb_user_group_access uga
-       LEFT JOIN tb_group g ON g.id = uga.group_id
-       WHERE uga.pin = ?
-         AND uga.is_approved = 1`,
-      [pin]
-    );
-    const rows = (Array.isArray(rowsRaw) ? rowsRaw : []) as GroupAccessRow[];
-    groups = rows.map((row) => ({
-      group_id: Number(row.group_id),
-      nama_group: row.nama_group || null,
-      can_schedule: normalizeBoolean(row.can_schedule),
-      can_dashboard: normalizeBoolean(row.can_dashboard),
-      is_leader: normalizeBoolean(row.is_leader),
-    }));
-  }
-
-  const groupHasSchedule = groups.some((group) => group.can_schedule);
-  const groupHasDashboard = groups.some((group) => group.can_dashboard);
-  const leaderAccess = isAdmin || groups.some((group) => group.is_leader);
-  const legacyFlagSnapshot: LegacyAuthFlagSnapshot = {
-    privilege,
-    is_admin: isAdmin,
-    is_leader: leaderAccess,
-    is_hr: false,
-    can_schedule: isAdmin || groupHasSchedule,
-    can_dashboard: isAdmin || groupHasDashboard,
-  };
-  const canonical_roles = getCanonicalRolesFromLegacyAuth(legacyFlagSnapshot);
-
-  return {
-    pin: String(user.pin),
-    nama: user.nama || `PIN ${user.pin}`,
-    privilege,
-    is_admin: isAdmin,
-    is_hr: false,
-    is_leader: leaderAccess,
-    can_schedule: isAdmin || groupHasSchedule,
-    can_dashboard: isAdmin || groupHasDashboard,
-    groups,
-    canonical_roles,
-    subject_type: 'legacy_pin',
-  };
 }
 
 export async function getAuthContextFromCookies(): Promise<AuthContext | null> {
@@ -954,10 +799,6 @@ export async function getAuthContextFromCookies(): Promise<AuthContext | null> {
     if (!LEGACY_SESSION_PAYLOAD_COMPAT_ENABLED) return null;
     return createAuthContextByNip(getSubjectValueForType(payload.subject, 'employee_nip'));
   }
-  if (normalizedSubjectType === 'legacy_pin') {
-    if (!LEGACY_PIN_FALLBACK_ENABLED) return null;
-    return createAuthContextByPin(getSubjectValueForType(payload.subject, 'legacy_pin'));
-  }
 
   // Untyped legacy payloads (st missing): prefix-inferred. Same compat gate.
   if (!LEGACY_SESSION_PAYLOAD_COMPAT_ENABLED) return null;
@@ -968,10 +809,6 @@ export async function getAuthContextFromCookies(): Promise<AuthContext | null> {
   if (payload.subject.startsWith('nip:')) {
     return createAuthContextByNip(payload.subject.slice('nip:'.length));
   }
-  if (payload.subject.startsWith('pin:')) {
-    if (!LEGACY_PIN_FALLBACK_ENABLED) return null;
-    return createAuthContextByPin(payload.subject.slice('pin:'.length));
-  }
 
   const accountContext = await createAuthContextByLoginId(payload.subject);
   if (accountContext) return accountContext;
@@ -979,8 +816,7 @@ export async function getAuthContextFromCookies(): Promise<AuthContext | null> {
   const nipContext = await createAuthContextByNip(payload.subject);
   if (nipContext) return nipContext;
 
-  if (!LEGACY_PIN_FALLBACK_ENABLED) return null;
-  return createAuthContextByPin(payload.subject);
+  return null;
 }
 
 export function setAuthCookie(
@@ -1065,8 +901,8 @@ export function getRoleDisplayLabel(auth: AuthContext): string {
   if (auth.is_admin) return 'Admin';
   if (auth.is_hr) return 'HR';
   const accountRoleKey = auth.subject_type === 'account' ? auth.role_key : null;
-  if (accountRoleKey === 'scheduler' || auth.is_leader) return 'Group Leader';
-  if (accountRoleKey === 'viewer') return 'Viewer';
+  if (auth.is_leader) return 'Group Leader';
+  if (accountRoleKey === 'employee') return 'Employee';
   if (auth.can_schedule || auth.can_dashboard) return 'Member';
   return 'Member';
 }

@@ -1,0 +1,26 @@
+Task 15 — Delete PIN auth code + tb_user_group_access auth READ
+Date: 2026-06-23
+
+Action:
+- Removed createAuthContextByPin() function (L837-L927)
+- Removed legacy_pin cookie decode branch
+- Removed pin: prefix decode branch
+- Removed PIN fallback telemetry (recordLegacyAuthFallbackHit, getLegacyAuthFallbackHits)
+- Removed UserRow type (no longer used)
+- Removed LEGACY_PIN_FALLBACK_ENABLED constant
+- Removed tb_user_group_access READ fallback in createAuthContextByNip + createAuthContextByKaryawanId
+
+Verification:
+- grep -rn "tb_user_group_access" lib/ app/api/auth/ → 0 reads ✓
+- grep -rn "createAuthContextByPin" → 0 references ✓
+- npm run typecheck → PASS ✓
+- npm run build → PASS ✓
+- node --test tests/auth-session-compat.test.js → 8/8 PASS ✓
+- NIP lane leader001/password → 200 ✓
+- Account lane admin01/Admin@123 → 200 ✓
+
+Device writes untouched:
+- tb_user_group_access table still exists (machine-sync path writes dead data)
+- No schema change, no table drop
+
+Status: COMPLETE

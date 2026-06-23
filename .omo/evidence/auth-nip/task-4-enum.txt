@@ -1,0 +1,27 @@
+Task 4 — M1 enum narrow (viewer→employee)
+Date: 2026-06-23
+Amendment: A (shrink to viewer→employee only, no scheduler/hr rows exist)
+
+DB Migration:
+- Step 1: ALTER enum 5→6 (add 'employee')
+- Step 2: UPDATE viewer→employee (1 row: kar10008)
+- Step 3: ALTER enum 6→3 (narrow to admin/group_leader/employee)
+
+Verification:
+- SELECT DISTINCT role_key → admin, group_leader, employee (zero hr/scheduler/viewer)
+- SHOW COLUMNS → enum('admin','group_leader','employee')
+- npm run typecheck → PASS
+- npm run build → PASS
+- node --test tests/auth-session-compat.test.js → 8/8 PASS
+
+Code cleanup (lib/auth-session.ts):
+- SCOPED_ROLE_KEYS: removed scheduler/viewer, added employee
+- ACCOUNT_ROLE_COMPAT: replaced scheduler+viewer with employee
+- normalizeAuthAccountRole: removed scheduler/viewer branches
+- LEADER_ROLE_KEYS: removed scheduler (only group_leader)
+- group role filter: ['group_leader', 'employee'] (was ['group_leader', 'scheduler', 'viewer'])
+- getRoleDisplayLabel: removed scheduler/viewer branches
+
+Rollback SQL (if needed):
+  INSERT INTO tb_karyawan_roles VALUES (5, 10008, 'viewer', 32, '2026-06-12 22:09:40');
+  ALTER TABLE tb_karyawan_roles MODIFY role_key ENUM('admin','hr','group_leader','scheduler','viewer') NOT NULL;

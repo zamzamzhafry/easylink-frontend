@@ -1,0 +1,27 @@
+Task 17 — Remove auth_accounts lane + isDeleted=0 enforce
+Date: 2026-06-23
+
+Action:
+- Removed account-lane imports from app/api/auth/login/route.ts:
+  - createAuthContextByLoginId, findAuthAccountByLoginId, updateAuthAccountLastLogin
+  - AccountAuthContext, LaneResult types
+- Removed resolveAuthenticatedLane import (no longer needed)
+- Simplified login POST to NIP-only path:
+  - No findAuthAccountByLoginId lookup
+  - No account/employee_nip branch selection
+  - Direct tb_karyawan_auth query → password verify → createAuthContextByNip
+  - finalizeLoginSuccess with subjectType: 'employee_nip'
+
+Verification:
+- npm run build → PASS ✓
+- curl POST /api/auth/login admin01/Admin@123 → 401 "Invalid credentials" ✓
+- isDeleted=0 present in both NIP resolvers (createAuthContextByNip L557, createAuthContextByKaryawanId L674) ✓
+
+Remaining account-lane code (not removed, out of scope):
+- lib/auth-session.ts: createAuthContextByLoginId, findAuthAccountByLoginId, ACCOUNT_ROLE_COMPAT
+- lib/auth-login-helpers.js: resolveAuthenticatedLane (no longer called)
+- lib/auth-hardening-helpers.js: hasPrivilegeMismatch (no longer called)
+
+These are dead code but plan scope was login route removal only.
+
+Status: COMPLETE

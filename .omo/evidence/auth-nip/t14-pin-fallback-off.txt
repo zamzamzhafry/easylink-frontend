@@ -1,0 +1,18 @@
+Task 14 — PIN_FALLBACK=off soak verify
+Date: 2026-06-23
+
+Action:
+- Added EASYLINK_ENABLE_LEGACY_PIN_FALLBACK=false to .env
+- Dev server restarted
+
+Verification:
+1. PIN-only login (1234/1234) → 401 ✓ (blocked)
+2. NIP lane leader001/password → 200 ✓
+3. Account lane admin01/Admin@123 → 200 ✓
+
+Reversibility test:
+- Temporarily set EASYLINK_ENABLE_LEGACY_PIN_FALLBACK=true
+- PIN 1234/1234 → 200 ✓ (reversible)
+- Restored to false
+
+Status: COMPLETE

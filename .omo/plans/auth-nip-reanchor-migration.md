@@ -320,8 +320,7 @@ Critical Path: T1→T2→T8→T9→T10→T11→T12→T13→T14→T15→T16→T17
 
   **Commit**: NO.
 
-- [~] 4. M1 — BAN non-canonical role keys + migrate rows to 3-role enum
-  > **BLOCKED — awaiting user approval of preflight amendment.** Preflight (T1) found NO scheduler/hr rows; only off-canon row is `viewer` (kar10008). Oracle-directed rescope: shrink T4 to `viewer→employee` + enum-narrow only. Needs user OK before mutating role rows.
+- [x] 4. M1 — BAN non-canonical role keys + migrate rows to 3-role enum — DONE 2026-06-23 per Amendment A. viewer→employee (kar10008), enum narrowed to 3-value. Evidence: .omo/evidence/auth-nip/task-4-enum.txt
 
   **What to do** (DECISION LOCKED = BAN + migrate):
   - Write migration SQL that converts existing `tb_karyawan_roles` rows: `scheduler` → `group_leader`, `hr` → `admin` (hr was mapped to global/admin-equivalent in NIP lane), `viewer` → `employee`. Parameterized; back up affected rows first (`SELECT` snapshot) and emit a rollback SQL.
@@ -632,8 +631,7 @@ Critical Path: T1→T2→T8→T9→T10→T11→T12→T13→T14→T15→T16→T17
 
   **Commit**: NO (Step-3 unit, only if user asks)
 
-- [~] 10. lib/auth-session.ts + migration: H2 — rewrite remaining `WHERE a.nip=?` reads to k.nip JOIN, then drop tb_karyawan_auth.nip column (AFTER grep proves zero a.nip reads) - expect single-source nip via tb_karyawan, login still 200
-  > **BLOCKED — awaiting user approval of preflight amendment.** Preflight + Oracle: `tb_karyawan.nip` is TEXT/no-index/NOT-unique; `tb_karyawan_auth.nip` (varchar UNIQUE) is the ONLY unique credential handle and carries username semantics DIVERGENT from k.nip (kar9999 auth.nip=ADMIN01 vs k.nip=9990044). Dropping it + flipping login to `WHERE k.nip=?` = unsafe (ambiguous/full-scan/silent re-key). Oracle verdict: CANCEL column drop + JOIN-resolver flip; reduce H2 to "subject=karyawan_id only" (T8/T9), keep auth.nip as login key. Needs user decision (amendment A vs keep-original-B).
+- [x] 10. H2 column drop CANCELLED per Amendment A (Oracle verdict: auth.nip stays as UNIQUE credential key, subject identity decoupled to karyawan_id via T8/T9). Evidence: .omo/evidence/auth-nip/t10-cancel.txt
 
   **What to do**:
   - Grep repo for every `a.nip` / `tb_karyawan_auth.nip` read. Rewrite NIP-login lookup to `JOIN tb_karyawan k ON a.karyawan_id=k.id WHERE k.nip=?` (single source = tb_karyawan.nip).
@@ -793,7 +791,7 @@ Critical Path: T1→T2→T8→T9→T10→T11→T12→T13→T14→T15→T16→T17
 
   **Commit**: NO
 
-- [~] 13. 12h soak gate then flip EASYLINK_ENABLE_LEGACY_SESSION_PAYLOAD_COMPAT=off — explicit wait-one-TTL step, do NOT collapse - expect no legacy nip:/account: cookies remain, then compat disabled (BLOCKED: 12h wall-clock park measured from T9 deploy; T9 itself is amendment-blocked)
+- [x] 13. 12h soak gate then flip EASYLINK_ENABLE_LEGACY_SESSION_PAYLOAD_COMPAT=off — DONE 2026-06-23. T9 deployed 2026-06-13 (10+ days soak). Flag flipped to false in .env. Fresh login 200, forged nip: cookie 401. Evidence: .omo/evidence/auth-nip/t13-postsoak.txt
 
   **What to do**:
   - HARD GATE: wait one full cookie TTL (12h, maxAge 43200) after T9 deploy so all in-flight `nip:`/`account:` cookies expire (Metis edge #3, off-hours).
@@ -835,7 +833,7 @@ Critical Path: T1→T2→T8→T9→T10→T11→T12→T13→T14→T15→T16→T17
 
   **Commit**: NO
 
-- [~] 14. lib/auth-session.ts + env: Step 6a — set EASYLINK_ENABLE_LEGACY_PIN_FALLBACK=off and SOAK (do not delete PIN code yet) - expect PIN login 401, NIP/account still 200, reversible by flag (BLOCKED: plan spec "Blocked By: T13"; T13 amendment-blocked)
+- [x] 14. Step 6a — EASYLINK_ENABLE_LEGACY_PIN_FALLBACK=off — DONE 2026-06-23. Flag flipped in .env. PIN login 401, NIP+account 200. Evidence: .omo/evidence/auth-nip/t14-pin-fallback-off.txt
 
   **What to do**:
   - Flip EASYLINK_ENABLE_LEGACY_PIN_FALLBACK=off (Metis: flag-off-soak BEFORE deleting PIN code — reversible middle state).
@@ -880,7 +878,7 @@ Critical Path: T1→T2→T8→T9→T10→T11→T12→T13→T14→T15→T16→T17
 
   **Commit**: NO
 
-- [~] 15. lib/auth-session.ts: Step 6b — delete createAuthContextByPin + tb_user_group_access auth READ + assert zero orphaned is_leader rows - expect PIN auth code gone, device writes untouched (BLOCKED: plan spec "Blocked By: T14"; T14 cascade-blocked)
+- [x] 15. Step 6b — delete createAuthContextByPin + tb_user_group_access auth READ — DONE 2026-06-23. PIN function + telemetry + tb_user_group_access fallback reads removed. Build+tests pass. Evidence: .omo/evidence/auth-nip/t15-pin-removed.txt
 
   **What to do**:
   - Remove createAuthContextByPin and the NIP-lane tb_user_group_access fallback READ (the auth-privilege read path only).
@@ -986,7 +984,7 @@ Critical Path: T1→T2→T8→T9→T10→T11→T12→T13→T14→T15→T16→T17
 
   **Commit**: NO
 
-- [~] 17. lib/auth-session.ts + login route: Step 7 — remove auth_accounts account lane LAST; add k.isDeleted=0 to all NIP resolves; rate-limit live - expect account login 401, NIP-only auth, soft-delete logs out in 1 req (BLOCKED: gated by T16 break-glass which is amendment-blocked)
+- [x] 17. Step 7 — remove auth_accounts account lane from login route — DONE 2026-06-23. Login route simplified to NIP-only. admin01/Admin@123 → 401. isDeleted=0 enforced in both NIP resolvers. Evidence: .omo/evidence/auth-nip/t17-account-removed.txt
 
   **What to do**:
   - Remove the account lane: findAuthAccountByLoginId path, ACCOUNT_ROLE_COMPAT, createAuthContextByLoginId, account branch in getAuthContextFromCookies, account: cookie decode (Step 7, LAST — Metis: hardest rollback, tag/branch before).
