@@ -3,6 +3,7 @@
 const nextConfig = {
   experimental: {
     esmExternals: 'loose',
+    optimizePackageImports: ['lucide-react', 'recharts'],
   },
 };
 module.exports = nextConfig;
