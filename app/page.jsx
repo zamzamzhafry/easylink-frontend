@@ -56,136 +56,158 @@ async function getStats({ auth }) {
   const failedSections = [];
 
   const totalScope = buildScopeClause('eg', 'k.pin');
-  const [[{ total }]] = await pool
-    .query(
-      `SELECT COUNT(DISTINCT k.id) AS total
-     FROM tb_karyawan k
-     LEFT JOIN tb_employee_group eg ON eg.karyawan_id = k.id
-     WHERE 1=1
-       ${canFilterDeleted ? 'AND k.isDeleted = 0' : ''}
-       ${totalScope.clause}`,
-      totalScope.params
-    )
-    .catch(() => {
-      failedSections.push('Total Karyawan');
-      return [[{ total: 0 }]];
-    });
-
   const hadirScope = buildScopeClause('eg', 'sl.pin');
-  const [[{ hadir }]] = await pool
-    .query(
-      `SELECT COUNT(DISTINCT sl.pin) AS hadir
-       FROM tb_scanlog sl
-       LEFT JOIN tb_karyawan k ON k.pin = sl.pin ${canFilterDeleted ? 'AND k.isDeleted = 0' : ''}
-       LEFT JOIN tb_employee_group eg ON eg.karyawan_id = k.id
-       WHERE DATE_FORMAT(sl.scan_date, '%Y-%m-%d') = ?
-         ${hadirScope.clause}`,
-      [today, ...hadirScope.params]
-    )
-    .catch(() => {
-      failedSections.push('Hadir Hari Ini');
-      return [[{ hadir: 0 }]];
-    });
-
   const jadwalScope = buildScopeClause('eg', 'k.pin');
-  const [[{ jadwal_hari }]] = await pool
-    .query(
-      `SELECT COUNT(*) AS jadwal_hari
-       FROM tb_schedule s
-       JOIN tb_shift_type st ON s.shift_id = st.id
-       JOIN tb_karyawan k ON k.id = s.karyawan_id
-       LEFT JOIN tb_employee_group eg ON eg.karyawan_id = k.id
-       WHERE s.tanggal = ?
-         AND st.needs_scan = 1
-         ${canFilterDeleted ? 'AND k.isDeleted = 0' : ''}
-         ${jadwalScope.clause}`,
-      [today, ...jadwalScope.params]
-    )
-    .catch(() => {
-      failedSections.push('Jadwal Hari Ini');
-      return [[{ jadwal_hari: 0 }]];
-    });
-
   const lateScope = buildScopeClause('eg', 'logs.pin');
-  const [[{ late_count }]] = await pool
-    .query(
-      `SELECT COUNT(*) AS late_count
-       FROM (
-         SELECT sl.pin, MIN(TIME(sl.scan_date)) AS first_scan
-         FROM tb_scanlog sl
-         WHERE DATE_FORMAT(sl.scan_date, '%Y-%m-%d') = ?
-         GROUP BY sl.pin
-       ) logs
-       JOIN tb_karyawan k ON k.pin = logs.pin
-       LEFT JOIN tb_employee_group eg ON eg.karyawan_id = k.id
-       JOIN tb_schedule sc ON sc.karyawan_id = k.id AND sc.tanggal = ?
-       JOIN tb_shift_type st ON sc.shift_id = st.id
-       WHERE st.jam_masuk IS NOT NULL
-         AND TIME_TO_SEC(logs.first_scan) - TIME_TO_SEC(st.jam_masuk) > 900
-         ${canFilterDeleted ? 'AND k.isDeleted = 0' : ''}
-         ${lateScope.clause}`,
-      [today, today, ...lateScope.params]
-    )
-    .catch(() => {
-      failedSections.push('Terlambat');
-      return [[{ late_count: 0 }]];
-    });
-
-  const [[{ devices }]] = await pool.query('SELECT COUNT(*) AS devices FROM tb_device').catch(() => {
-    failedSections.push('Perangkat Aktif');
-    return [[{ devices: 0 }]];
-  });
-
   const trendFrom = sevenDaysAgo.toISOString().slice(0, 10);
-  
   const trendHadirScope = buildScopeClause('eg', 'sl.pin');
-  const [trendRows] = await pool.query(`
-    SELECT DATE_FORMAT(sl.scan_date, '%Y-%m-%d') as date, COUNT(DISTINCT sl.pin) as hadir
-    FROM tb_scanlog sl
-    LEFT JOIN tb_karyawan k ON k.pin = sl.pin ${canFilterDeleted ? 'AND k.isDeleted = 0' : ''}
-    LEFT JOIN tb_employee_group eg ON eg.karyawan_id = k.id
-    WHERE DATE_FORMAT(sl.scan_date, '%Y-%m-%d') >= ? AND DATE_FORMAT(sl.scan_date, '%Y-%m-%d') <= ?
-      ${trendHadirScope.clause}
-    GROUP BY DATE_FORMAT(sl.scan_date, '%Y-%m-%d')
-    ORDER BY DATE_FORMAT(sl.scan_date, '%Y-%m-%d') ASC
-  `, [trendFrom, today, ...trendHadirScope.params]).catch(() => {
-    failedSections.push('Tren Kehadiran');
-    return [[]];
-  });
-
   const reviewFrom = threeDaysAgo.toISOString().slice(0, 10);
-  
   const reviewScope = buildScopeClause('eg', 'k.pin');
-  const [reviewQueryRows] = await pool.query(`
-    SELECT 
-      sc.tanggal as scan_date,
-      k.id as karyawan_id,
-      k.pin,
-      COALESCE(k.nama, u.nama, k.pin) as nama,
-      st.jam_masuk,
-      st.jam_keluar,
-      st.needs_scan,
-      an.status as note_status,
-      an.catatan as note_catatan,
-      MIN(TIME(sl.scan_date)) AS masuk,
-      MAX(TIME(sl.scan_date)) AS keluar
-    FROM tb_schedule sc
-    JOIN tb_karyawan k ON k.id = sc.karyawan_id ${canFilterDeleted ? 'AND k.isDeleted = 0' : ''}
-    JOIN tb_shift_type st ON st.id = sc.shift_id
-    LEFT JOIN tb_user u ON u.pin = k.pin
-    LEFT JOIN tb_employee_group eg ON eg.karyawan_id = k.id
-    LEFT JOIN tb_attendance_note an ON an.pin = k.pin AND an.tanggal = sc.tanggal
-    LEFT JOIN tb_scanlog sl ON sl.pin = k.pin AND DATE_FORMAT(sl.scan_date, '%Y-%m-%d') = sc.tanggal
-    WHERE sc.tanggal >= ? AND sc.tanggal <= ?
-      AND st.needs_scan = 1
-      AND an.status IS NULL
-      ${reviewScope.clause}
-    GROUP BY sc.id, sc.tanggal, k.id, k.pin, u.nama, st.jam_masuk, st.jam_keluar, st.needs_scan, an.status, an.catatan
-    ORDER BY sc.tanggal DESC, k.nama ASC
-  `, [reviewFrom, today, ...reviewScope.params]).catch(() => {
-    failedSections.push('Perlu Ditinjau');
-    return [[]];
-  });
+
+  // Run all 7 stat queries in parallel — each self-heals to a 0/[] fallback on error.
+  const [
+    totalRes,
+    hadirRes,
+    jadwalRes,
+    lateRes,
+    devicesRes,
+    trendRes,
+    reviewRes,
+  ] = await Promise.all([
+    pool
+      .query(
+        `SELECT COUNT(DISTINCT k.id) AS total
+       FROM tb_karyawan k
+       LEFT JOIN tb_employee_group eg ON eg.karyawan_id = k.id
+       WHERE 1=1
+         ${canFilterDeleted ? 'AND k.isDeleted = 0' : ''}
+         ${totalScope.clause}`,
+        totalScope.params
+      )
+      .catch(() => {
+        failedSections.push('Total Karyawan');
+        return [[{ total: 0 }]];
+      }),
+    pool
+      .query(
+        `SELECT COUNT(DISTINCT sl.pin) AS hadir
+         FROM tb_scanlog sl
+         LEFT JOIN tb_karyawan k ON k.pin = sl.pin ${canFilterDeleted ? 'AND k.isDeleted = 0' : ''}
+         LEFT JOIN tb_employee_group eg ON eg.karyawan_id = k.id
+         WHERE DATE_FORMAT(sl.scan_date, '%Y-%m-%d') = ?
+           ${hadirScope.clause}`,
+        [today, ...hadirScope.params]
+      )
+      .catch(() => {
+        failedSections.push('Hadir Hari Ini');
+        return [[{ hadir: 0 }]];
+      }),
+    pool
+      .query(
+        `SELECT COUNT(*) AS jadwal_hari
+         FROM tb_schedule s
+         JOIN tb_shift_type st ON s.shift_id = st.id
+         JOIN tb_karyawan k ON k.id = s.karyawan_id
+         LEFT JOIN tb_employee_group eg ON eg.karyawan_id = k.id
+         WHERE s.tanggal = ?
+           AND st.needs_scan = 1
+           ${canFilterDeleted ? 'AND k.isDeleted = 0' : ''}
+           ${jadwalScope.clause}`,
+        [today, ...jadwalScope.params]
+      )
+      .catch(() => {
+        failedSections.push('Jadwal Hari Ini');
+        return [[{ jadwal_hari: 0 }]];
+      }),
+    pool
+      .query(
+        `SELECT COUNT(*) AS late_count
+         FROM (
+           SELECT sl.pin, MIN(TIME(sl.scan_date)) AS first_scan
+           FROM tb_scanlog sl
+           WHERE DATE_FORMAT(sl.scan_date, '%Y-%m-%d') = ?
+           GROUP BY sl.pin
+         ) logs
+         JOIN tb_karyawan k ON k.pin = logs.pin
+         LEFT JOIN tb_employee_group eg ON eg.karyawan_id = k.id
+         JOIN tb_schedule sc ON sc.karyawan_id = k.id AND sc.tanggal = ?
+         JOIN tb_shift_type st ON sc.shift_id = st.id
+         WHERE st.jam_masuk IS NOT NULL
+           AND TIME_TO_SEC(logs.first_scan) - TIME_TO_SEC(st.jam_masuk) > 900
+           ${canFilterDeleted ? 'AND k.isDeleted = 0' : ''}
+           ${lateScope.clause}`,
+        [today, today, ...lateScope.params]
+      )
+      .catch(() => {
+        failedSections.push('Terlambat');
+        return [[{ late_count: 0 }]];
+      }),
+    pool.query('SELECT COUNT(*) AS devices FROM tb_device').catch(() => {
+      failedSections.push('Perangkat Aktif');
+      return [[{ devices: 0 }]];
+    }),
+    pool
+      .query(
+        `
+        SELECT DATE_FORMAT(sl.scan_date, '%Y-%m-%d') as date, COUNT(DISTINCT sl.pin) as hadir
+        FROM tb_scanlog sl
+        LEFT JOIN tb_karyawan k ON k.pin = sl.pin ${canFilterDeleted ? 'AND k.isDeleted = 0' : ''}
+        LEFT JOIN tb_employee_group eg ON eg.karyawan_id = k.id
+        WHERE DATE_FORMAT(sl.scan_date, '%Y-%m-%d') >= ? AND DATE_FORMAT(sl.scan_date, '%Y-%m-%d') <= ?
+          ${trendHadirScope.clause}
+        GROUP BY DATE_FORMAT(sl.scan_date, '%Y-%m-%d')
+        ORDER BY DATE_FORMAT(sl.scan_date, '%Y-%m-%d') ASC
+      `,
+        [trendFrom, today, ...trendHadirScope.params]
+      )
+      .catch(() => {
+        failedSections.push('Tren Kehadiran');
+        return [[]];
+      }),
+    pool
+      .query(
+        `
+        SELECT
+          sc.tanggal as scan_date,
+          k.id as karyawan_id,
+          k.pin,
+          COALESCE(k.nama, u.nama, k.pin) as nama,
+          st.jam_masuk,
+          st.jam_keluar,
+          st.needs_scan,
+          an.status as note_status,
+          an.catatan as note_catatan,
+          MIN(TIME(sl.scan_date)) AS masuk,
+          MAX(TIME(sl.scan_date)) AS keluar
+        FROM tb_schedule sc
+        JOIN tb_karyawan k ON k.id = sc.karyawan_id ${canFilterDeleted ? 'AND k.isDeleted = 0' : ''}
+        JOIN tb_shift_type st ON st.id = sc.shift_id
+        LEFT JOIN tb_user u ON u.pin = k.pin
+        LEFT JOIN tb_employee_group eg ON eg.karyawan_id = k.id
+        LEFT JOIN tb_attendance_note an ON an.pin = k.pin AND an.tanggal = sc.tanggal
+        LEFT JOIN tb_scanlog sl ON sl.pin = k.pin AND DATE_FORMAT(sl.scan_date, '%Y-%m-%d') = sc.tanggal
+        WHERE sc.tanggal >= ? AND sc.tanggal <= ?
+          AND st.needs_scan = 1
+          AND an.status IS NULL
+          ${reviewScope.clause}
+        GROUP BY sc.id, sc.tanggal, k.id, k.pin, u.nama, st.jam_masuk, st.jam_keluar, st.needs_scan, an.status, an.catatan
+        ORDER BY sc.tanggal DESC, k.nama ASC
+      `,
+        [reviewFrom, today, ...reviewScope.params]
+      )
+      .catch(() => {
+        failedSections.push('Perlu Ditinjau');
+        return [[]];
+      }),
+  ]);
+
+  const [[{ total }]] = totalRes;
+  const [[{ hadir }]] = hadirRes;
+  const [[{ jadwal_hari }]] = jadwalRes;
+  const [[{ late_count }]] = lateRes;
+  const [[{ devices }]] = devicesRes;
+  const [trendRows] = trendRes;
+  const [reviewQueryRows] = reviewRes;
 
   const needsReview = [];
   const lateMinutesThreshold = 15;
