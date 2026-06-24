@@ -1,7 +1,22 @@
 import crypto from 'crypto';
-import { cookies } from 'next/headers';
-import { NextResponse } from 'next/server';
+import type { NextResponse as NextResponseType } from 'next/server';
 import pool from '@/lib/db';
+
+// ponytail: next/headers + next/server have no Node-ESM export (Next-bundler-only),
+// which blocks `node --test` from loading this module. Lazy-load inside the 3 runtime
+// boundary fns so the module imports clean under Node; Next route handlers await the
+// returned promises transparently. Upgrade path: move cookie/Response helpers into a
+// separate next-runtime-only module once tests need them.
+let _cookies: typeof import('next/headers')['cookies'] | null = null;
+let _NextResponse: typeof import('next/server')['NextResponse'] | null = null;
+async function getCookieStore() {
+  if (!_cookies) ({ cookies: _cookies } = await import('next/headers'));
+  return _cookies!();
+}
+async function getNextResponse() {
+  if (!_NextResponse) ({ NextResponse: _NextResponse } = await import('next/server'));
+  return _NextResponse!;
+}
 import {
   decodeSessionToken,
   encodeSessionToken,
@@ -773,7 +788,8 @@ export async function createAuthContextByKaryawanId(
 }
 
 export async function getAuthContextFromCookies(): Promise<AuthContext | null> {
-  const token = cookies().get(SESSION_COOKIE)?.value;
+  const cookieStore = await getCookieStore();
+  const token = cookieStore.get(SESSION_COOKIE)?.value;
   const payload = decodeSession(token);
   if (!payload) return null;
 
@@ -820,7 +836,7 @@ export async function getAuthContextFromCookies(): Promise<AuthContext | null> {
 }
 
 export function setAuthCookie(
-  response: NextResponse,
+  response: NextResponseType,
   subject: string,
   request: any = null,
   options: { subjectType?: AuthSubjectType } = {}
@@ -855,7 +871,7 @@ export function setAuthCookie(
   });
 }
 
-export function clearAuthCookie(response: NextResponse, request: any = null) {
+export function clearAuthCookie(response: NextResponseType, request: any = null) {
   const forwardedProto = String(request?.headers?.get?.('x-forwarded-proto') ?? '').trim();
   const requestProtocol = String(request?.nextUrl?.protocol ?? '').trim().replace(/:$/, '');
   const envForcesInsecure = process.env.ALLOW_INSECURE_COOKIES === 'true';
@@ -880,7 +896,7 @@ export function clearAuthCookie(response: NextResponse, request: any = null) {
 export function verifyPlainPassword(stored: string | null | undefined, input: string) {
   const dbValue = String(stored ?? '').trim();
   const typed = String(input ?? '').trim();
-  if (!dbValue && !typed) return true;
+  if (!dbValue || !typed) return false;
   return dbValue === typed;
 }
 
@@ -920,10 +936,12 @@ export function getAllowedGroupIds(
     .map((group) => Number(group.group_id));
 }
 
-export function unauthorizedResponse(message = 'Unauthorized') {
-  return NextResponse.json({ ok: false, error: message }, { status: 401 });
+export async function unauthorizedResponse(message = 'Unauthorized') {
+  const Res = await getNextResponse();
+  return Res.json({ ok: false, error: message }, { status: 401 });
 }
 
-export function forbiddenResponse(message = 'Forbidden') {
-  return NextResponse.json({ ok: false, error: message }, { status: 403 });
+export async function forbiddenResponse(message = 'Forbidden') {
+  const Res = await getNextResponse();
+  return Res.json({ ok: false, error: message }, { status: 403 });
 }
