@@ -3,6 +3,8 @@ export const dynamic = 'force-dynamic';
 import { NextResponse } from 'next/server';
 import pool from '@/lib/db';
 import { hasKaryawanColumn } from '@/lib/karyawan-schema';
+import { resolveDateRange } from '@/lib/date-range';
+import { toMinutes } from '@/lib/time';
 import {
   forbiddenResponse,
   getAllowedGroupIds,
@@ -13,13 +15,6 @@ import {
 
 const LATE_THRESHOLD_MINUTES = 15;
 
-function toMinutes(value) {
-  if (!value || typeof value !== 'string') return null;
-  const [hours, minutes] = value.split(':').map(Number);
-  if (Number.isNaN(hours) || Number.isNaN(minutes)) return null;
-  return hours * 60 + minutes;
-}
-
 export async function GET(req) {
   const auth = await getAuthContextFromCookies();
   if (!auth) return unauthorizedResponse('Login required.');
@@ -28,8 +23,11 @@ export async function GET(req) {
   }
 
   const { searchParams } = new URL(req.url);
-  const from = searchParams.get('from') || new Date().toISOString().slice(0, 10);
-  const to = searchParams.get('to') || from;
+  const range = resolveDateRange(searchParams.get('from'), searchParams.get('to'));
+  if (range.error) {
+    return NextResponse.json({ ok: false, error: range.error }, { status: range.status });
+  }
+  const { from, to } = range;
   const groupParam = searchParams.get('group_id');
   const employeeParam = searchParams.get('employee_id');
 

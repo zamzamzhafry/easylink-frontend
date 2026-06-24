@@ -3,6 +3,8 @@ export const dynamic = 'force-dynamic';
 import { NextResponse } from 'next/server';
 import pool from '@/lib/db';
 import { hasKaryawanColumn } from '@/lib/karyawan-schema';
+import { resolveDateRange } from '@/lib/date-range';
+import { toMinutes } from '@/lib/time';
 import {
   getAuthContextFromCookies,
   unauthorizedResponse,
@@ -14,13 +16,6 @@ import {
   canAccessRawAttendance,
   getAttendanceGroupIds,
 } from '@/lib/authz/authorization-adapter';
-
-function toMinutes(value) {
-  if (!value || typeof value !== 'string') return null;
-  const [hours, minutes] = value.split(':').map(Number);
-  if (Number.isNaN(hours) || Number.isNaN(minutes)) return null;
-  return hours * 60 + minutes;
-}
 
 async function hasAttendanceNoteColumn(columnName) {
   const [rows] = await pool.query(
@@ -253,8 +248,12 @@ export async function GET(req) {
   if (!canAccessAttendance(auth)) return forbiddenResponse('No attendance access.');
 
   const { searchParams } = new URL(req.url);
-  const dateFrom = searchParams.get('from') || new Date().toISOString().slice(0, 10);
-  const dateTo = searchParams.get('to') || dateFrom;
+  const range = resolveDateRange(searchParams.get('from'), searchParams.get('to'));
+  if (range.error) {
+    return NextResponse.json({ ok: false, error: range.error }, { status: range.status });
+  }
+  const dateFrom = range.from;
+  const dateTo = range.to;
   const pinFilter = searchParams.get('pin') || null;
   const groupId = searchParams.get('group_id') || null;
   const parsedGroupId = Number.parseInt(groupId ?? '', 10);

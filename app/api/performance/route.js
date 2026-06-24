@@ -2,6 +2,9 @@ export const dynamic = 'force-dynamic';
 import { NextResponse } from 'next/server';
 import pool from '@/lib/db';
 import { hasKaryawanColumn } from '@/lib/karyawan-schema';
+import { resolveDateRange } from '@/lib/date-range';
+import { csvEscape } from '@/lib/csv';
+import { toMinutes } from '@/lib/time';
 import {
   forbiddenResponse,
   getAllowedGroupIds,
@@ -9,17 +12,6 @@ import {
   isAllowedGroup,
   unauthorizedResponse,
 } from '@/lib/auth-session';
-
-function toMinutes(value) {
-  if (!value || typeof value !== 'string') return null;
-  const [hours, minutes] = value.split(':').map(Number);
-  if (Number.isNaN(hours) || Number.isNaN(minutes)) return null;
-  return hours * 60 + minutes;
-}
-
-function csvEscape(value) {
-  return `"${String(value ?? '').replace(/"/g, '""')}"`;
-}
 
 function summaryCsv(rows) {
   const headers = [
@@ -55,8 +47,11 @@ export async function GET(req) {
   }
 
   const { searchParams } = new URL(req.url);
-  const from = searchParams.get('from') || new Date().toISOString().slice(0, 10);
-  const to = searchParams.get('to') || from;
+  const range = resolveDateRange(searchParams.get('from'), searchParams.get('to'));
+  if (range.error) {
+    return NextResponse.json({ ok: false, error: range.error }, { status: range.status });
+  }
+  const { from, to } = range;
   const groupParam = searchParams.get('group_id');
   const employeeParam = searchParams.get('employee_id');
   const download = searchParams.get('download') || '';

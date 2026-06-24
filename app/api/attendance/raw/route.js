@@ -2,6 +2,7 @@ export const dynamic = 'force-dynamic';
 import { NextResponse } from 'next/server';
 import pool from '@/lib/db';
 import { hasKaryawanColumn } from '@/lib/karyawan-schema';
+import { resolveDateRange } from '@/lib/date-range';
 import {
   getAuthContextFromCookies,
   unauthorizedResponse,
@@ -26,8 +27,12 @@ export async function GET(req) {
   if (!canAccessRawAttendance(auth)) return forbiddenResponse('Admin only.');
 
   const { searchParams } = new URL(req.url);
-  const dateFrom = searchParams.get('from') || new Date().toISOString().slice(0, 10);
-  const dateTo = searchParams.get('to') || dateFrom;
+  const range = resolveDateRange(searchParams.get('from'), searchParams.get('to'));
+  if (range.error) {
+    return NextResponse.json({ ok: false, error: range.error }, { status: range.status });
+  }
+  const dateFrom = range.from;
+  const dateTo = range.to;
   const groupId = searchParams.get('group_id') || null;
   const employeeIdParam = searchParams.get('employee_id') || null;
   const pinFilter = (searchParams.get('pin') || '').trim();

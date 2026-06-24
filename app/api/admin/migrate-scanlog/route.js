@@ -10,35 +10,37 @@ export async function POST() {
     }
 
     const connection = await pool.getConnection();
-    await connection.beginTransaction();
-
     try {
-      // Safely move data from legacy tb_scanlog to the new scanlog_events structure
-      // Deduping based on source_event_key (sn + pin + scan_date)
-      const [result] = await connection.query(`
-        INSERT INTO scanlog_events (device_sn, pin, scan_time, verify_mode, source_event_key)
-        SELECT 
-          sn AS device_sn,
-          pin,
-          scan_date AS scan_time,
-          verify_mode,
-          CONCAT(sn, '_', pin, '_', DATE_FORMAT(scan_date, '%Y%m%d%H%i%s')) AS source_event_key
-        FROM tb_scanlog
-        ON DUPLICATE KEY UPDATE scan_time = VALUES(scan_time)
-      `);
+      await connection.beginTransaction();
 
-      await connection.commit();
-      connection.release();
+      try {
+        // Safely move data from legacy tb_scanlog to the new scanlog_events structure
+        // Deduping based on source_event_key (sn + pin + scan_date)
+        const [result] = await connection.query(`
+          INSERT INTO scanlog_events (device_sn, pin, scan_time, verify_mode, source_event_key)
+          SELECT
+            sn AS device_sn,
+            pin,
+            scan_date AS scan_time,
+            verify_mode,
+            CONCAT(sn, '_', pin, '_', DATE_FORMAT(scan_date, '%Y%m%d%H%i%s')) AS source_event_key
+          FROM tb_scanlog
+          ON DUPLICATE KEY UPDATE scan_time = VALUES(scan_time)
+        `);
 
-      return NextResponse.json({
-        ok: true,
-        message: 'Migration successful',
-        rowsAffected: result.affectedRows
-      });
-    } catch (dbError) {
-      await connection.rollback();
+        await connection.commit();
+
+        return NextResponse.json({
+          ok: true,
+          message: 'Migration successful',
+          rowsAffected: result.affectedRows
+        });
+      } catch (dbError) {
+        await connection.rollback();
+        throw dbError;
+      }
+    } finally {
       connection.release();
-      throw dbError;
     }
   } catch (error) {
     console.error('Migration error:', error);
