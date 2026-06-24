@@ -169,8 +169,8 @@ export default function GroupsPage() {
           <p className="mb-1 text-xs font-mono uppercase tracking-widest text-teal-400">
             Organization
           </p>
-          <h1 className="text-3xl font-bold text-white">Employee Groups</h1>
-          <p className="mt-1 text-sm text-slate-400">
+          <h1 className="text-3xl font-bold text-foreground">Employee Groups</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
             Organize employees into groups for bulk scheduling
           </p>
         </div>

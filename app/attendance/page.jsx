@@ -930,43 +930,47 @@ export default function AttendancePage() {
     const ungroupedLabel = t('attendancePage.print.allGroupsFallback') || 'Ungrouped';
 
     if (!isQuickTab) {
-      const workbook = XLSX.utils.book_new();
+      try {
+        const workbook = XLSX.utils.book_new();
 
-      const infoRows = [
-        [t('attendancePage.print.title') || 'Attendance Summary'],
-        [`${t('attendancePage.print.dateRangeLabel') || 'Date Range'}: ${from} — ${to}`],
-        [],
-      ];
-      XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet(infoRows), 'Info');
+        const infoRows = [
+          [t('attendancePage.print.title') || 'Attendance Summary'],
+          [`${t('attendancePage.print.dateRangeLabel') || 'Date Range'}: ${from} — ${to}`],
+          [],
+        ];
+        XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet(infoRows), 'Info');
 
-      const groupBuckets = new Map();
-      const ungrouped = [];
-      for (const row of filteredSummaryRows) {
-        const gName = String(row.nama_group || '').trim();
-        if (gName) {
-          if (!groupBuckets.has(gName)) groupBuckets.set(gName, []);
-          groupBuckets.get(gName).push(row);
-        } else {
-          ungrouped.push(row);
+        const groupBuckets = new Map();
+        const ungrouped = [];
+        for (const row of filteredSummaryRows) {
+          const gName = String(row.nama_group || '').trim();
+          if (gName) {
+            if (!groupBuckets.has(gName)) groupBuckets.set(gName, []);
+            groupBuckets.get(gName).push(row);
+          } else {
+            ungrouped.push(row);
+          }
         }
-      }
 
-      for (const [gName, gRows] of groupBuckets) {
-        const ws = XLSX.utils.json_to_sheet(gRows);
-        XLSX.utils.book_append_sheet(workbook, ws, sanitizeExcelSheetName(gName));
-      }
-      if (ungrouped.length > 0) {
-        XLSX.utils.book_append_sheet(
-          workbook,
-          XLSX.utils.json_to_sheet(ungrouped),
-          sanitizeExcelSheetName(ungroupedLabel, 'Ungrouped')
-        );
-      }
-      if (groupBuckets.size === 0 && ungrouped.length === 0) {
-        XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([['No data']]), 'Attendance');
-      }
+        for (const [gName, gRows] of groupBuckets) {
+          const ws = XLSX.utils.json_to_sheet(gRows);
+          XLSX.utils.book_append_sheet(workbook, ws, sanitizeExcelSheetName(gName));
+        }
+        if (ungrouped.length > 0) {
+          XLSX.utils.book_append_sheet(
+            workbook,
+            XLSX.utils.json_to_sheet(ungrouped),
+            sanitizeExcelSheetName(ungroupedLabel, 'Ungrouped')
+          );
+        }
+        if (groupBuckets.size === 0 && ungrouped.length === 0) {
+          XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([['No data']]), 'Attendance');
+        }
 
-      XLSX.writeFile(workbook, `absensi_${from}_${to}.xlsx`);
+        XLSX.writeFile(workbook, `absensi_${from}_${to}.xlsx`);
+      } catch (error) {
+        warning(error.message || t('reportPage.errors.fetchFailed'), t('reportPage.errors.requestFailed'));
+      }
       return;
     }
 
@@ -1115,7 +1119,10 @@ export default function AttendancePage() {
         </body></html>`;
 
         const popup = window.open('', '_blank', 'width=1280,height=900');
-        if (!popup) return;
+        if (!popup) {
+          warning('Unable to open print window. Please allow popups.', 'Print blocked');
+          return;
+        }
         popup.document.write(html);
         popup.document.close();
         popup.focus();
@@ -1142,19 +1149,22 @@ export default function AttendancePage() {
     const printTitle = t('attendancePage.print.title');
     const printRangeLabel = t('attendancePage.print.dateRangeLabel');
     const printTabLabel = t('attendancePage.print.summaryTitle');
-    const html = `<!doctype html><html><head><meta charset="utf-8"/><title>${printTitle}</title><style>
+    const html = `<!doctype html><html><head><meta charset="utf-8"/><title>${escapeHtml(printTitle)}</title><style>
       body { font-family: Arial, sans-serif; padding: 16px; }
       table { border-collapse: collapse; width: 100%; font-size: 11px; }
       th, td { border: 1px solid #ddd; padding: 6px; text-align: left; }
       th { background: #f1f5f9; }
     </style></head><body>
-      <h2>${printTabLabel} (${printRangeLabel}: ${from} - ${to})</h2>
-      <p>${t('attendancePage.print.groupLabel')}: ${selectedGroupLabel}</p>
-      <table><thead><tr>${headers.map((key) => `<th>${key}</th>`).join('')}</tr></thead><tbody>${rowsHtml}</tbody></table>
+      <h2>${escapeHtml(printTabLabel)} (${escapeHtml(printRangeLabel)}: ${escapeHtml(from)} - ${escapeHtml(to)})</h2>
+      <p>${escapeHtml(t('attendancePage.print.groupLabel'))}: ${escapeHtml(selectedGroupLabel)}</p>
+      <table><thead><tr>${headers.map((key) => `<th>${escapeHtml(key)}</th>`).join('')}</tr></thead><tbody>${rowsHtml}</tbody></table>
     </body></html>`;
 
     const popup = window.open('', '_blank', 'width=1200,height=900');
-    if (!popup) return;
+    if (!popup) {
+      warning('Unable to open print window. Please allow popups.', 'Print blocked');
+      return;
+    }
     popup.document.write(html);
     popup.document.close();
     popup.focus();

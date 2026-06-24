@@ -7,7 +7,7 @@ export function DashboardNeedsReview({ items }) {
       <div className="flex items-center justify-between border-b border-border px-5 py-3">
         <div className="flex items-center gap-2">
           <AlertTriangle className="h-4 w-4 text-amber-400" />
-          <span className="text-sm font-semibold text-white">Needs Review</span>
+          <span className="text-sm font-semibold text-foreground">Needs Review</span>
         </div>
         <Link
           href="/attendance"
@@ -36,7 +36,7 @@ export function DashboardNeedsReview({ items }) {
             ) : (
               items.map((row, i) => (
                 <tr key={i} className="data-row hover:bg-muted/50">
-                  <td className="px-5 py-2.5 text-white">
+                  <td className="px-5 py-2.5 text-foreground">
                     {row.karyawan_id ? (
                       <Link href={`/employees/${row.karyawan_id}`} className="hover:text-teal-300">
                         {row.nama}
@@ -62,7 +62,7 @@ export function DashboardNeedsReview({ items }) {
                   <td className="px-4 py-2.5 text-right">
                     <Link
                       href={`/attendance?from=${row.scan_date}&to=${row.scan_date}`}
-                      className="inline-flex rounded border border-border bg-muted px-2 py-1 text-xs text-muted-foreground transition-colors hover:border-border hover:text-white"
+                      className="inline-flex rounded border border-border bg-muted px-2 py-1 text-xs text-muted-foreground transition-colors hover:border-border hover:text-foreground"
                     >
                       Review
                     </Link>

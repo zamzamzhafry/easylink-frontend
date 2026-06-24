@@ -511,10 +511,11 @@ export default function SchedulePage() {
   };
 
   const exportTemplateExcel = async () => {
-    const scope = chooseScheduleExportScope();
-    const allExportEmployees = resolveExportEmployees(scope);
-    const XLSX = await import('xlsx');
-    const workbook = XLSX.utils.book_new();
+    try {
+      const scope = chooseScheduleExportScope();
+      const allExportEmployees = resolveExportEmployees(scope);
+      const XLSX = await import('xlsx');
+      const workbook = XLSX.utils.book_new();
 
     // --- Info sheet ---
     const noteRows = [
@@ -584,9 +585,12 @@ export default function SchedulePage() {
       workbook,
       `schedule_${from}_${to}_${scope === 'all' ? 'all_groups' : groupTab}.xlsx`
     );
+    } catch (error) {
+      warning(error.message || 'Schedule export failed.', 'Unable to export schedule');
+    }
   };
 
-  const printSchedule = () => {
+  const printSchedule = (compact = false) => {
     const scope = chooseScheduleExportScope();
     const exportEmployees = resolveExportEmployees(scope);
     const exportGroupLabel = scope === 'all' ? 'All Groups' : selectedGroupLabel;
@@ -601,6 +605,7 @@ export default function SchedulePage() {
         from,
         to,
         groupLabel: exportGroupLabel,
+        compact,
       })
     );
     popup.document.close();
@@ -734,8 +739,11 @@ export default function SchedulePage() {
           <Button variant="soft" tone="primary" size="sm" onClick={exportTemplateCsv}>
             <Download className="h-4 w-4" /> Export CSV
           </Button>
-          <Button variant="outline" tone="neutral" size="sm" onClick={printSchedule}>
+          <Button variant="outline" tone="neutral" size="sm" onClick={() => printSchedule(false)}>
             <Printer className="h-4 w-4" /> Print / PDF
+          </Button>
+          <Button variant="outline" tone="neutral" size="sm" onClick={() => printSchedule(true)} title="Icon-only compact print">
+            <Printer className="h-4 w-4" /> Print (symbols)
           </Button>
           {canAccessReviewQueue && (
             <Link

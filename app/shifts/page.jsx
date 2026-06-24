@@ -95,41 +95,41 @@ function ShiftModal({ mode, shift, onClose, onSubmit }) {
     >
       <div className="space-y-4">
         <div>
-          <label className="mb-1 block text-xs text-slate-400">Shift Name</label>
+          <label className="mb-1 block text-xs text-muted-foreground">Shift Name</label>
           <input
             value={form.nama_shift}
             onChange={(event) => setForm((prev) => ({ ...prev, nama_shift: event.target.value }))}
-            className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-white focus:border-teal-500 focus:outline-none"
+            className="w-full rounded-lg border border-border bg-muted px-3 py-2 text-sm text-foreground focus:border-teal-500 focus:outline-none"
             placeholder="e.g. On Call"
           />
         </div>
 
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
           <div>
-            <label className="mb-1 block text-xs text-slate-400">Punch In</label>
+            <label className="mb-1 block text-xs text-muted-foreground">Punch In</label>
             <input
               type="time"
               value={form.jam_masuk}
               disabled={!form.needs_scan}
               onChange={(event) => setForm((prev) => ({ ...prev, jam_masuk: event.target.value }))}
-              className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-white focus:border-teal-500 focus:outline-none disabled:opacity-50"
+              className="w-full rounded-lg border border-border bg-muted px-3 py-2 text-sm text-foreground focus:border-teal-500 focus:outline-none disabled:opacity-50"
             />
           </div>
           <div>
-            <label className="mb-1 block text-xs text-slate-400">Punch Out</label>
+            <label className="mb-1 block text-xs text-muted-foreground">Punch Out</label>
             <input
               type="time"
               value={form.jam_keluar}
               disabled={!form.needs_scan}
               onChange={(event) => setForm((prev) => ({ ...prev, jam_keluar: event.target.value }))}
-              className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-white focus:border-teal-500 focus:outline-none disabled:opacity-50"
+              className="w-full rounded-lg border border-border bg-muted px-3 py-2 text-sm text-foreground focus:border-teal-500 focus:outline-none disabled:opacity-50"
             />
           </div>
         </div>
 
         <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
           <div>
-            <label className="mb-1 block text-xs text-slate-400">Estimated Work Hours</label>
+            <label className="mb-1 block text-xs text-muted-foreground">Estimated Work Hours</label>
             <input
               type="number"
               min="0"
@@ -137,24 +137,24 @@ function ShiftModal({ mode, shift, onClose, onSubmit }) {
               step="0.25"
               value={form.jam_kerja}
               onChange={(event) => setForm((prev) => ({ ...prev, jam_kerja: event.target.value }))}
-              className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-white focus:border-teal-500 focus:outline-none"
+              className="w-full rounded-lg border border-border bg-muted px-3 py-2 text-sm text-foreground focus:border-teal-500 focus:outline-none"
             />
           </div>
           <div>
-            <label className="mb-1 block text-xs text-slate-400">Color</label>
+            <label className="mb-1 block text-xs text-muted-foreground">Color</label>
             <input
               type="color"
               value={form.color_hex}
               onChange={(event) => setForm((prev) => ({ ...prev, color_hex: event.target.value }))}
-              className="h-10 w-full rounded-lg border border-slate-700 bg-slate-800 px-1 py-1"
+              className="h-10 w-full rounded-lg border border-border bg-muted px-1 py-1"
             />
           </div>
           <div>
-            <label className="mb-1 block text-xs text-slate-400">Icon</label>
+            <label className="mb-1 block text-xs text-muted-foreground">Icon</label>
             <select
               value={form.icon_key}
               onChange={(event) => setForm((prev) => ({ ...prev, icon_key: event.target.value }))}
-              className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-white focus:border-teal-500 focus:outline-none"
+              className="w-full rounded-lg border border-border bg-muted px-3 py-2 text-sm text-foreground focus:border-teal-500 focus:outline-none"
             >
               {SHIFT_ICON_OPTIONS.map((item) => (
                 <option key={item.key} value={item.key}>
@@ -166,46 +166,46 @@ function ShiftModal({ mode, shift, onClose, onSubmit }) {
         </div>
 
         <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
-          <label className="flex items-center gap-2 text-sm text-slate-300">
+          <label className="flex items-center gap-2 text-sm text-foreground">
             <input
               type="checkbox"
               checked={form.needs_scan}
               onChange={(event) => setForm((prev) => ({ ...prev, needs_scan: event.target.checked }))}
-              className="h-4 w-4 rounded border border-slate-600 bg-slate-800 text-teal-500"
+              className="h-4 w-4 rounded border border-border bg-muted text-teal-500"
             />
             Needs Scan
           </label>
-          <label className="flex items-center gap-2 text-sm text-slate-300">
+          <label className="flex items-center gap-2 text-sm text-foreground">
             <input
               type="checkbox"
               checked={form.next_day}
               onChange={(event) => setForm((prev) => ({ ...prev, next_day: event.target.checked }))}
-              className="h-4 w-4 rounded border border-slate-600 bg-slate-800 text-teal-500"
+              className="h-4 w-4 rounded border border-border bg-muted text-teal-500"
             />
             Ends Next Day
           </label>
-          <label className="flex items-center gap-2 text-sm text-slate-300">
+          <label className="flex items-center gap-2 text-sm text-foreground">
             <input
               type="checkbox"
               checked={form.is_paid}
               onChange={(event) => setForm((prev) => ({ ...prev, is_paid: event.target.checked }))}
-              className="h-4 w-4 rounded border border-slate-600 bg-slate-800 text-teal-500"
+              className="h-4 w-4 rounded border border-border bg-muted text-teal-500"
             />
             Paid Shift
           </label>
-          <label className="flex items-center gap-2 text-sm text-slate-300">
+          <label className="flex items-center gap-2 text-sm text-foreground">
             <input
               type="checkbox"
               checked={form.is_active}
               onChange={(event) => setForm((prev) => ({ ...prev, is_active: event.target.checked }))}
-              className="h-4 w-4 rounded border border-slate-600 bg-slate-800 text-teal-500"
+              className="h-4 w-4 rounded border border-border bg-muted text-teal-500"
             />
             Active
           </label>
         </div>
 
-        <div className="rounded-lg border border-slate-800 bg-slate-950/70 p-3">
-          <p className="mb-2 text-xs text-slate-500">Preview</p>
+        <div className="rounded-lg border border-border bg-background/70 p-3">
+          <p className="mb-2 text-xs text-muted-foreground">Preview</p>
           <span
             className={`inline-flex items-center gap-2 rounded-lg border px-2.5 py-1 text-xs font-medium ${shiftClassName(
               previewShift.nama_shift
@@ -222,7 +222,7 @@ function ShiftModal({ mode, shift, onClose, onSubmit }) {
         <button
           type="button"
           onClick={onClose}
-          className="flex-1 rounded-lg border border-slate-700 px-4 py-2 text-sm text-slate-400 transition-colors hover:text-white"
+          className="flex-1 rounded-lg border border-border px-4 py-2 text-sm text-muted-foreground transition-colors hover:text-foreground"
         >
           Cancel
         </button>
@@ -315,8 +315,8 @@ export default function ShiftMakerPage() {
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <p className="mb-1 text-xs font-mono uppercase tracking-widest text-teal-400">Configuration</p>
-          <h1 className="text-3xl font-bold text-white">Shift Maker</h1>
-          <p className="mt-1 text-sm text-slate-400">
+          <h1 className="text-3xl font-bold text-foreground">Shift Maker</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
             Create and customize shift punch time in/out, color, icon, and scan rules.
           </p>
         </div>
@@ -330,29 +330,29 @@ export default function ShiftMakerPage() {
         </button>
       </div>
 
-      <div className="overflow-hidden rounded-xl border border-slate-800 bg-slate-900">
+      <div className="overflow-hidden rounded-xl border border-border bg-card">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-slate-800 text-left">
-                <th className="px-4 py-2 text-xs uppercase tracking-wide text-slate-500">Shift</th>
-                <th className="px-4 py-2 text-xs uppercase tracking-wide text-slate-500">Punch Time</th>
-                <th className="px-4 py-2 text-xs uppercase tracking-wide text-slate-500">Hours</th>
-                <th className="px-4 py-2 text-xs uppercase tracking-wide text-slate-500">Scan Rule</th>
-                <th className="px-4 py-2 text-xs uppercase tracking-wide text-slate-500">Status</th>
-                <th className="px-4 py-2 text-xs uppercase tracking-wide text-slate-500 text-right">Action</th>
+              <tr className="border-b border-border text-left">
+                <th className="px-4 py-2 text-xs uppercase tracking-wide text-muted-foreground">Shift</th>
+                <th className="px-4 py-2 text-xs uppercase tracking-wide text-muted-foreground">Punch Time</th>
+                <th className="px-4 py-2 text-xs uppercase tracking-wide text-muted-foreground">Hours</th>
+                <th className="px-4 py-2 text-xs uppercase tracking-wide text-muted-foreground">Scan Rule</th>
+                <th className="px-4 py-2 text-xs uppercase tracking-wide text-muted-foreground">Status</th>
+                <th className="px-4 py-2 text-xs uppercase tracking-wide text-muted-foreground text-right">Action</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-800/40">
+            <tbody className="divide-y divide-border/40">
               {loading ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-8 text-center text-xs text-slate-500">
+                  <td colSpan={6} className="px-4 py-8 text-center text-xs text-muted-foreground">
                     {t('shiftsPage.table.loading')}
                   </td>
                 </tr>
               ) : rows.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-8 text-center text-xs text-slate-500">
+                  <td colSpan={6} className="px-4 py-8 text-center text-xs text-muted-foreground">
                     {t('shiftsPage.table.empty')}
                   </td>
                 </tr>
@@ -372,17 +372,17 @@ export default function ShiftMakerPage() {
                           {shift.nama_shift}
                         </span>
                       </td>
-                      <td className="px-4 py-3 font-mono text-xs text-slate-300">
+                      <td className="px-4 py-3 font-mono text-xs text-foreground">
                         {shift.jam_masuk ? (
                           <>
                             {String(shift.jam_masuk).slice(0, 5)} - {String(shift.jam_keluar).slice(0, 5)}
                             {Number(shift.next_day) === 1 ? ' (+1)' : ''}
                           </>
                         ) : (
-                          <span className="text-slate-500">-</span>
+                          <span className="text-muted-foreground">-</span>
                         )}
                       </td>
-                      <td className="px-4 py-3 font-mono text-xs text-slate-300">
+                      <td className="px-4 py-3 font-mono text-xs text-foreground">
                         {shift.jam_kerja == null ? '-' : `${Number(shift.jam_kerja).toFixed(2)}h`}
                       </td>
                       <td className="px-4 py-3 text-xs">
@@ -391,7 +391,7 @@ export default function ShiftMakerPage() {
                             Needs Scan
                           </span>
                         ) : (
-                          <span className="inline-flex rounded border border-slate-700 bg-slate-800 px-2 py-0.5 text-slate-300">
+                          <span className="inline-flex rounded border border-border bg-muted px-2 py-0.5 text-foreground">
                             No Scan
                           </span>
                         )}
@@ -402,7 +402,7 @@ export default function ShiftMakerPage() {
                             Active
                           </span>
                         ) : (
-                          <span className="inline-flex rounded border border-slate-700 bg-slate-800 px-2 py-0.5 text-slate-300">
+                          <span className="inline-flex rounded border border-border bg-muted px-2 py-0.5 text-foreground">
                             Inactive
                           </span>
                         )}
@@ -412,7 +412,7 @@ export default function ShiftMakerPage() {
                           <button
                             type="button"
                             onClick={() => setEditing(shift)}
-                            className="rounded border border-slate-700 bg-slate-800 p-1.5 text-slate-300 transition-colors hover:text-white"
+                            className="rounded border border-border bg-muted p-1.5 text-foreground transition-colors hover:text-foreground"
                           >
                             <Pencil className="h-3.5 w-3.5" />
                           </button>

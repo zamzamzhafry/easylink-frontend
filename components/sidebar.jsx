@@ -188,16 +188,16 @@ export default function Sidebar({
       )}
       <aside
         className={cn(
-          'app-sidebar fixed inset-y-0 left-0 flex flex-col border-r border-slate-800 bg-slate-900 transition-all duration-200',
+          'app-sidebar fixed inset-y-0 left-0 flex flex-col border-r border-border bg-card transition-all duration-200',
           mobileOpen ? 'z-50 w-60 translate-x-0' : 'z-40 -translate-x-full lg:translate-x-0',
           effectiveCollapsed ? 'lg:w-20' : 'lg:w-60'
         )}
       >
-      <div className="app-sidebar-header flex h-16 items-center border-b border-slate-800 px-3">
+      <div className="app-sidebar-header flex h-16 items-center border-b border-border px-3">
         <button
           type="button"
           onClick={onToggle}
-          className="app-sidebar-toggle inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-700 text-slate-300 transition-colors hover:border-slate-500 hover:text-white"
+          className="app-sidebar-toggle inline-flex h-9 w-9 items-center justify-center rounded-lg border border-border text-muted-foreground transition-colors hover:border-ring/50 hover:text-foreground"
           aria-label={
             effectiveCollapsed
               ? t('sidebar.actions.expandSidebar')
@@ -223,7 +223,7 @@ export default function Sidebar({
           )}
         >
           <Fingerprint className="h-6 w-6 shrink-0 text-teal-400" />
-          <span className="text-sm font-semibold leading-tight text-white">
+          <span className="text-sm font-semibold leading-tight text-foreground">
             EasyLink
             <br />
             <span className="text-base font-bold text-teal-400">{t('sidebar.brand.subtitle')}</span>
@@ -248,7 +248,7 @@ export default function Sidebar({
                     'app-sidebar-link flex items-center justify-center rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-150',
                     active
                       ? 'app-sidebar-link-active border border-teal-500/20 bg-teal-500/15 text-teal-400'
-                      : 'text-slate-400 hover:bg-slate-800 hover:text-slate-100'
+                      : 'text-muted-foreground hover:bg-muted hover:text-foreground'
                   )}
                 >
                   <Icon className="h-4 w-4 shrink-0" />
@@ -264,7 +264,7 @@ export default function Sidebar({
           return (
             <div
               key={section.key}
-              className="app-sidebar-section rounded-xl border border-slate-800 bg-slate-950/60"
+              className="app-sidebar-section rounded-xl border border-border bg-card/60"
             >
               <button
                 type="button"
@@ -276,7 +276,7 @@ export default function Sidebar({
                 }
                 className={cn(
                   'app-sidebar-section-toggle flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide transition-colors',
-                  sectionActive ? 'text-teal-300' : 'text-slate-400 hover:text-slate-200'
+                  sectionActive ? 'text-teal-300' : 'text-muted-foreground hover:text-foreground'
                 )}
               >
                 <span>{section.label}</span>
@@ -301,7 +301,7 @@ export default function Sidebar({
                           'app-sidebar-link flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all duration-150',
                           active
                             ? 'app-sidebar-link-active border border-teal-500/20 bg-teal-500/15 text-teal-400'
-                            : 'text-slate-400 hover:bg-slate-800 hover:text-slate-100'
+                            : 'text-muted-foreground hover:bg-muted hover:text-foreground'
                         )}
                       >
                         <Icon className="h-4 w-4 shrink-0" />
@@ -316,13 +316,13 @@ export default function Sidebar({
         })}
       </nav>
 
-      <div className="app-sidebar-footer border-t border-slate-800 px-3 py-3">
+      <div className="app-sidebar-footer border-t border-border px-3 py-3">
         {/* settings button */}
         <button
           type="button"
           onClick={() => setShowSettings(true)}
           className={cn(
-            'app-sidebar-settings mb-2 flex w-full items-center rounded-lg border border-slate-700 px-2.5 py-2 text-xs text-slate-300 transition-colors hover:border-slate-500 hover:text-white',
+            'app-sidebar-settings mb-2 flex w-full items-center rounded-lg border border-border px-2.5 py-2 text-xs text-foreground transition-colors hover:border-border hover:text-foreground',
             effectiveCollapsed ? 'justify-center' : 'gap-2'
           )}
           aria-label={t('sidebar.actions.settings')}
@@ -335,7 +335,7 @@ export default function Sidebar({
           type="button"
           onClick={onThemeToggle}
           className={cn(
-            'app-sidebar-theme-btn mb-2 flex w-full items-center rounded-lg border border-slate-700 px-2.5 py-2 text-xs text-slate-300 transition-colors hover:border-slate-500 hover:text-white',
+            'app-sidebar-theme-btn mb-2 flex w-full items-center rounded-lg border border-border px-2.5 py-2 text-xs text-foreground transition-colors hover:border-border hover:text-foreground',
             effectiveCollapsed ? 'justify-center' : 'gap-2'
           )}
           aria-label={
@@ -361,7 +361,7 @@ export default function Sidebar({
           type="button"
           onClick={onViewModeCycle}
           className={cn(
-            'app-sidebar-viewmode-btn mb-2 flex w-full items-center rounded-lg border border-slate-700 px-2.5 py-2 text-xs text-slate-300 transition-colors hover:border-slate-500 hover:text-white',
+            'app-sidebar-viewmode-btn mb-2 flex w-full items-center rounded-lg border border-border px-2.5 py-2 text-xs text-foreground transition-colors hover:border-border hover:text-foreground',
             effectiveCollapsed ? 'justify-center' : 'gap-2'
           )}
           aria-label={`Table layout: ${currentViewMode.label} (click to change)`}
@@ -372,7 +372,7 @@ export default function Sidebar({
         </button>
         <div
           className={cn(
-            'app-sidebar-locale mb-2 rounded-lg border border-slate-700 bg-slate-900/70 p-1',
+            'app-sidebar-locale mb-2 rounded-lg border border-border bg-card/70 p-1',
             effectiveCollapsed ? 'flex justify-center' : ''
           )}
         >
@@ -380,7 +380,7 @@ export default function Sidebar({
             <button
               type="button"
               onClick={() => onLocaleChange?.(resolvedLocale === 'en' ? 'id' : 'en')}
-              className="inline-flex h-7 min-w-10 items-center justify-center rounded-md border border-slate-600 px-2 text-xs font-semibold tracking-wide text-slate-200 transition-colors hover:border-slate-400 hover:text-white"
+              className="inline-flex h-7 min-w-10 items-center justify-center rounded-md border border-border px-2 text-xs font-semibold tracking-wide text-foreground transition-colors hover:border-border hover:text-foreground"
               aria-label={
                 resolvedLocale === 'en'
                   ? t('sidebar.locale.switchToBahasa')
@@ -396,7 +396,7 @@ export default function Sidebar({
             </button>
           ) : (
             <div className="flex items-center gap-1">
-              <span className="inline-flex h-7 w-7 items-center justify-center rounded-md text-slate-400">
+              <span className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground">
                 <Languages className="h-3.5 w-3.5" />
               </span>
               <button
@@ -406,7 +406,7 @@ export default function Sidebar({
                   'h-7 rounded-md px-2 text-xs font-semibold tracking-wide transition-colors',
                   resolvedLocale === 'en'
                     ? 'bg-teal-500/20 text-teal-300'
-                    : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200'
+                    : 'text-muted-foreground hover:bg-muted hover:text-foreground'
                 )}
                 aria-label={t('sidebar.locale.switchToEnglish')}
                 title={t('sidebar.locale.switchToEnglish')}
@@ -420,7 +420,7 @@ export default function Sidebar({
                   'h-7 rounded-md px-2 text-xs font-semibold tracking-wide transition-colors',
                   resolvedLocale === 'id'
                     ? 'bg-teal-500/20 text-teal-300'
-                    : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200'
+                    : 'text-muted-foreground hover:bg-muted hover:text-foreground'
                 )}
                 aria-label={t('sidebar.locale.switchToBahasa')}
                 title={t('sidebar.locale.switchToBahasa')}
@@ -432,8 +432,8 @@ export default function Sidebar({
         </div>
 
         {currentUser && !effectiveCollapsed && (
-          <div className="app-sidebar-userbox mb-2 rounded-lg border border-slate-800 bg-slate-950/70 px-3 py-2">
-            <div className="text-xs font-semibold text-white">{currentUser.nama}</div>
+          <div className="app-sidebar-userbox mb-2 rounded-lg border border-border bg-card/70 px-3 py-2">
+            <div className="text-xs font-semibold text-foreground">{currentUser.nama}</div>
             <div className="mt-0.5 inline-flex items-center gap-1 text-xs text-muted-foreground">
               {currentUser.is_admin ? (
                 <>
@@ -459,7 +459,7 @@ export default function Sidebar({
           type="button"
           onClick={logout}
           className={cn(
-            'app-sidebar-logout flex w-full items-center rounded-lg border border-slate-700 px-2.5 py-2 text-xs text-slate-300 transition-colors hover:border-slate-500 hover:text-white',
+            'app-sidebar-logout flex w-full items-center rounded-lg border border-border px-2.5 py-2 text-xs text-foreground transition-colors hover:border-border hover:text-foreground',
             effectiveCollapsed ? 'justify-center' : 'gap-2'
           )}
           aria-label={t('sidebar.actions.logout')}

@@ -46,13 +46,13 @@ export default function MigrateScanlogPage() {
         </button>
 
         {result && (
-          <div className="mt-4 p-3 bg-green-50 text-green-800 rounded border border-green-200">
+          <div className="mt-4 rounded border border-emerald-500/30 bg-emerald-500/10 p-3 text-emerald-300">
             {result}
           </div>
         )}
-        
+
         {error && (
-          <div className="mt-4 p-3 bg-red-50 text-red-800 rounded border border-red-200">
+          <div className="mt-4 rounded border border-rose-500/30 bg-rose-500/10 p-3 text-rose-300">
             {error}
           </div>
         )}

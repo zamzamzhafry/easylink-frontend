@@ -158,7 +158,7 @@ export function SvgBarChart({ data, targetLine, onBarClick, width = '100%', heig
       >
         <div className="flex justify-between">
           {data.map((item, index) => (
-            <span key={item.id || index} className="text-[10px] text-slate-500">
+            <span key={item.id || index} className="text-[10px] text-muted-foreground">
               {item.label || item.date}
             </span>
           ))}

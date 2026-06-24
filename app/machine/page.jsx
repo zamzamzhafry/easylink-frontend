@@ -331,11 +331,14 @@ export default function MachinePage() {
 
         await refreshMachineQueue();
         return data;
+      } catch (err) {
+        setError(err?.message || t('machinePage.errors.refreshQueueFailed'));
+        return null;
       } finally {
         setActionBusy('');
       }
     },
-    [applyMachineResult, refreshMachineQueue, updateMachineRow]
+    [applyMachineResult, refreshMachineQueue, t, updateMachineRow]
   );
 
   const queueScanlogPull = useCallback(
@@ -372,11 +375,13 @@ export default function MachinePage() {
           const firstState = await refreshScanlogQueue(batchId);
           if (firstState) setScanSyncResult(firstState);
         }
+      } catch (err) {
+        setError(err?.message || t('machinePage.errors.refreshQueueFailed'));
       } finally {
         setActionBusy('');
       }
     },
-    [refreshScanlogQueue, scanlogMaxPages]
+    [refreshScanlogQueue, scanlogMaxPages, t]
   );
 
   const queueTask12ScanlogNew = useCallback(async () => {
@@ -411,10 +416,12 @@ export default function MachinePage() {
         const firstState = await refreshScanlogQueue(batchId);
         if (firstState) setScanSyncResult(firstState);
       }
+    } catch (err) {
+      setError(err?.message || t('machinePage.errors.refreshQueueFailed'));
     } finally {
       setActionBusy('');
     }
-  }, [refreshScanlogQueue, scanlogNewPayload]);
+  }, [refreshScanlogQueue, scanlogNewPayload, t]);
 
   useEffect(() => {
     let mounted = true;
@@ -444,7 +451,10 @@ export default function MachinePage() {
   }, []);
 
   useEffect(() => {
-    if (!canPollMachineQueue) return;
+    // Generic 10s queue poll runs only when no specific job is being tracked;
+    // otherwise the 2s job poller below already refreshes the whole queue, so
+    // running both halves redundant /api/machine hits during an active job.
+    if (!canPollMachineQueue || activeMachineJobId) return;
     void refreshMachineQueue();
 
     const timer = setInterval(() => {
@@ -452,7 +462,7 @@ export default function MachinePage() {
     }, 10000);
 
     return () => clearInterval(timer);
-  }, [canPollMachineQueue, refreshMachineQueue]);
+  }, [canPollMachineQueue, activeMachineJobId, refreshMachineQueue]);
 
   useEffect(() => {
     if (!currentUser) return;
@@ -683,13 +693,13 @@ export default function MachinePage() {
 
   const machineHealthPillClass =
     machineHealth?.not_configured
-      ? 'text-slate-400 bg-slate-700/20 border-slate-700/30'
+      ? 'text-muted-foreground bg-muted/20 border-border/30'
       : ({
           online: 'text-emerald-300 bg-emerald-500/10 border-emerald-500/30',
           degraded: 'text-amber-300 bg-amber-500/10 border-amber-500/30',
           offline: 'text-rose-300 bg-rose-500/10 border-rose-500/30',
-          checking: 'text-slate-300 bg-slate-700/30 border-slate-700/40',
-        }[machineHealthStatus] || 'text-slate-300 bg-slate-700/30 border-slate-700/40');
+          checking: 'text-muted-foreground bg-muted/30 border-border/40',
+        }[machineHealthStatus] || 'text-muted-foreground bg-muted/30 border-border/40');
 
   const machineHealthSummary = machineHealth?.not_configured
     ? t('machinePage.connection.notConfigured')
@@ -751,7 +761,7 @@ export default function MachinePage() {
                     ? 'text-emerald-300 bg-emerald-500/10 border-emerald-500/30'
                     : check.status === 'failed'
                       ? 'text-rose-300 bg-rose-500/10 border-rose-500/30'
-                      : 'text-slate-300 bg-slate-700/30 border-slate-700/40';
+                      : 'text-muted-foreground bg-muted/30 border-border/40';
                 const checkLabel =
                   check.key === 'device_info'
                     ? t('machinePage.connection.signalInfo')
@@ -768,7 +778,7 @@ export default function MachinePage() {
                   </span>
                 );
               })}
-              <span className="rounded-full border border-slate-700/40 bg-slate-700/30 px-3 py-1 text-xs text-slate-300">
+              <span className="rounded-full border border-border/40 bg-muted/30 px-3 py-1 text-xs text-muted-foreground">
                 {t('machinePage.connection.source', {
                   source: machineHealth?.source || t('machinePage.connection.unknownSource'),
                 })}
@@ -939,7 +949,7 @@ export default function MachinePage() {
               </div>
 
               <div className="ui-card-shell p-4">
-                <h2 className="mb-3 text-sm font-semibold text-white">
+                <h2 className="mb-3 text-sm font-semibold text-foreground">
                   {t('machinePage.task12.actionsTitle')}
                 </h2>
                 <div className="grid gap-3 md:grid-cols-3">
@@ -947,7 +957,7 @@ export default function MachinePage() {
                     <p className="text-xs font-semibold uppercase tracking-wide text-teal-300">
                       {t('machinePage.task12.devinfoTitle')}
                     </p>
-                    <p className="text-sm text-slate-200">{t('machinePage.task12.devinfoBody')}</p>
+                    <p className="text-sm text-foreground">{t('machinePage.task12.devinfoBody')}</p>
                     <button
                       type="button"
                       onClick={() =>
@@ -970,10 +980,10 @@ export default function MachinePage() {
                     <p className="text-xs font-semibold uppercase tracking-wide text-cyan-300">
                       {t('machinePage.task12.scanlogNewTitle')}
                     </p>
-                    <p className="text-sm text-slate-200">
+                    <p className="text-sm text-foreground">
                       {t('machinePage.task12.scanlogNewBody')}
                     </p>
-                    <div className="grid gap-2 text-xs text-slate-400">
+                    <div className="grid gap-2 text-xs text-muted-foreground">
                       <label className="flex flex-col gap-1">
                         <span>{t('machinePage.task12.from')}</span>
                         <input
@@ -1028,10 +1038,10 @@ export default function MachinePage() {
                     <p className="text-xs font-semibold uppercase tracking-wide text-emerald-300">
                       {t('machinePage.task12.usersPartialTitle')}
                     </p>
-                    <p className="text-sm text-slate-200">
+                    <p className="text-sm text-foreground">
                       {t('machinePage.task12.usersPartialBody')}
                     </p>
-                    <div className="grid gap-2 text-xs text-slate-400">
+                    <div className="grid gap-2 text-xs text-muted-foreground">
                       <label className="flex flex-col gap-1">
                         <span>{t('machinePage.task12.page')}</span>
                         <input
@@ -1075,31 +1085,31 @@ export default function MachinePage() {
                         : t('machinePage.task12.usersPartialQueueCta')}
                     </button>
                     {usersPartialStatus && (
-                      <p className="text-[11px] text-slate-400">{usersPartialStatus}</p>
+                      <p className="text-[11px] text-muted-foreground">{usersPartialStatus}</p>
                     )}
                   </div>
                 </div>
               </div>
 
               <div className="ui-card-shell p-4">
-                <h2 className="mb-3 text-sm font-semibold text-white">
+                <h2 className="mb-3 text-sm font-semibold text-foreground">
                   {t('machinePage.task12.artifactsTitle')}
                 </h2>
                 <div className="grid gap-3 md:grid-cols-2">
                   {artifactEntries.map((entry) => (
                     <div key={entry.alias} className="ui-card-muted space-y-2 p-3">
-                      <p className="text-[11px] uppercase tracking-wider text-slate-400">
+                      <p className="text-[11px] uppercase tracking-wider text-muted-foreground">
                         {entry.label}
                       </p>
-                      <p className="text-xs text-slate-500">{entry.note}</p>
+                      <p className="text-xs text-muted-foreground">{entry.note}</p>
                       {isAdmin ? (
-                        <pre className="max-h-32 overflow-auto rounded bg-slate-950 p-2 text-[11px] text-slate-300">
+                        <pre className="max-h-32 overflow-auto rounded bg-background p-2 text-[11px] text-muted-foreground">
                           {formatJson(
                             entry.metadata || entry.data || t('machinePage.task12.artifacts.empty')
                           )}
                         </pre>
                       ) : (
-                        <p className="rounded border border-slate-700 bg-slate-950/80 p-2 text-[11px] text-slate-400">
+                        <p className="rounded border border-border bg-background/80 p-2 text-[11px] text-muted-foreground">
                           {t('machinePage.common.hiddenForNonAdmin')}
                         </p>
                       )}
@@ -1190,68 +1200,68 @@ export default function MachinePage() {
 
               <div className="grid gap-4 md:grid-cols-2">
                 <div className="ui-card-shell p-4">
-                  <h2 className="mb-2 text-sm font-semibold text-white">
+                  <h2 className="mb-2 text-sm font-semibold text-foreground">
                     {t('machinePage.results.deviceInfoTitle')}
                   </h2>
                   {isAdmin ? (
-                    <pre className="max-h-64 overflow-auto rounded-lg bg-slate-950 p-3 text-xs text-slate-300">
+                    <pre className="max-h-64 overflow-auto rounded-lg bg-background p-3 text-xs text-foreground">
                       {deviceInfo ? formatJson(deviceInfo) : t('machinePage.results.noDeviceInfo')}
                     </pre>
                   ) : (
-                    <p className="rounded-lg border border-slate-700 bg-slate-950 p-3 text-xs text-slate-400">
+                    <p className="rounded-lg border border-border bg-background p-3 text-xs text-muted-foreground">
                       {t('machinePage.common.hiddenForNonAdmin')}
                     </p>
                   )}
-                  <p className="mt-2 text-xs text-slate-500">
+                  <p className="mt-2 text-xs text-muted-foreground">
                     {tr('machinePage.results.deviceTime', { time: String(deviceTime || '-') })}
                   </p>
                 </div>
 
                 <div className="space-y-4">
                   <div className="ui-card-shell p-4">
-                    <h2 className="mb-2 text-sm font-semibold text-white">
+                    <h2 className="mb-2 text-sm font-semibold text-foreground">
                       {t('machinePage.results.usersPullTitle')}
                     </h2>
                     {isAdmin ? (
-                      <pre className="max-h-40 overflow-auto rounded-lg bg-slate-950 p-3 text-xs text-slate-300">
+                      <pre className="max-h-40 overflow-auto rounded-lg bg-background p-3 text-xs text-foreground">
                         {userSyncResult
                           ? formatJson(userSyncResult)
                           : t('machinePage.results.noUsersPull')}
                       </pre>
                     ) : (
-                      <p className="rounded-lg border border-slate-700 bg-slate-950 p-3 text-xs text-slate-400">
+                      <p className="rounded-lg border border-border bg-background p-3 text-xs text-muted-foreground">
                         {t('machinePage.common.hiddenForNonAdmin')}
                       </p>
                     )}
                   </div>
                   <div className="ui-card-shell p-4">
-                    <h2 className="mb-2 text-sm font-semibold text-white">
+                    <h2 className="mb-2 text-sm font-semibold text-foreground">
                       {t('machinePage.results.initializeTitle')}
                     </h2>
                     {isAdmin ? (
-                      <pre className="max-h-40 overflow-auto rounded-lg bg-slate-950 p-3 text-xs text-slate-300">
+                      <pre className="max-h-40 overflow-auto rounded-lg bg-background p-3 text-xs text-foreground">
                         {initResult
                           ? formatJson(initResult)
                           : t('machinePage.results.noInitialize')}
                       </pre>
                     ) : (
-                      <p className="rounded-lg border border-slate-700 bg-slate-950 p-3 text-xs text-slate-400">
+                      <p className="rounded-lg border border-border bg-background p-3 text-xs text-muted-foreground">
                         {t('machinePage.common.hiddenForNonAdmin')}
                       </p>
                     )}
                   </div>
                   <div className="ui-card-shell p-4">
-                    <h2 className="mb-2 text-sm font-semibold text-white">
+                    <h2 className="mb-2 text-sm font-semibold text-foreground">
                       {t('machinePage.results.scanlogQueueTitle')}
                     </h2>
                     {isAdmin ? (
-                      <pre className="max-h-40 overflow-auto rounded-lg bg-slate-950 p-3 text-xs text-slate-300">
+                      <pre className="max-h-40 overflow-auto rounded-lg bg-background p-3 text-xs text-foreground">
                         {scanSyncResult
                           ? formatJson(scanSyncResult)
                           : t('machinePage.results.noScanlogQueue')}
                       </pre>
                     ) : (
-                      <p className="rounded-lg border border-slate-700 bg-slate-950 p-3 text-xs text-slate-400">
+                      <p className="rounded-lg border border-border bg-background p-3 text-xs text-muted-foreground">
                         {t('machinePage.common.hiddenForNonAdmin')}
                       </p>
                     )}
@@ -1322,7 +1332,7 @@ export default function MachinePage() {
                         failed: 'text-rose-300 bg-rose-500/10 border-rose-500/30',
                         cancelled: 'text-orange-300 bg-orange-500/10 border-orange-500/30',
                         cancel_requested: 'text-orange-300 bg-orange-500/10 border-orange-500/30',
-                      }[status] || 'text-slate-300 bg-slate-700/30 border-slate-700/40';
+                      }[status] || 'text-muted-foreground bg-muted/30 border-border/40';
 
                     const isExpanded = Boolean(expandedMachineRows[row.id]);
                     const cancellable = ['queued', 'running', 'cancel_requested'].includes(status);
@@ -1330,7 +1340,7 @@ export default function MachinePage() {
                     return (
                       <div
                         key={row.id}
-                        className="ui-table-row rounded-lg bg-slate-950/40 px-3 py-2"
+                        className="ui-table-row rounded-lg bg-background/40 px-3 py-2"
                       >
                         <div className="flex flex-wrap items-center justify-between gap-2">
                           <button
@@ -1338,13 +1348,13 @@ export default function MachinePage() {
                             onClick={() => toggleMachineRowExpand(row.id)}
                             className="text-left"
                           >
-                            <p className="text-sm font-semibold text-slate-200">
+                            <p className="text-sm font-semibold text-foreground">
                               {tr('machinePage.row.jobTitle', {
                                 id: row.id,
                                 action: actionLabel(row.action, resolvedLocale),
                               })}
                             </p>
-                            <p className="text-[11px] text-slate-500">
+                            <p className="text-[11px] text-muted-foreground">
                               {tr('machinePage.row.created', { createdAt: row.created_at })}
                             </p>
                           </button>
@@ -1371,7 +1381,7 @@ export default function MachinePage() {
                           </div>
                         </div>
                         {isAdmin && isExpanded && (
-                          <pre className="mt-2 max-h-52 overflow-auto rounded-md bg-slate-950 p-2 text-xs text-slate-300">
+                          <pre className="mt-2 max-h-52 overflow-auto rounded-md bg-background p-2 text-xs text-foreground">
                             {formatJson(row)}
                           </pre>
                         )}
@@ -1411,7 +1421,7 @@ export default function MachinePage() {
 
             {confirmModal.requiresPhrase && (
               <div className="space-y-2">
-                <p className="text-xs text-slate-400">
+                <p className="text-xs text-muted-foreground">
                   {t('machinePage.confirm.typePhrase')}
                   <span className="ml-1 font-semibold text-rose-300">{initConfirmationPhrase}</span>
                 </p>

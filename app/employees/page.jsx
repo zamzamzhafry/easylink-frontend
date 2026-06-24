@@ -146,14 +146,14 @@ export default function EmployeesPage() {
           <p className="mb-1 text-xs font-mono uppercase tracking-widest text-teal-400">
             Management
           </p>
-          <h1 className="text-3xl font-bold text-white">Employees</h1>
-          <p className="mt-1 text-sm text-slate-400">
+          <h1 className="text-3xl font-bold text-foreground">Employees</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
             Link device users (tb_user) to employee records (tb_karyawan)
           </p>
         </div>
         <div className="text-right">
-          <div className="font-mono text-2xl font-bold text-white">{rows.length}</div>
-          <div className="text-xs text-slate-500">total records</div>
+          <div className="font-mono text-2xl font-bold text-foreground">{rows.length}</div>
+          <div className="text-xs text-muted-foreground">total records</div>
         </div>
       </div>
 
@@ -161,7 +161,7 @@ export default function EmployeesPage() {
         <button
           type="button"
           onClick={() => setCreating(true)}
-          className="inline-flex items-center gap-2 rounded-xl bg-teal-500 px-4 py-2.5 text-sm font-semibold text-slate-900 transition-colors hover:bg-teal-400"
+          className="inline-flex items-center gap-2 rounded-xl bg-teal-500 px-4 py-2.5 text-sm font-semibold text-foreground transition-colors hover:bg-teal-400"
         >
           <Plus className="h-4 w-4" />
           Add Employee
@@ -182,7 +182,7 @@ export default function EmployeesPage() {
         </div>
       )}
 
-      <div className="grid gap-3 rounded-xl border border-slate-800 bg-slate-900 p-3 md:grid-cols-4">
+      <div className="grid gap-3 rounded-xl border border-border bg-card p-3 md:grid-cols-4">
         <SearchInput
           value={search}
           onChange={(value) => {
@@ -198,7 +198,7 @@ export default function EmployeesPage() {
             setStatusFilter(event.target.value);
             setPage(1);
           }}
-          className="rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-white"
+          className="rounded-lg border border-border bg-muted px-3 py-2 text-sm text-foreground"
         >
           <option value="all">All duty status</option>
           <option value="active">Active duty only</option>
@@ -211,7 +211,7 @@ export default function EmployeesPage() {
               setSortKey(event.target.value);
               setPage(1);
             }}
-            className="flex-1 rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-white"
+            className="flex-1 rounded-lg border border-border bg-muted px-3 py-2 text-sm text-foreground"
           >
             <option value="name">Sort by name</option>
             <option value="pin">Sort by PIN</option>
@@ -220,7 +220,7 @@ export default function EmployeesPage() {
           <button
             type="button"
             onClick={() => setSortDir((dir) => (dir === 'asc' ? 'desc' : 'asc'))}
-            className="rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-xs font-semibold text-slate-200"
+            className="rounded-lg border border-border bg-muted px-3 py-2 text-xs font-semibold text-foreground"
           >
             {sortDir === 'asc' ? 'ASC' : 'DESC'}
           </button>
@@ -234,7 +234,7 @@ export default function EmployeesPage() {
         onDelete={deleteEmployee}
       />
 
-      <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-800 bg-slate-900 px-4 py-3 text-xs text-slate-400">
+      <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border bg-card px-4 py-3 text-xs text-muted-foreground">
         <div>
           Showing {(page - 1) * rowsPerPage + 1}-{Math.min(page * rowsPerPage, filteredRows.length)}{' '}
           of {filteredRows.length}
@@ -245,7 +245,7 @@ export default function EmployeesPage() {
             id="employees-rows"
             value={rowsPerPage}
             onChange={(event) => setRowsPerPage(Number(event.target.value))}
-            className="rounded border border-slate-700 bg-slate-950 px-2 py-1 text-slate-200"
+            className="rounded border border-border bg-card px-2 py-1 text-foreground"
           >
             {PAGE_SIZE_OPTIONS.filter((size) => size <= 50).map((size) => (
               <option key={size} value={size}>
@@ -257,18 +257,18 @@ export default function EmployeesPage() {
             type="button"
             onClick={() => setPage((p) => Math.max(1, p - 1))}
             disabled={page <= 1}
-            className="rounded border border-slate-700 px-2 py-1 text-slate-200 disabled:cursor-not-allowed disabled:opacity-40"
+            className="rounded border border-border px-2 py-1 text-foreground disabled:cursor-not-allowed disabled:opacity-40"
           >
             Previous
           </button>
-          <span className="font-mono text-slate-300">
+          <span className="font-mono text-foreground">
             {page}/{pages}
           </span>
           <button
             type="button"
             onClick={() => setPage((p) => Math.min(pages, p + 1))}
             disabled={page >= pages}
-            className="rounded border border-slate-700 px-2 py-1 text-slate-200 disabled:cursor-not-allowed disabled:opacity-40"
+            className="rounded border border-border px-2 py-1 text-foreground disabled:cursor-not-allowed disabled:opacity-40"
           >
             Next
           </button>
