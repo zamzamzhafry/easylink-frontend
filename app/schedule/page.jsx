@@ -298,6 +298,28 @@ export default function SchedulePage() {
   const setShift = async (employeeId, dateString, shiftId) => {
     const employee = data.employees.find((item) => Number(item.id) === Number(employeeId));
     const shift = data.shifts.find((item) => Number(item.id) === Number(shiftId));
+    // Optimistic: patch the single cell locally, skip full-table reload.
+    // Falls back to full load only on error so UI never drifts from server.
+    const prevSchedules = data.schedules;
+    setData((prev) => {
+      const exists = prev.schedules.some(
+        (s) =>
+          Number(s.karyawan_id) === Number(employeeId) &&
+          normalizeDate(s.tanggal) === dateString
+      );
+      const next = exists
+        ? prev.schedules.map((s) =>
+            Number(s.karyawan_id) === Number(employeeId) &&
+            normalizeDate(s.tanggal) === dateString
+              ? { ...s, shift_id: shiftId ? Number(shiftId) : null }
+              : s
+          )
+        : [
+            ...prev.schedules,
+            { karyawan_id: Number(employeeId), tanggal: dateString, shift_id: shiftId ? Number(shiftId) : null },
+          ];
+      return { ...prev, schedules: next };
+    });
     try {
       await requestJson('/api/schedule', {
         method: 'POST',
@@ -309,12 +331,13 @@ export default function SchedulePage() {
           ...(shiftId ? { shift_id: shiftId } : {}),
         }),
       });
-      await load();
       success(
         `${employee?.nama || `Employee #${employeeId}`} | ${dateString} -> ${shift ? shift.nama_shift : 'Not Assigned'}`,
         'Schedule updated'
       );
     } catch (error) {
+      // Revert on failure.
+      setData((prev) => ({ ...prev, schedules: prevSchedules }));
       warning(error.message || 'Failed to set shift schedule.', 'Unable to set shift');
     }
   };
@@ -780,10 +803,6 @@ export default function SchedulePage() {
         </div>
       </div>
 
-      {/* ponytail: merged 4 control panels (month nav + zoom + tabs + group
-          filter) into one condensed card with sub-rows + dividers. Was 4
-          separate bordered cards eating vertical space. Ceiling: if more
-          controls land here, split into a toolbar component. */}
       <div className="rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] p-2 space-y-2">
         {/* month nav + zoom */}
         <div className="flex flex-wrap items-center gap-2">
