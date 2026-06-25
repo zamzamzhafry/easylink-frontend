@@ -26,6 +26,7 @@ import {
   Settings,
   ShieldCheck,
   ScrollText,
+  SlidersHorizontal,
   Sun,
   Table,
   Timer,
@@ -159,6 +160,8 @@ export default function Sidebar({
     overview: true,
     planning: true,
     master: true,
+    prefs: true,
+    account: true,
   });
   const [showSettings, setShowSettings] = useState(false);
   const [showChangelog, setShowChangelog] = useState(false);
@@ -347,81 +350,100 @@ export default function Sidebar({
 
       <div className="app-sidebar-footer border-t border-border px-3 py-3">
         {/* settings button */}
-        <button
-          type="button"
-          onClick={() => setShowSettings(true)}
-          className={cn(
-            'app-sidebar-settings mb-2 flex w-full items-center rounded-lg border border-border px-2.5 py-2 text-xs text-foreground transition-colors hover:border-border hover:text-foreground',
-            effectiveCollapsed ? 'justify-center' : 'gap-2'
-          )}
-          aria-label={t('sidebar.actions.settings')}
-          title={t('sidebar.actions.settings')}
-        >
-          <Settings className="h-3.5 w-3.5 shrink-0" />
-          {!effectiveCollapsed && t('sidebar.actions.settings')}
-        </button>
-        <button
-          type="button"
-          onClick={onThemeToggle}
-          className={cn(
-            'app-sidebar-theme-btn mb-2 flex w-full items-center rounded-lg border border-border px-2.5 py-2 text-xs text-foreground transition-colors hover:border-border hover:text-foreground',
-            effectiveCollapsed ? 'justify-center' : 'gap-2'
-          )}
-          aria-label={
-            theme === 'dark'
-              ? t('sidebar.actions.switchToLightMode')
-              : t('sidebar.actions.switchToDarkMode')
-          }
-          title={
-            theme === 'dark'
-              ? t('sidebar.actions.switchToLightMode')
-              : t('sidebar.actions.switchToDarkMode')
-          }
-        >
-          {theme === 'dark' ? (
-            <Sun className="h-3.5 w-3.5 shrink-0 text-amber-300" />
-          ) : (
-            <Moon className="h-3.5 w-3.5 shrink-0 text-teal-500" />
-          )}
-          {!effectiveCollapsed &&
-            (theme === 'dark' ? t('sidebar.actions.lightMode') : t('sidebar.actions.darkMode'))}
-        </button>
-        <button
-          type="button"
-          onClick={onViewModeCycle}
-          className={cn(
-            'app-sidebar-viewmode-btn mb-2 flex w-full items-center rounded-lg border border-border px-2.5 py-2 text-xs text-foreground transition-colors hover:border-border hover:text-foreground',
-            effectiveCollapsed ? 'justify-center' : 'gap-2'
-          )}
-          aria-label={`Table layout: ${currentViewMode.label} (click to change)`}
-          title={`Table layout: ${currentViewMode.label} (click to change)`}
-        >
-          <ViewModeIcon className="h-3.5 w-3.5 shrink-0 text-teal-400" />
-          {!effectiveCollapsed && currentViewMode.label}
-        </button>
-        <div
-          className={cn(
-            'app-sidebar-locale mb-2 rounded-lg border border-border bg-card/70 p-1',
-            effectiveCollapsed ? 'flex justify-center' : ''
-          )}
-        >
-          {effectiveCollapsed ? (
-            <button
-              type="button"
-              onClick={() => onLocaleChange?.(resolvedLocale === 'en' ? 'id' : 'en')}
-              className="inline-flex h-7 min-w-10 items-center justify-center rounded-md border border-border px-2 text-xs font-semibold tracking-wide text-foreground transition-colors hover:border-border hover:text-foreground"
-              aria-label={
-                resolvedLocale === 'en'
-                  ? t('sidebar.locale.switchToBahasa')
-                  : t('sidebar.locale.switchToEnglish')
-              }
-              title={
-                resolvedLocale === 'en'
-                  ? t('sidebar.locale.switchToBahasa')
-                  : t('sidebar.locale.switchToEnglish')
-              }
-            >
-              {resolvedLocale.toUpperCase()}
+        <div className="app-sidebar-section rounded-xl border border-border bg-card/60">
+          <button
+            type="button"
+            onClick={() =>
+              setOpenSections((prev) => ({ ...prev, prefs: !prev.prefs }))
+            }
+            className="app-sidebar-section-toggle flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground transition-colors hover:text-foreground"
+            aria-expanded={openSections.prefs}
+          >
+            <span className="inline-flex items-center gap-2">
+              <SlidersHorizontal className="h-3.5 w-3.5" />
+              {!effectiveCollapsed && t('sidebar.sections.preferences')}
+            </span>
+            {!effectiveCollapsed && (
+              <ChevronDown className={cn('h-3.5 w-3.5 transition-transform', openSections.prefs ? 'rotate-180' : 'rotate-0')} />
+            )}
+          </button>
+          {openSections.prefs && (
+            <div className="space-y-2 px-2 pb-2">
+              <button
+                type="button"
+                onClick={() => setShowSettings(true)}
+                className={cn(
+                  'app-sidebar-settings flex w-full items-center rounded-lg border border-border px-2.5 py-2 text-xs text-foreground transition-colors hover:border-border hover:text-foreground',
+                  effectiveCollapsed ? 'justify-center' : 'gap-2'
+                )}
+                aria-label={t('sidebar.actions.settings')}
+                title={t('sidebar.actions.settings')}
+              >
+                <Settings className="h-3.5 w-3.5 shrink-0" />
+                {!effectiveCollapsed && t('sidebar.actions.settings')}
+              </button>
+              <button
+                type="button"
+                onClick={onThemeToggle}
+                className={cn(
+                  'app-sidebar-theme-btn flex w-full items-center rounded-lg border border-border px-2.5 py-2 text-xs text-foreground transition-colors hover:border-border hover:text-foreground',
+                  effectiveCollapsed ? 'justify-center' : 'gap-2'
+                )}
+                aria-label={
+                  theme === 'dark'
+                    ? t('sidebar.actions.switchToLightMode')
+                    : t('sidebar.actions.switchToDarkMode')
+                }
+                title={
+                  theme === 'dark'
+                    ? t('sidebar.actions.switchToLightMode')
+                    : t('sidebar.actions.switchToDarkMode')
+                }
+              >
+                {theme === 'dark' ? (
+                  <Sun className="h-3.5 w-3.5 shrink-0 text-amber-300" />
+                ) : (
+                  <Moon className="h-3.5 w-3.5 shrink-0 text-teal-500" />
+                )}
+                {!effectiveCollapsed &&
+                  (theme === 'dark' ? t('sidebar.actions.lightMode') : t('sidebar.actions.darkMode'))}
+              </button>
+              <button
+                type="button"
+                onClick={onViewModeCycle}
+                className={cn(
+                  'app-sidebar-viewmode-btn flex w-full items-center rounded-lg border border-border px-2.5 py-2 text-xs text-foreground transition-colors hover:border-border hover:text-foreground',
+                  effectiveCollapsed ? 'justify-center' : 'gap-2'
+                )}
+                aria-label={`Table layout: ${currentViewMode.label} (click to change)`}
+                title={`Table layout: ${currentViewMode.label} (click to change)`}
+              >
+                <ViewModeIcon className="h-3.5 w-3.5 shrink-0 text-teal-400" />
+                {!effectiveCollapsed && currentViewMode.label}
+              </button>
+              <div
+                className={cn(
+                  'app-sidebar-locale rounded-lg border border-border bg-card/70 p-1',
+                  effectiveCollapsed ? 'flex justify-center' : ''
+                )}
+              >
+                {effectiveCollapsed ? (
+                  <button
+                    type="button"
+                    onClick={() => onLocaleChange?.(resolvedLocale === 'en' ? 'id' : 'en')}
+                    className="inline-flex h-7 min-w-10 items-center justify-center rounded-md border border-border px-2 text-xs font-semibold tracking-wide text-foreground transition-colors hover:border-border hover:text-foreground"
+                    aria-label={
+                      resolvedLocale === 'en'
+                        ? t('sidebar.locale.switchToBahasa')
+                        : t('sidebar.locale.switchToEnglish')
+                    }
+                    title={
+                      resolvedLocale === 'en'
+                        ? t('sidebar.locale.switchToBahasa')
+                        : t('sidebar.locale.switchToEnglish')
+                    }
+                  >
+                    {resolvedLocale.toUpperCase()}
             </button>
           ) : (
             <div className="flex items-center gap-1">
@@ -459,44 +481,69 @@ export default function Sidebar({
             </div>
           )}
         </div>
-
-        {currentUser && !effectiveCollapsed && (
-          <div className="app-sidebar-userbox mb-2 rounded-lg border border-border bg-card/70 px-3 py-2">
-            <div className="text-xs font-semibold text-foreground">{currentUser.nama}</div>
-            <div className="mt-0.5 inline-flex items-center gap-1 text-xs text-muted-foreground">
-              {currentUser.is_admin ? (
-                <>
-                  <ShieldCheck className="h-3 w-3" /> {t('sidebar.roles.admin')}
-                </>
-              ) : currentUser.is_hr ? (
-                <>
-                  <ShieldCheck className="h-3 w-3 text-sky-400" /> HR
-                </>
-              ) : currentUser.is_leader ? (
-                <>
-                  <Crown className="h-3 w-3 text-amber-400" /> {t('sidebar.roles.groupLeader')}
-                </>
-              ) : (
-                <>
-                  <ShieldCheck className="h-3 w-3" /> {roleLabel}
-                </>
-              )}
             </div>
-          </div>
-        )}
-        <button
-          type="button"
-          onClick={logout}
-          className={cn(
-            'app-sidebar-logout flex w-full items-center rounded-lg border border-border px-2.5 py-2 text-xs text-foreground transition-colors hover:border-border hover:text-foreground',
-            effectiveCollapsed ? 'justify-center' : 'gap-2'
           )}
-          aria-label={t('sidebar.actions.logout')}
-          title={t('sidebar.actions.logout')}
-        >
-          <LogOut className="h-3.5 w-3.5 shrink-0" />
-          {!effectiveCollapsed && t('sidebar.actions.logout')}
-        </button>
+        </div>
+
+        <div className="app-sidebar-section rounded-xl border border-border bg-card/60">
+          <button
+            type="button"
+            onClick={() =>
+              setOpenSections((prev) => ({ ...prev, account: !prev.account }))
+            }
+            className="app-sidebar-section-toggle flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground transition-colors hover:text-foreground"
+            aria-expanded={openSections.account}
+          >
+            <span className="inline-flex items-center gap-2">
+              <UserCog className="h-3.5 w-3.5" />
+              {!effectiveCollapsed && t('sidebar.sections.account')}
+            </span>
+            {!effectiveCollapsed && (
+              <ChevronDown className={cn('h-3.5 w-3.5 transition-transform', openSections.account ? 'rotate-180' : 'rotate-0')} />
+            )}
+          </button>
+          {openSections.account && (
+            <div className="space-y-2 px-2 pb-2">
+              {currentUser && !effectiveCollapsed && (
+                <div className="app-sidebar-userbox rounded-lg border border-border bg-card/70 px-3 py-2">
+                  <div className="text-xs font-semibold text-foreground">{currentUser.nama}</div>
+                  <div className="mt-0.5 inline-flex items-center gap-1 text-xs text-muted-foreground">
+                    {currentUser.is_admin ? (
+                      <>
+                        <ShieldCheck className="h-3 w-3" /> {t('sidebar.roles.admin')}
+                      </>
+                    ) : currentUser.is_hr ? (
+                      <>
+                        <ShieldCheck className="h-3 w-3 text-sky-400" /> HR
+                      </>
+                    ) : currentUser.is_leader ? (
+                      <>
+                        <Crown className="h-3 w-3 text-amber-400" /> {t('sidebar.roles.groupLeader')}
+                      </>
+                    ) : (
+                      <>
+                        <ShieldCheck className="h-3 w-3" /> {roleLabel}
+                      </>
+                    )}
+                  </div>
+                </div>
+              )}
+              <button
+                type="button"
+                onClick={logout}
+                className={cn(
+                  'app-sidebar-logout flex w-full items-center rounded-lg border border-border px-2.5 py-2 text-xs text-foreground transition-colors hover:border-border hover:text-foreground',
+                  effectiveCollapsed ? 'justify-center' : 'gap-2'
+                )}
+                aria-label={t('sidebar.actions.logout')}
+                title={t('sidebar.actions.logout')}
+              >
+                <LogOut className="h-3.5 w-3.5 shrink-0" />
+                {!effectiveCollapsed && t('sidebar.actions.logout')}
+              </button>
+            </div>
+          )}
+        </div>
 
         <button
           type="button"
