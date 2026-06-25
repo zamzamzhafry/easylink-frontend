@@ -358,10 +358,10 @@ export default function SchedulePage() {
   }, [quickSummariesData]);
 
   const selectedGroupLabel = useMemo(() => {
-    if (groupTab === 'all') return 'All Groups';
-    if (groupTab === 'ungrouped') return 'Unassigned';
-    return groups.find((item) => String(item.id) === String(groupTab))?.name || 'Unknown Group';
-  }, [groupTab, groups]);
+    if (groupTab === 'all') return t('schedulePage.allGroups');
+    if (groupTab === 'ungrouped') return t('schedulePage.unassigned');
+    return groups.find((item) => String(item.id) === String(groupTab))?.name || t('schedulePage.allGroups');
+  }, [groupTab, groups, t]);
 
   const chooseScheduleExportScope = useCallback(() => {
     if (groupTab === 'all') return 'current';
