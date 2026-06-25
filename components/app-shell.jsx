@@ -115,7 +115,10 @@ export default function AppShell({ children }) {
     if (typeof window === 'undefined') return;
     try {
       const saved = window.localStorage.getItem(LOCALE_KEY);
-      setLocale(resolveAppLocale(saved));
+      const resolved = resolveAppLocale(saved);
+      setLocale(resolved);
+      // ponytail: sync cookie to localStorage so RSC reads match client.
+      document.cookie = `${LOCALE_KEY}=${resolved}; path=/; max-age=31536000; SameSite=Lax`;
     } catch {
       setLocale('en');
     }
@@ -140,6 +143,9 @@ export default function AppShell({ children }) {
     setLocale(resolved);
     try {
       window.localStorage.setItem(LOCALE_KEY, resolved);
+      // ponytail: mirror to cookie so RSC pages (dashboard) can read locale
+      // server-side via getLocaleFromCookies(). localStorage is client-only.
+      document.cookie = `${LOCALE_KEY}=${resolved}; path=/; max-age=31536000; SameSite=Lax`;
     } catch {
       // noop
     }

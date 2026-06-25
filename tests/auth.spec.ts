@@ -3,7 +3,7 @@ import { expect, test, type Page } from '@playwright/test';
 const adminLoginId =
   process.env.PLAYWRIGHT_ADMIN_LOGIN ?? process.env.ADMIN_LOGIN_ID ?? 'admin001';
 const adminPassword =
-  process.env.PLAYWRIGHT_ADMIN_PASSWORD ?? process.env.ADMIN_PASSWORD ?? 'password123';
+  process.env.PLAYWRIGHT_ADMIN_PASSWORD ?? process.env.ADMIN_PASSWORD ?? 'password';
 
 async function loginAsAdmin(page: Page) {
   await page.goto('/login');

@@ -19,6 +19,7 @@ import { PAGE_SIZE_OPTIONS } from '@/lib/constants';
 import { useToast } from '@/components/ui/toast-provider';
 import ModalShell from '@/components/ui/modal-shell';
 import DataTable from '@/components/ui/data-table';
+import useViewMode from '@/hooks/use-view-mode';
 import { Button, ButtonGroup } from '@/components/ui/button';
 import InlineStatusPanel from '@/components/ui/inline-status-panel';
 import { usePaginatedResource } from '@/hooks/use-paginated-resource';
@@ -244,6 +245,7 @@ export default function UsersPage() {
 
   const toast = useToast();
 
+  const { viewMode } = useViewMode();
   const {
     items: users,
     total,
@@ -577,6 +579,7 @@ export default function UsersPage() {
         error={loadError}
         emptyLabel={search ? 'No users found for current filter' : 'No users found'}
         rowKey="pin"
+        view={viewMode}
       />
 
       <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border bg-white px-4 py-3 text-xs text-muted-foreground dark:border-border dark:bg-card dark:text-muted-foreground">

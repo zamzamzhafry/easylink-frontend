@@ -415,13 +415,8 @@ export default function AttendancePage() {
   }, [activeTab, loadQuickSummaries]);
 
   useEffect(() => {
-    const handleWindowFocusRefresh = () => {
-      if (document.visibilityState !== 'visible') return;
-      const now = Date.now();
-      if (now - lastRefreshAtRef.current < FOCUS_REFRESH_THROTTLE_MS) return;
-      void refreshActiveTab();
-    };
-
+    // ponytail: visibilitychange covers focus/refocus; separate focus handler
+    // was redundant (both fired on tab-switch-back → 2 refreshes).
     const handleVisibilityRefresh = () => {
       if (document.visibilityState !== 'visible') return;
       const now = Date.now();
@@ -429,11 +424,9 @@ export default function AttendancePage() {
       void refreshActiveTab();
     };
 
-    window.addEventListener('focus', handleWindowFocusRefresh);
     document.addEventListener('visibilitychange', handleVisibilityRefresh);
 
     return () => {
-      window.removeEventListener('focus', handleWindowFocusRefresh);
       document.removeEventListener('visibilitychange', handleVisibilityRefresh);
     };
   }, [refreshActiveTab]);

@@ -1,11 +1,15 @@
 'use client';
 import { SvgPieChart, SvgBarChart } from '@/components/ui/charts';
+import { useAppLocale } from '@/components/app-shell';
+import { getUIText } from '@/lib/localization/ui-texts';
 
 export function DashboardCharts({ pieData, barData }) {
+  const { locale } = useAppLocale();
+  const t = (path) => getUIText(path, locale);
   return (
     <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
       <div className="rounded-xl border border-border bg-card p-5 md:col-span-1">
-        <h3 className="mb-4 text-sm font-semibold text-foreground">Hari Ini</h3>
+        <h3 className="mb-4 text-sm font-semibold text-foreground">{t('dashboardPage.todayHeading')}</h3>
         <div className="flex flex-col items-center gap-6">
           <div className="relative">
             <SvgPieChart data={pieData} size={180} />
@@ -26,12 +30,12 @@ export function DashboardCharts({ pieData, barData }) {
       </div>
 
       <div className="rounded-xl border border-border bg-card p-5 md:col-span-2">
-        <h3 className="mb-4 text-sm font-semibold text-foreground">Tren 7 Hari Terakhir</h3>
+        <h3 className="mb-4 text-sm font-semibold text-foreground">{t('dashboardPage.weeklyTrendHeading')}</h3>
         <div className="h-[200px]">
           <SvgBarChart data={barData} />
         </div>
         <div className="mt-4 flex justify-center gap-4 text-xs text-muted-foreground">
-           <div className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-emerald-500"/> Hadir</div>
+           <div className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-emerald-500"/> {t('dashboardPage.stat.presentToday')}</div>
         </div>
       </div>
     </div>

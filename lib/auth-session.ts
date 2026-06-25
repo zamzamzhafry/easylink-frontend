@@ -13,6 +13,21 @@ async function getCookieStore() {
   if (!_cookies) ({ cookies: _cookies } = await import('next/headers'));
   return _cookies!();
 }
+
+// ponytail: RSC pages (dashboard etc.) can't use the useAppLocale client hook,
+// so read the same locale the client persists. Client sets this cookie alongside
+// localStorage in app-shell.handleLocaleChange. Ceiling: if locale becomes
+// request-driven (e.g. Accept-Language), resolve here. Upgrade: provider context.
+export async function getLocaleFromCookies(): Promise<'en' | 'id'> {
+  try {
+    const store = await getCookieStore();
+    const v = store.get('easylink_locale')?.value;
+    if (v === 'en' || v === 'id') return v;
+  } catch {
+    // non-runtime context (node --test) — default
+  }
+  return 'en';
+}
 async function getNextResponse() {
   if (!_NextResponse) ({ NextResponse: _NextResponse } = await import('next/server'));
   return _NextResponse!;
