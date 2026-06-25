@@ -8,8 +8,10 @@ import {
   ChevronRight,
   Download,
   FileSpreadsheet,
+  Filter,
   Pencil,
   Printer,
+  SlidersHorizontal,
   Upload,
   Users,
   X,
@@ -774,134 +776,148 @@ export default function SchedulePage() {
         </div>
       </div>
 
-      <div className="flex flex-wrap items-center gap-2 rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] p-2">
-        <Button
-          variant="outline"
-          tone="neutral"
-          size="icon"
-          onClick={() => setMonthOf((current) => addDays(monthStart(current), -1))}
-        >
-          <ChevronLeft className="h-4 w-4" />
-        </Button>
-        <div className="rounded-lg border border-[hsl(var(--border))] px-3 py-2 font-mono text-sm text-[hsl(var(--foreground))]">
-          {monthTitle}
-        </div>
-        <Button
-          variant="outline"
-          tone="neutral"
-          size="icon"
-          onClick={() => setMonthOf((current) => addDays(monthEnd(current), 1))}
-        >
-          <ChevronRight className="h-4 w-4" />
-        </Button>
-        <div className="ml-auto font-mono text-xs text-[hsl(var(--muted-foreground))]">
-          {compactRangeLabel}
-        </div>
-      </div>
-
-      <div className="flex flex-wrap items-center gap-3 rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] p-3">
-        <label htmlFor="schedule-zoom" className="text-xs text-[hsl(var(--muted-foreground))]">
-          Day Columns Zoom
-        </label>
-        <input
-          id="schedule-zoom"
-          type="range"
-          min={75}
-          max={150}
-          step={5}
-          value={zoomPercent}
-          onChange={(event) => setZoomPercent(Number(event.target.value))}
-          className="h-1.5 w-48 cursor-pointer accent-[hsl(var(--primary))]"
-        />
-        <span className="font-mono text-xs text-[hsl(var(--primary))]">{zoomPercent}%</span>
-        <Button variant="outline" tone="neutral" size="sm" onClick={() => setZoomPercent(100)}>
-          Reset
-        </Button>
-        <span className="text-xs text-[hsl(var(--muted-foreground))]">Employee column stays fixed.</span>
-      </div>
-
-      <div className="flex flex-wrap gap-2 rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] p-2">
-        {visibleTabs.map((tab) => (
-          <button
-            key={tab.key}
-            type="button"
-            onClick={() => setActiveTab(tab.key)}
-            className={`rounded-lg px-3 py-2 text-xs font-medium transition-colors ${
-              activeTab === tab.key
-                ? 'bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))]'
-                : 'text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--secondary))] hover:text-[hsl(var(--foreground))]'
-            }`}
+      {/* ponytail: merged 4 control panels (month nav + zoom + tabs + group
+          filter) into one condensed card with sub-rows + dividers. Was 4
+          separate bordered cards eating vertical space. Ceiling: if more
+          controls land here, split into a toolbar component. */}
+      <div className="rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] p-2 space-y-2">
+        {/* month nav + zoom */}
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            variant="outline"
+            tone="neutral"
+            size="icon"
+            onClick={() => setMonthOf((current) => addDays(monthStart(current), -1))}
+            aria-label="Previous month"
           >
-            {tab.label}
-          </button>
-        ))}
-      </div>
-
-      <div className="rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] p-2">
-        <button
-          type="button"
-          onClick={() => setGroupFilterOpen((open) => !open)}
-          className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-[hsl(var(--foreground))] transition-colors hover:bg-[hsl(var(--secondary))]"
-        >
-          <span>Group Employee Filter</span>
-          <span className="font-mono text-[11px] text-[hsl(var(--primary))]">
-            {groupFilterOpen ? 'Hide' : 'Show'}
-          </span>
-        </button>
-        {groupFilterOpen && (
-          <div className="mt-2 flex flex-wrap gap-2">
-            <button
-              type="button"
-              onClick={() => {
-                setGroupTab('all');
-                setEmployeePage(1);
-              }}
-              className={`rounded-lg px-3 py-1.5 text-xs transition-colors ${
-                groupTab === 'all'
-                  ? 'bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))]'
-                  : 'text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--secondary))] hover:text-[hsl(var(--foreground))]'
-              }`}
-            >
-              All Groups ({data.employees.length})
-            </button>
-            {groups.map((group) => {
-              const count = data.employees.filter(
-                (employee) => String(employee.group_id) === String(group.id)
-              ).length;
-              return (
-                <button
-                  key={group.id}
-                  type="button"
-                  onClick={() => {
-                    setGroupTab(String(group.id));
-                    setEmployeePage(1);
-                  }}
-                  className={`rounded-lg px-3 py-1.5 text-xs transition-colors ${
-                    String(groupTab) === String(group.id)
-                      ? 'bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))]'
-                      : 'text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--secondary))] hover:text-[hsl(var(--foreground))]'
-                  }`}
-                >
-                  {group.name} ({count})
-                </button>
-              );
-            })}
-            <button
-              type="button"
-              onClick={() => {
-                setGroupTab('ungrouped');
-                setEmployeePage(1);
-              }}
-              className={`rounded-lg px-3 py-1.5 text-xs transition-colors ${
-                groupTab === 'ungrouped'
-                  ? 'bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))]'
-                  : 'text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--secondary))] hover:text-[hsl(var(--foreground))]'
-              }`}
-            >
-              Unassigned ({data.employees.filter((employee) => !employee.group_id).length})
-            </button>
+            <ChevronLeft className="h-4 w-4" />
+          </Button>
+          <div className="rounded-lg border border-[hsl(var(--border))] px-3 py-2 font-mono text-sm text-[hsl(var(--foreground))]">
+            {monthTitle}
           </div>
-        )}
+          <Button
+            variant="outline"
+            tone="neutral"
+            size="icon"
+            onClick={() => setMonthOf((current) => addDays(monthEnd(current), 1))}
+            aria-label="Next month"
+          >
+            <ChevronRight className="h-4 w-4" />
+          </Button>
+          <div className="ml-auto font-mono text-xs text-[hsl(var(--muted-foreground))]">
+            {compactRangeLabel}
+          </div>
+          <div className="flex items-center gap-2 border-l border-[hsl(var(--border))] pl-3">
+            <SlidersHorizontal className="h-3.5 w-3.5 text-[hsl(var(--muted-foreground))]" />
+            <label htmlFor="schedule-zoom" className="text-xs text-[hsl(var(--muted-foreground))]">
+              Zoom
+            </label>
+            <input
+              id="schedule-zoom"
+              type="range"
+              min={75}
+              max={150}
+              step={5}
+              value={zoomPercent}
+              onChange={(event) => setZoomPercent(Number(event.target.value))}
+              className="h-1.5 w-28 cursor-pointer accent-[hsl(var(--primary))]"
+              aria-label="Day columns zoom"
+            />
+            <span className="font-mono text-xs text-[hsl(var(--primary))]">{zoomPercent}%</span>
+            <Button variant="outline" tone="neutral" size="sm" onClick={() => setZoomPercent(100)}>
+              Reset
+            </Button>
+          </div>
+        </div>
+
+        {/* tabs */}
+        <div className="flex flex-wrap gap-1 border-t border-[hsl(var(--border))] pt-2">
+          {visibleTabs.map((tab) => (
+            <button
+              key={tab.key}
+              type="button"
+              onClick={() => setActiveTab(tab.key)}
+              className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
+                activeTab === tab.key
+                  ? 'bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))]'
+                  : 'text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--secondary))] hover:text-[hsl(var(--foreground))]'
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+
+        {/* group filter */}
+        <div className="border-t border-[hsl(var(--border))] pt-2">
+          <button
+            type="button"
+            onClick={() => setGroupFilterOpen((open) => !open)}
+            className="flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-left text-xs font-semibold uppercase tracking-wide text-[hsl(var(--foreground))] transition-colors hover:bg-[hsl(var(--secondary))]"
+          >
+            <span className="flex items-center gap-1.5">
+              <Filter className="h-3.5 w-3.5" />
+              Group Employee Filter
+            </span>
+            <span className="font-mono text-[11px] text-[hsl(var(--primary))]">
+              {groupFilterOpen ? 'Hide' : 'Show'}
+            </span>
+          </button>
+          {groupFilterOpen && (
+            <div className="mt-1 flex flex-wrap gap-1.5">
+              <button
+                type="button"
+                onClick={() => {
+                  setGroupTab('all');
+                  setEmployeePage(1);
+                }}
+                className={`rounded-lg px-3 py-1.5 text-xs transition-colors ${
+                  groupTab === 'all'
+                    ? 'bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))]'
+                    : 'text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--secondary))] hover:text-[hsl(var(--foreground))]'
+                }`}
+              >
+                All Groups ({data.employees.length})
+              </button>
+              {groups.map((group) => {
+                const count = data.employees.filter(
+                  (employee) => String(employee.group_id) === String(group.id)
+                ).length;
+                return (
+                  <button
+                    key={group.id}
+                    type="button"
+                    onClick={() => {
+                      setGroupTab(String(group.id));
+                      setEmployeePage(1);
+                    }}
+                    className={`rounded-lg px-3 py-1.5 text-xs transition-colors ${
+                      String(groupTab) === String(group.id)
+                        ? 'bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))]'
+                        : 'text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--secondary))] hover:text-[hsl(var(--foreground))]'
+                    }`}
+                  >
+                    {group.name} ({count})
+                  </button>
+                );
+              })}
+              <button
+                type="button"
+                onClick={() => {
+                  setGroupTab('ungrouped');
+                  setEmployeePage(1);
+                }}
+                className={`rounded-lg px-3 py-1.5 text-xs transition-colors ${
+                  groupTab === 'ungrouped'
+                    ? 'bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))]'
+                    : 'text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--secondary))] hover:text-[hsl(var(--foreground))]'
+                }`}
+              >
+                Unassigned ({data.employees.filter((employee) => !employee.group_id).length})
+              </button>
+            </div>
+          )}
+        </div>
       </div>
 
       {activeTab === 'plan' && (

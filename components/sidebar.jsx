@@ -25,6 +25,7 @@ import {
   PlugZap,
   Settings,
   ShieldCheck,
+  ScrollText,
   Sun,
   Table,
   Timer,
@@ -33,8 +34,35 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import SettingsModal from '@/components/settings/settings-modal';
+import ModalShell from '@/components/ui/modal-shell';
 import { canSeeNavItem } from '@/lib/authz/authorization-adapter';
 import { getUIText } from '@/lib/localization/ui-texts';
+
+// ponytail: inline changelog shown in the sidebar version modal. Keep concise.
+// Ceiling: move to a VERSIONS.md + loader if entries grow past ~20.
+const CHANGELOG = [
+  {
+    version: 'v1.2',
+    date: '2026-06-26',
+    changes: [
+      'API dedup: in-flight + 2s TTL cache for GET requests (halves page-load calls).',
+      'viewMode toggle now live: sidebar Auto/Table/Cards drives data-table layout.',
+      'Localization: dashboard, scanlog, employees pages wired to EN/ID toggle.',
+      'Pool-leak fix: globalThis singleton prevents MySQL saturation under HMR.',
+      'PDF export: jspdf-autotable v5 API fix (report/analytics/performance).',
+    ],
+  },
+  {
+    version: 'v1.1',
+    date: '2026-06-24',
+    changes: [
+      'Security: CSV injection guard, SQL param audit, open-redirect fix.',
+      'Connection leak fixes across admin/migrate, schedule-revisions, users.',
+      'Token migration: 226 violations cleared; UI text keys render correct strings.',
+      'Shared libs (csv/time/date-range/format-date) + 22 tests.',
+    ],
+  },
+];
 
 export default function Sidebar({
   collapsed = false,
@@ -133,6 +161,7 @@ export default function Sidebar({
     master: true,
   });
   const [showSettings, setShowSettings] = useState(false);
+  const [showChangelog, setShowChangelog] = useState(false);
   const roleLabel = useMemo(() => {
     if (!currentUser) return null;
     if (currentUser.is_admin) return t('sidebar.roles.admin');
@@ -469,14 +498,47 @@ export default function Sidebar({
           {!effectiveCollapsed && t('sidebar.actions.logout')}
         </button>
 
-        <div
-          className={cn('mt-3 text-xs text-muted-foreground', effectiveCollapsed ? 'text-center' : '')}
+        <button
+          type="button"
+          onClick={() => setShowChangelog(true)}
+          className={cn(
+            'mt-3 inline-flex items-center gap-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground',
+            effectiveCollapsed ? 'flex-col text-center' : ''
+          )}
+          title={t('sidebar.actions.changelog')}
+          aria-label={t('sidebar.actions.changelog')}
         >
+          <ScrollText className="h-3.5 w-3.5 shrink-0" />
           {effectiveCollapsed ? t('sidebar.version.short') : t('sidebar.version.full')}
-        </div>
+        </button>
       </div>
 
       {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
+      {showChangelog && (
+        <ModalShell
+          title={t('sidebar.changelog.title')}
+          subtitle={t('sidebar.version.full')}
+          onClose={() => setShowChangelog(false)}
+          maxWidth="max-w-lg"
+          contentClassName="max-h-[70vh] overflow-y-auto"
+        >
+          <div className="space-y-4 text-sm">
+            {CHANGELOG.map((entry) => (
+              <div key={entry.version} className="border-b border-border pb-3 last:border-0 last:pb-0">
+                <div className="flex items-center gap-2">
+                  <span className="font-mono text-xs font-semibold text-teal-400">{entry.version}</span>
+                  <span className="text-xs text-muted-foreground">{entry.date}</span>
+                </div>
+                <ul className="mt-1.5 space-y-1">
+                  {entry.changes.map((change, i) => (
+                    <li key={i} className="text-xs text-foreground/90">{change}</li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+          </div>
+        </ModalShell>
+      )}
       </aside>
     </>
   );
