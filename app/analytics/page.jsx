@@ -1,9 +1,10 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { Download, FileSpreadsheet, BarChart3, Activity, Clock, Users, TrendingUp } from 'lucide-react';
+import { Download, FileSpreadsheet, BarChart3, Activity, Clock, Users, TrendingUp, Info } from 'lucide-react';
 import { useToast } from '@/components/ui/toast-provider';
 import InlineStatusPanel from '@/components/ui/inline-status-panel';
+import ModalShell from '@/components/ui/modal-shell';
 import { requestJson } from '@/lib/request-json';
 import { useAppLocale } from '@/components/app-shell';
 import { getUIText } from '@/lib/localization/ui-texts';
@@ -33,15 +34,96 @@ function monthStart(value = new Date()) {
   return isoDate(date);
 }
 
-function StatCard({ label, value, unit, color }) {
+// ponytail: formula explanations surfaced via the info icon on each metric
+// card + chart header. Keep concise; ceiling → move to a dedicated docs page.
+const FORMULAS = {
+  attendanceRate: {
+    title: 'Attendance Rate',
+    formula: '(presentCount / (totalEmployees × dayCountInPeriod)) × 100',
+    logic: 'Counts employees who scanned in against the maximum possible (every employee every day). Employees who never scan are counted as absent, so the rate reflects true coverage.',
+    impact: 'Low rate → staffing gaps or device/user linkage issues. High rate → workforce present but says nothing about punctuality.',
+  },
+  punctualityIndex: {
+    title: 'Punctuality Index',
+    formula: '(onTimeCount / presentCount) × 100',
+    logic: 'Of those who showed up, the share who arrived on or before their scheduled start. Excludes absences entirely.',
+    impact: 'Isolates lateness from absence. A high attendance rate + low punctuality means people come but late.',
+  },
+  avgLateMinutes: {
+    title: 'Avg Late Minutes',
+    formula: 'totalLateMinutes / lateCount',
+    logic: 'Average minutes late, averaged only over the late arrivals (not all arrivals).',
+    impact: 'Severity of lateness. 5 min × many people vs 60 min × few people read the same on rate but differ operationally.',
+  },
+  totalOvertime: {
+    title: 'Total Overtime',
+    formula: 'Σ (actualOut − scheduledOut) for shifts where actual > scheduled',
+    logic: 'Sums overtime minutes across all qualifying shifts in the period, then reported in hours.',
+    impact: 'Labor cost + fatigue indicator. Spikes suggest understaffing or schedule mismatch.',
+  },
+  bradford: {
+    title: 'Bradford Factor',
+    formula: 'frequency² × totalDays',
+    logic: 'frequency = number of absence spells; totalDays = total absence days. Squaring frequency makes frequent short absences score far worse than one long absence of equal total days.',
+    impact: 'Flags disruptive absentees. Score 0 = none. Common bands: <50 ok, 50–100 concern, 100–200 serious, >200 critical.',
+  },
+  weeklyTrend: {
+    title: 'Weekly Trend',
+    formula: 'per ISO week: attendance %, punctuality %, late %',
+    logic: 'Groups attendance records by ISO week within the range and plots the three rates over time.',
+    impact: 'Spots deterioration or improvement across weeks. Dips may correlate with holidays, shift changes, or device downtime.',
+  },
+  checkInDistribution: {
+    title: 'Check-in Distribution',
+    formula: 'count of check-in scans grouped by hour-of-day (0–23)',
+    logic: 'Histogram of first-scan times across the period. Peak hour = busiest arrival window.',
+    impact: 'Schedule design: if peak is far from shift start, shifts may be misaligned with actual arrival patterns.',
+  },
+  departmentBreakdown: {
+    title: 'Department Breakdown',
+    formula: 'per group: present / late / absent counts + attendance rate',
+    logic: 'Aggregates attendance by employee group for the selected range.',
+    impact: 'Compares group reliability. A single low group drags the org rate; investigate that group’s shifts/devices.',
+  },
+};
+
+function StatCard({ label, value, unit, color, infoKey, onInfo }) {
   const colorClass = color === 'green' ? 'text-emerald-400' : color === 'yellow' ? 'text-amber-400' : color === 'red' ? 'text-rose-400' : 'text-foreground';
   return (
     <div className="rounded-lg border border-border bg-card px-3 py-2">
-      <p className="text-xs text-muted-foreground">{label}</p>
+      <div className="flex items-center justify-between gap-1">
+        <p className="text-xs text-muted-foreground">{label}</p>
+        {infoKey && (
+          <button
+            type="button"
+            onClick={() => onInfo?.(infoKey)}
+            className="text-muted-foreground/60 transition-colors hover:text-teal-400"
+            aria-label={`Explain ${label}`}
+            title="How is this calculated?"
+          >
+            <Info className="h-3.5 w-3.5" />
+          </button>
+        )}
+      </div>
       <p className={`font-mono text-lg font-bold ${colorClass}`}>
         {value}{unit && <span className="text-sm text-muted-foreground ml-1">{unit}</span>}
       </p>
     </div>
+  );
+}
+
+function ChartInfoButton({ infoKey, onInfo }) {
+  if (!infoKey) return null;
+  return (
+    <button
+      type="button"
+      onClick={() => onInfo?.(infoKey)}
+      className="ml-auto inline-flex items-center gap-1 rounded border border-border px-2 py-1 text-xs text-muted-foreground transition-colors hover:border-teal-500/50 hover:text-teal-300"
+      aria-label="Explain this chart"
+      title="How is this calculated?"
+    >
+      <Info className="h-3 w-3" /> Formula
+    </button>
   );
 }
 
@@ -67,6 +149,7 @@ export default function AnalyticsPage() {
   });
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState('');
+  const [infoFormula, setInfoFormula] = useState(null);
 
   const loadAuth = useCallback(async () => {
     try {
@@ -292,24 +375,32 @@ export default function AnalyticsPage() {
             value={data.metrics.attendanceRate?.toFixed(1) || '0.0'}
             unit="%"
             color={getMetricColor(data.metrics.attendanceRate, 'rate')}
+            infoKey="attendanceRate"
+            onInfo={setInfoFormula}
           />
           <StatCard
             label="Punctuality Index"
             value={data.metrics.punctualityRate?.toFixed(1) || '0.0'}
             unit="%"
             color={getMetricColor(data.metrics.punctualityRate, 'rate')}
+            infoKey="punctualityIndex"
+            onInfo={setInfoFormula}
           />
           <StatCard
             label="Avg Late Minutes"
             value={data.metrics.avgLateMinutes?.toFixed(0) || '0'}
             unit="min"
             color="white"
+            infoKey="avgLateMinutes"
+            onInfo={setInfoFormula}
           />
           <StatCard
             label="Total Overtime"
             value={data.metrics.totalOvertimeHours?.toFixed(1) || '0.0'}
             unit="hrs"
             color="white"
+            infoKey="totalOvertime"
+            onInfo={setInfoFormula}
           />
         </div>
 
@@ -318,6 +409,7 @@ export default function AnalyticsPage() {
           <div className="mb-3 flex items-center gap-2">
             <TrendingUp className="h-5 w-5 text-blue-400" />
             <h2 className="text-lg font-semibold">Weekly Trend</h2>
+            <ChartInfoButton infoKey="weeklyTrend" onInfo={setInfoFormula} />
           </div>
           <ResponsiveContainer width="100%" height={300}>
             <LineChart data={data.weeklyTrend}>
@@ -341,6 +433,7 @@ export default function AnalyticsPage() {
           <div className="mb-3 flex items-center gap-2">
             <Clock className="h-5 w-5 text-blue-400" />
             <h2 className="text-lg font-semibold">Check-in Distribution</h2>
+            <ChartInfoButton infoKey="checkInDistribution" onInfo={setInfoFormula} />
             {peakHour.count > 0 && (
               <span className="ml-auto text-xs text-muted-foreground">
                 Peak: {peakHour.hour}:00 ({peakHour.count} check-ins)
@@ -372,6 +465,7 @@ export default function AnalyticsPage() {
           <div className="mb-3 flex items-center gap-2">
             <Users className="h-5 w-5 text-blue-400" />
             <h2 className="text-lg font-semibold">Department Breakdown</h2>
+            <ChartInfoButton infoKey="departmentBreakdown" onInfo={setInfoFormula} />
             <span className="ml-auto text-xs text-muted-foreground">Click bar to filter by group</span>
           </div>
           <ResponsiveContainer width="100%" height={300}>
@@ -478,6 +572,7 @@ export default function AnalyticsPage() {
           <div className="mb-3 flex items-center gap-2">
             <BarChart3 className="h-5 w-5 text-blue-400" />
             <h2 className="text-lg font-semibold">Bradford Factor Analysis</h2>
+            <ChartInfoButton infoKey="bradford" onInfo={setInfoFormula} />
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -526,6 +621,32 @@ export default function AnalyticsPage() {
 
         {!auth && <p className="text-xs text-rose-400">Session not loaded. Please re-login.</p>}
       </div>
+      {infoFormula && FORMULAS[infoFormula] && (
+        <ModalShell
+          title={FORMULAS[infoFormula].title}
+          subtitle="How this metric is calculated"
+          onClose={() => setInfoFormula(null)}
+          maxWidth="max-w-lg"
+          contentClassName="max-h-[75vh] overflow-y-auto"
+        >
+          <div className="space-y-4 text-sm">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Formula</p>
+              <code className="mt-1 block rounded bg-muted px-3 py-2 font-mono text-xs text-foreground">
+                {FORMULAS[infoFormula].formula}
+              </code>
+            </div>
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Logic</p>
+              <p className="mt-1 text-xs text-foreground/90">{FORMULAS[infoFormula].logic}</p>
+            </div>
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Impact on data</p>
+              <p className="mt-1 text-xs text-foreground/90">{FORMULAS[infoFormula].impact}</p>
+            </div>
+          </div>
+        </ModalShell>
+      )}
     </div>
   );
 }
