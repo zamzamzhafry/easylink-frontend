@@ -26,6 +26,8 @@ import { useToast } from '@/components/ui/toast-provider';
 import { requestJson } from '@/lib/request-json';
 import { PAGE_SIZE_OPTIONS } from '@/lib/constants';
 import useAuthSession from '@/hooks/use-auth-session';
+import { useAppLocale } from '@/components/app-shell';
+import { getUIText } from '@/lib/localization/ui-texts';
 import {
   canAccessAttendanceReviewQueue,
   canManageSchedule,
@@ -51,11 +53,11 @@ import { sanitizeExcelSheetName } from '@/lib/quick-summaries-export';
 
 
 const TABS = [
-  { key: 'plan', label: 'Monthly Plan', requiresManage: false },
-  { key: 'punches', label: 'Punch Shortcut', requiresManage: false },
-  { key: 'quick_summaries', label: 'Quick Summaries', requiresManage: false },
-  { key: 'import', label: 'Import / Check', requiresManage: true },
-  { key: 'summary', label: 'Employee Metrics', requiresManage: false },
+  { key: 'plan', requiresManage: false },
+  { key: 'punches', requiresManage: false },
+  { key: 'quick_summaries', requiresManage: false },
+  { key: 'import', requiresManage: true },
+  { key: 'summary', requiresManage: false },
 ];
 
 
@@ -98,6 +100,8 @@ function uniqueByEmployeeId(employees) {
 export default function SchedulePage() {
   const { success, warning } = useToast();
   const { user: currentUser } = useAuthSession();
+  const { locale } = useAppLocale();
+  const t = (path) => getUIText(path, locale);
   const searchParams = useSearchParams();
   const [activeTab, setActiveTab] = useState('plan');
   const [monthOf, setMonthOf] = useState(() => {
@@ -245,8 +249,8 @@ export default function SchedulePage() {
   const canEdit = canManageSchedule(currentUser);
   const canAccessReviewQueue = canAccessAttendanceReviewQueue(currentUser);
   const visibleTabs = useMemo(
-    () => TABS.filter((tab) => !tab.requiresManage || canEdit),
-    [canEdit]
+    () => TABS.filter((tab) => !tab.requiresManage || canEdit).map((tab) => ({ ...tab, label: t(`schedulePage.tabs.${tab.key}`) })),
+    [canEdit, t]
   );
 
   useEffect(() => {
@@ -728,47 +732,47 @@ export default function SchedulePage() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <p className="mb-1 text-xs font-mono uppercase tracking-widest text-[hsl(var(--primary))]">Planning</p>
-          <h1 className="text-3xl font-bold text-[hsl(var(--foreground))]">Monthly Group Schedule</h1>
+          <p className="mb-1 text-xs font-mono uppercase tracking-widest text-[hsl(var(--primary))]">{t('schedulePage.eyebrow')}</p>
+          <h1 className="text-3xl font-bold text-[hsl(var(--foreground))]">{t('schedulePage.title')}</h1>
           <p className="mt-1 text-sm text-[hsl(var(--muted-foreground))]">
-            Monthly planning by group, with done/pending/future estimated work hours.
+            {t('schedulePage.description')}
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
           <Button variant="soft" tone="success" size="sm" onClick={exportTemplateExcel}>
-            <FileSpreadsheet className="h-4 w-4" /> Export Excel
+            <FileSpreadsheet className="h-4 w-4" /> {t('schedulePage.exportExcel')}
           </Button>
           <Button variant="soft" tone="primary" size="sm" onClick={exportTemplateCsv}>
-            <Download className="h-4 w-4" /> Export CSV
+            <Download className="h-4 w-4" /> {t('schedulePage.exportCsv')}
           </Button>
           <Button variant="outline" tone="neutral" size="sm" onClick={() => printSchedule(false)}>
-            <Printer className="h-4 w-4" /> Print / PDF
+            <Printer className="h-4 w-4" /> {t('schedulePage.print')}
           </Button>
           <Button variant="outline" tone="neutral" size="sm" onClick={() => printSchedule(true)} title="Icon-only compact print">
-            <Printer className="h-4 w-4" /> Print (symbols)
+            <Printer className="h-4 w-4" /> {t('schedulePage.printSymbols')}
           </Button>
           {canAccessReviewQueue && (
             <Link
               href="/attendance/review"
               className="flex items-center gap-2 rounded-xl border border-sky-500/30 bg-sky-500/10 px-4 py-2.5 text-sm text-sky-300 transition-colors hover:bg-sky-500/20"
             >
-              Review Punches Shortcut
+              {t('schedulePage.reviewPunches')}
             </Link>
           )}
           {editMode && canEdit ? (
             <>
               <Button variant="soft" tone="primary" size="sm" onClick={() => setBulkModal(true)}>
-                <Users className="h-4 w-4" /> Bulk Assign Group
+                <Users className="h-4 w-4" /> {t('schedulePage.bulkAssign')}
               </Button>
               <Button variant="soft" tone="danger" size="sm" onClick={() => setEditMode(false)}>
-                <X className="h-4 w-4" /> Done Editing
+                <X className="h-4 w-4" /> {t('schedulePage.doneEditing')}
               </Button>
             </>
           ) : (
             <>
               {canEdit && (
                 <Button variant="soft" tone="primary" size="sm" onClick={() => setEditMode(true)}>
-                  <Pencil className="h-4 w-4" /> Plan a Schedule
+                  <Pencil className="h-4 w-4" /> {t('schedulePage.planSchedule')}
                 </Button>
               )}
             </>
@@ -810,7 +814,7 @@ export default function SchedulePage() {
           <div className="flex items-center gap-2 border-l border-[hsl(var(--border))] pl-3">
             <SlidersHorizontal className="h-3.5 w-3.5 text-[hsl(var(--muted-foreground))]" />
             <label htmlFor="schedule-zoom" className="text-xs text-[hsl(var(--muted-foreground))]">
-              Zoom
+              {t('schedulePage.zoom')}
             </label>
             <input
               id="schedule-zoom"
@@ -825,7 +829,7 @@ export default function SchedulePage() {
             />
             <span className="font-mono text-xs text-[hsl(var(--primary))]">{zoomPercent}%</span>
             <Button variant="outline" tone="neutral" size="sm" onClick={() => setZoomPercent(100)}>
-              Reset
+              {t('schedulePage.reset')}
             </Button>
           </div>
         </div>
@@ -857,10 +861,10 @@ export default function SchedulePage() {
           >
             <span className="flex items-center gap-1.5">
               <Filter className="h-3.5 w-3.5" />
-              Group Employee Filter
+              {t('schedulePage.groupFilter')}
             </span>
             <span className="font-mono text-[11px] text-[hsl(var(--primary))]">
-              {groupFilterOpen ? 'Hide' : 'Show'}
+              {groupFilterOpen ? t('schedulePage.hide') : t('schedulePage.show')}
             </span>
           </button>
           {groupFilterOpen && (
@@ -877,7 +881,7 @@ export default function SchedulePage() {
                     : 'text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--secondary))] hover:text-[hsl(var(--foreground))]'
                 }`}
               >
-                All Groups ({data.employees.length})
+                {t('schedulePage.allGroups')} ({data.employees.length})
               </button>
               {groups.map((group) => {
                 const count = data.employees.filter(
@@ -913,7 +917,7 @@ export default function SchedulePage() {
                     : 'text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--secondary))] hover:text-[hsl(var(--foreground))]'
                 }`}
               >
-                Unassigned ({data.employees.filter((employee) => !employee.group_id).length})
+                {t('schedulePage.unassigned')} ({data.employees.filter((employee) => !employee.group_id).length})
               </button>
             </div>
           )}
