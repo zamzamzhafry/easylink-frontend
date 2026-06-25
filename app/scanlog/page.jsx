@@ -15,6 +15,8 @@ import {
 import { usePaginatedResource } from '@/hooks/use-paginated-resource';
 import { requestJson } from '@/lib/request-json';
 import { cn } from '@/lib/utils';
+import { useAppLocale } from '@/components/app-shell';
+import { getUIText } from '@/lib/localization/ui-texts';
 
 // ─── helpers ───────────────────────────────────────────────────────────────────
 function toIso(date) {
@@ -84,14 +86,14 @@ function IoLabel({ mode }) {
 }
 
 // ─── table headers ─────────────────────────────────────────────────────────────
-const HEADERS = [
-  { key: 'scan_date', label: 'Date', className: 'w-28' },
-  { key: 'scan_time', label: 'Time', className: 'w-24' },
-  { key: 'pin', label: 'PIN', className: 'w-28' },
-  { key: 'verifymode', label: 'Verify', className: 'w-28' },
-  { key: 'iomode', label: 'IO Tag', className: 'w-28' },
-  { key: 'workcode', label: 'Work Code', className: 'w-24 text-right' },
-  { key: 'sn', label: 'Device SN', className: 'min-w-[140px]' },
+const HEADER_KEYS = [
+  { key: 'scan_date', col: 'date', className: 'w-28' },
+  { key: 'scan_time', col: 'time', className: 'w-24' },
+  { key: 'pin', col: 'pin', className: 'w-28' },
+  { key: 'verifymode', col: 'verify', className: 'w-28' },
+  { key: 'iomode', col: 'ioTag', className: 'w-28' },
+  { key: 'workcode', col: 'workCode', className: 'w-24 text-right' },
+  { key: 'sn', col: 'deviceSn', className: 'min-w-[140px]' },
 ];
 
 const LIMIT_OPTIONS = [100, 250, 500, 1000, 2000];
@@ -113,6 +115,9 @@ export default function ScanlogPage() {
   const [downloading, setDownloading] = useState(false);
 
   const toast = useToast();
+  const { locale } = useAppLocale();
+  const t = (path) => getUIText(path, locale);
+  const HEADERS = HEADER_KEYS.map((h) => ({ ...h, label: t(`scanlogPage.cols.${h.col}`) }));
 
   const {
     items: records,
@@ -225,16 +230,15 @@ export default function ScanlogPage() {
           <div>
             <h1 className="flex items-center gap-2 text-xl font-bold text-foreground">
               <DatabaseZap className="h-5 w-5 text-teal-400" />
-              Scan Log
+              {t('scanlogPage.title')}
             </h1>
             <p className="mt-0.5 text-xs text-muted-foreground">
-              Primary analysis should focus on time, date, PIN, and machine SN. IO mode is shown as
-              reference only.
+              {t('scanlogPage.description')}
             </p>
             <p className="mt-1 text-[11px] text-muted-foreground">
-              Data source:{' '}
+              {t('scanlogPage.dataSource')}:{' '}
               <span className="font-semibold text-teal-300">
-                {source === 'canonical' ? 'Canonical Linux Store' : 'Legacy Scanlog Table'}
+                {source === 'canonical' ? t('scanlogPage.sourceCanonical') : t('scanlogPage.sourceLegacy')}
               </span>
             </p>
           </div>
@@ -250,7 +254,7 @@ export default function ScanlogPage() {
               className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-xs text-muted-foreground hover:text-foreground disabled:opacity-40"
             >
               <RefreshCw className={cn('h-3.5 w-3.5', loading && 'animate-spin')} />
-              Refresh
+              {t('scanlogPage.refresh')}
             </button>
             <button
               type="button"
@@ -326,7 +330,7 @@ export default function ScanlogPage() {
             <SearchInput
               value={pinFilter}
               onChange={setPinFilter}
-              placeholder="Search PIN..."
+              placeholder={t('scanlogPage.searchPin')}
               className="w-48"
             />
 
@@ -377,8 +381,8 @@ export default function ScanlogPage() {
                 }}
                 className="rounded-lg border border-border bg-muted px-3 py-2 text-sm text-foreground focus:border-teal-500 focus:outline-none"
               >
-                <option value="canonical">Canonical Linux Store (tb_scanlog_safe_events)</option>
-                <option value="legacy">Legacy Scanlog Table (tb_scanlog)</option>
+                <option value="canonical">{t('scanlogPage.sourceCanonical')} (tb_scanlog_safe_events)</option>
+                <option value="legacy">{t('scanlogPage.sourceLegacy')} (tb_scanlog)</option>
               </select>
             </div>
 
