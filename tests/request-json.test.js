@@ -70,4 +70,57 @@ describe('requestJson', () => {
     const data = await requestJson('http://x');
     assert.equal(data, null);
   });
+
+  test('dedups concurrent identical GETs to one fetch', async () => {
+    __clearDedupCache();
+    let calls = 0;
+    global.fetch = async () => {
+      calls += 1;
+      return okJson({ n: calls });
+    };
+    const [a, b] = await Promise.all([requestJson('http://dup'), requestJson('http://dup')]);
+    assert.equal(calls, 1, `expected 1 fetch, got ${calls}`);
+    assert.equal(a.n, 1);
+    assert.equal(b.n, 1);
+  });
+
+  test('serves cached GET within TTL without a new fetch', async () => {
+    __clearDedupCache();
+    let calls = 0;
+    global.fetch = async () => {
+      calls += 1;
+      return okJson({ n: calls });
+    };
+    const first = await requestJson('http://cache');
+    const second = await requestJson('http://cache');
+    assert.equal(calls, 1);
+    assert.equal(first.n, 1);
+    assert.equal(second.n, 1);
+  });
+
+  test('skips dedup when caller passes an AbortSignal (caller-scoped)', async () => {
+    __clearDedupCache();
+    let calls = 0;
+    global.fetch = async () => {
+      calls += 1;
+      return okJson({ n: calls });
+    };
+    const ac = new AbortController();
+    await requestJson('http://sig', { signal: ac.signal });
+    await requestJson('http://sig', { signal: ac.signal });
+    // signal => dedupKey returns null => no cache => 2 fetches
+    assert.equal(calls, 2, `expected 2 fetches with signal, got ${calls}`);
+  });
+
+  test('does not dedup non-GET methods', async () => {
+    __clearDedupCache();
+    let calls = 0;
+    global.fetch = async () => {
+      calls += 1;
+      return okJson({ n: calls });
+    };
+    await requestJson('http://post', { method: 'POST' });
+    await requestJson('http://post', { method: 'POST' });
+    assert.equal(calls, 2);
+  });
 });
