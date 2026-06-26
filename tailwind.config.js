@@ -1,6 +1,9 @@
 // tailwind.config.js
 /** @type {import('tailwindcss').Config} */
 module.exports = {
+  // Respect the html[data-theme] toggle instead of OS prefers-color-scheme,
+  // so dark: prefixes stay in sync with the user's theme button.
+  darkMode: ["selector", '[data-theme="dark"]'],
   content: ["./app/**/*.{js,jsx,ts,tsx}", "./components/**/*.{js,jsx,ts,tsx}"],
   theme: {
     extend: {

@@ -3,17 +3,12 @@ import { redirect } from 'next/navigation';
 import { AlertTriangle, Clock, Fingerprint, Monitor, UserCheck, Users, UserX } from 'lucide-react';
 import pool from '@/lib/db';
 import { hasKaryawanColumn } from '@/lib/karyawan-schema';
-import { getAuthContextFromCookies } from '@/lib/auth-session';
+import { getAuthContextFromCookies, getLocaleFromCookies } from '@/lib/auth-session';
+import { getUIText } from '@/lib/localization/ui-texts';
 import DashboardOpsPanel from '@/components/dashboard-ops-panel';
 import { DashboardCharts } from '@/components/dashboard/DashboardCharts';
 import { DashboardNeedsReview } from '@/components/dashboard/DashboardNeedsReview';
-
-function toMinutes(value) {
-  if (!value || typeof value !== 'string') return null;
-  const [hours, minutes] = value.split(':').map(Number);
-  if (Number.isNaN(hours) || Number.isNaN(minutes)) return null;
-  return hours * 60 + minutes;
-}
+import { toMinutes } from '@/lib/time';
 
 async function getStats({ auth }) {
   const now = new Date();
@@ -309,6 +304,8 @@ export default async function Dashboard() {
   }
   const stats = await getStats({ auth });
   const failedSections = stats.failedSections ?? [];
+  const locale = await getLocaleFromCookies();
+  const t = (path) => getUIText(path, locale);
 
   // Auth — used to filter dashboard buttons
   const isAdmin = Boolean(auth?.is_admin);
@@ -319,7 +316,7 @@ export default async function Dashboard() {
   // Cards: only show cards whose destination the user can reach
   const cards = [
     isAdmin && {
-      label: 'Total Karyawan',
+      label: t('dashboardPage.stat.totalEmployees'),
       value: stats.total,
       icon: Users,
       color: 'text-teal-400',
@@ -327,7 +324,7 @@ export default async function Dashboard() {
       href: '/employees',
     },
     canAttendance && {
-      label: 'Hadir Hari Ini',
+      label: t('dashboardPage.stat.presentToday'),
       value: stats.hadir,
       icon: UserCheck,
       color: 'text-emerald-400',
@@ -335,7 +332,7 @@ export default async function Dashboard() {
       href: '/attendance',
     },
     canAttendance && {
-      label: 'Tidak Hadir',
+      label: t('dashboardPage.stat.absent'),
       value: stats.pieData.find((d) => d.label === 'Tidak Hadir')?.value ?? 0,
       icon: UserX,
       color: 'text-rose-400',
@@ -343,7 +340,7 @@ export default async function Dashboard() {
       href: '/attendance',
     },
     canAttendance && {
-      label: 'Terlambat',
+      label: t('dashboardPage.stat.late'),
       value: stats.late,
       icon: Clock,
       color: 'text-amber-400',
@@ -351,7 +348,7 @@ export default async function Dashboard() {
       href: '/attendance',
     },
     isAdmin && {
-      label: 'Perangkat Aktif',
+      label: t('dashboardPage.stat.activeDevices'),
       value: stats.devices,
       icon: Monitor,
       color: 'text-violet-400',
@@ -364,9 +361,9 @@ export default async function Dashboard() {
     <div className="max-w-6xl space-y-6">
       <div className="flex items-baseline justify-between gap-4">
         <div>
-          <h1 className="text-xl font-bold text-white">Dashboard Absensi</h1>
-          <p className="mt-0.5 text-xs text-slate-500">
-            {new Date().toLocaleDateString('id-ID', {
+          <h1 className="text-xl font-bold text-foreground">{t('dashboardPage.title')}</h1>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            {new Date().toLocaleDateString(locale === 'id' ? 'id-ID' : 'en-US', {
               weekday: 'long',
               year: 'numeric',
               month: 'long',
@@ -378,25 +375,25 @@ export default async function Dashboard() {
           {canAttendance && (
             <Link
               href="/attendance"
-              className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs font-medium text-slate-300 transition-colors hover:border-teal-500/50 hover:text-teal-300"
+              className="rounded-lg border border-border bg-card px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:border-teal-500/50 hover:text-teal-300"
             >
-              Attendance
+              {t('dashboardPage.quickLinks.attendance')}
             </Link>
           )}
           {canSchedule && (
             <Link
               href="/schedule"
-              className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs font-medium text-slate-300 transition-colors hover:border-teal-500/50 hover:text-teal-300"
+              className="rounded-lg border border-border bg-card px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:border-teal-500/50 hover:text-teal-300"
             >
-              Schedule
+              {t('dashboardPage.quickLinks.schedule')}
             </Link>
           )}
           {canDashboard && (
             <Link
               href="/report"
-              className="rounded-lg border border-teal-500/40 bg-teal-500/10 px-3 py-1.5 text-xs font-semibold text-teal-300 transition-colors hover:border-teal-400 hover:text-white"
+              className="rounded-lg border border-teal-500/40 bg-teal-500/10 px-3 py-1.5 text-xs font-semibold text-teal-300 transition-colors hover:border-teal-400 hover:text-foreground"
             >
-              Reports →
+              {t('dashboardPage.quickLinks.reports')} →
             </Link>
           )}
         </div>
@@ -419,14 +416,14 @@ export default async function Dashboard() {
           <Link
             key={label}
             href={href}
-            className="group flex items-center gap-3 rounded-xl border border-slate-800 bg-slate-900 px-4 py-3 transition-colors hover:border-slate-700"
+            className="group flex items-center gap-3 rounded-xl border border-border bg-card px-4 py-3 transition-colors hover:border-ring/50"
           >
             <div className={`shrink-0 rounded-lg p-1.5 ${bg}`}>
               <Icon className={`h-4 w-4 ${color}`} />
             </div>
             <div className="min-w-0">
-              <div className="font-mono text-lg font-bold leading-none text-white">{value}</div>
-              <div className="mt-0.5 truncate text-[11px] text-slate-400">{label}</div>
+              <div className="font-mono text-lg font-bold leading-none text-foreground">{value}</div>
+              <div className="mt-0.5 truncate text-[11px] text-muted-foreground">{label}</div>
             </div>
           </Link>
         ))}
@@ -451,9 +448,9 @@ export default async function Dashboard() {
                 key={href}
                 href={href}
                 title={desc}
-                className="group rounded-lg border border-slate-800 bg-slate-900/60 px-3 py-2.5 text-center transition-all hover:border-slate-700 hover:bg-slate-900"
+                className="group rounded-lg border border-border bg-card/60 px-3 py-2.5 text-center transition-all hover:border-ring/50 hover:bg-card"
               >
-                <div className="text-xs font-semibold text-slate-300 transition-colors group-hover:text-white">
+                <div className="text-xs font-semibold text-muted-foreground transition-colors group-hover:text-foreground">
                   {label}
                 </div>
               </Link>

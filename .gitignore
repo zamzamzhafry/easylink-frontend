@@ -24,3 +24,18 @@ test-results/
 # Multi-brain port registry runtime (machine-local, per-session leases)
 .multibrain/port-registry.jsonl
 .multibrain/port-registry.lock
+
+# Session cookie jars + live tokens (never commit)
+*.cookie
+.omo/logs/*cookie*
+.omo/evidence/*cookie*
+.omo/evidence/*.cookie
+.env.example.local
+
+# Knowledge scratch — cookie jars / live-token evidence (never commit, public repo)
+.omo/
+.sisyphus/logs/
+.sisyphus/evidence/
+.sisyphus/run-continuation/
+dogfood-output/
+.claude/scheduled_tasks.lock

@@ -23,7 +23,8 @@ export async function verifyPassword(
   const stored = String(storedHash ?? '').trim();
   const typed = String(input ?? '').trim();
 
-  if (!stored && !typed) return { valid: true, needsRehash: false };
+  // No stored hash, or no input password, cannot authenticate. (The former
+  // also guards an empty-hash + empty-input footgun that would otherwise match.)
   if (!stored || !typed) return { valid: false, needsRehash: false };
 
   if (isBcryptHash(stored)) {

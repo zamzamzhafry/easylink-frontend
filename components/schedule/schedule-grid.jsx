@@ -18,7 +18,7 @@ function ShiftPicker({ schedule, shifts, fontScale, anomalyStatus, onSetShift, r
   const selectedLabel = schedule?.nama_shift || 'Not Assigned';
   const selectedClass = schedule
     ? shiftClassName(schedule.nama_shift)
-    : 'border-slate-700 text-slate-400';
+    : 'border-border text-muted-foreground';
   const selectedStyle = schedule ? shiftBadgeInlineStyle(schedule) : null;
   const SelectedIcon = schedule ? getShiftIcon(schedule) : Circle;
   const anomalyClass =
@@ -68,14 +68,14 @@ function ShiftPicker({ schedule, shifts, fontScale, anomalyStatus, onSetShift, r
       </button>
 
       {!readOnly && open && (
-        <div className="absolute left-0 z-40 mt-1 max-h-56 w-48 overflow-y-auto rounded-lg border border-slate-700 bg-slate-900 p-1 shadow-2xl">
+        <div className="absolute left-0 z-40 mt-1 max-h-56 w-48 overflow-y-auto rounded-lg border border-border bg-card p-1 shadow-2xl">
           <button
             type="button"
             onClick={() => {
               onSetShift(null);
               setOpen(false);
             }}
-            className="mb-1 flex w-full items-center gap-2 rounded-md border border-slate-700 px-2 py-1.5 text-left text-xs text-slate-300 transition-colors hover:bg-slate-800"
+            className="mb-1 flex w-full items-center gap-2 rounded-md border border-border px-2 py-1.5 text-left text-xs text-muted-foreground transition-colors hover:bg-muted"
           >
             <Circle className="h-3.5 w-3.5" />
             Not Assigned

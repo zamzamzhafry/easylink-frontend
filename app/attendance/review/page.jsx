@@ -36,7 +36,7 @@ const STATUS_BADGE = {
   terlambat: 'border-amber-500/30 bg-amber-500/10 text-amber-300',
   pulang_awal: 'border-rose-500/30 bg-rose-500/10 text-rose-300',
   double_punch: 'border-violet-500/30 bg-violet-500/10 text-violet-300',
-  tidak_hadir: 'border-slate-600 bg-slate-800 text-slate-300',
+  tidak_hadir: 'border-border bg-muted text-muted-foreground',
 };
 
 function getVerifyMap(t) {

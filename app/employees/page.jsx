@@ -8,9 +8,13 @@ import EmployeesTable from '@/components/employees/employees-table';
 import { useToast } from '@/components/ui/toast-provider';
 import { requestJson } from '@/lib/request-json';
 import { PAGE_SIZE_OPTIONS } from '@/lib/constants';
+import { useAppLocale } from '@/components/app-shell';
+import { getUIText } from '@/lib/localization/ui-texts';
 
 export default function EmployeesPage() {
   const { success, warning } = useToast();
+  const { locale } = useAppLocale();
+  const t = (path) => getUIText(path, locale);
   const [rows, setRows] = useState([]);
   const [users, setUsers] = useState([]);
   const [search, setSearch] = useState('');
@@ -144,16 +148,16 @@ export default function EmployeesPage() {
       <div className="flex items-end justify-between">
         <div>
           <p className="mb-1 text-xs font-mono uppercase tracking-widest text-teal-400">
-            Management
+            {t('employeesPage.eyebrow')}
           </p>
-          <h1 className="text-3xl font-bold text-white">Employees</h1>
-          <p className="mt-1 text-sm text-slate-400">
-            Link device users (tb_user) to employee records (tb_karyawan)
+          <h1 className="text-3xl font-bold text-foreground">{t('employeesPage.title')}</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {t('employeesPage.description')}
           </p>
         </div>
         <div className="text-right">
-          <div className="font-mono text-2xl font-bold text-white">{rows.length}</div>
-          <div className="text-xs text-slate-500">total records</div>
+          <div className="font-mono text-2xl font-bold text-foreground">{rows.length}</div>
+          <div className="text-xs text-muted-foreground">{t('employeesPage.totalRecords')}</div>
         </div>
       </div>
 
@@ -161,10 +165,10 @@ export default function EmployeesPage() {
         <button
           type="button"
           onClick={() => setCreating(true)}
-          className="inline-flex items-center gap-2 rounded-xl bg-teal-500 px-4 py-2.5 text-sm font-semibold text-slate-900 transition-colors hover:bg-teal-400"
+          className="inline-flex items-center gap-2 rounded-xl bg-teal-500 px-4 py-2.5 text-sm font-semibold text-foreground transition-colors hover:bg-teal-400"
         >
           <Plus className="h-4 w-4" />
-          Add Employee
+          {t('employeesPage.addEmployee')}
         </button>
       </div>
 
@@ -173,23 +177,23 @@ export default function EmployeesPage() {
           <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-amber-400" />
           <div>
             <p className="text-sm font-medium text-amber-300">
-              {unlinkedCount} employee{unlinkedCount > 1 ? 's' : ''} without a real name
+              {unlinkedCount} {unlinkedCount > 1 ? t('employeesPage.unlinkedMany') : t('employeesPage.unlinkedOne')}
             </p>
             <p className="mt-0.5 text-xs text-amber-400/70">
-              These users were registered on the device but have not been linked to a full name yet.
+              {t('employeesPage.unlinkedDesc')}
             </p>
           </div>
         </div>
       )}
 
-      <div className="grid gap-3 rounded-xl border border-slate-800 bg-slate-900 p-3 md:grid-cols-4">
+      <div className="grid gap-3 rounded-xl border border-border bg-card p-3 md:grid-cols-4">
         <SearchInput
           value={search}
           onChange={(value) => {
             setSearch(value);
             setPage(1);
           }}
-          placeholder="Search name, PIN, or NIP..."
+          placeholder={t('employeesPage.searchPlaceholder')}
           className="md:col-span-2"
         />
         <select
@@ -198,11 +202,11 @@ export default function EmployeesPage() {
             setStatusFilter(event.target.value);
             setPage(1);
           }}
-          className="rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-white"
+          className="rounded-lg border border-border bg-muted px-3 py-2 text-sm text-foreground"
         >
-          <option value="all">All duty status</option>
-          <option value="active">Active duty only</option>
-          <option value="inactive">Not active duty</option>
+          <option value="all">{t('employeesPage.dutyAll')}</option>
+          <option value="active">{t('employeesPage.dutyActive')}</option>
+          <option value="inactive">{t('employeesPage.dutyInactive')}</option>
         </select>
         <div className="flex gap-2">
           <select
@@ -211,16 +215,16 @@ export default function EmployeesPage() {
               setSortKey(event.target.value);
               setPage(1);
             }}
-            className="flex-1 rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-white"
+            className="flex-1 rounded-lg border border-border bg-muted px-3 py-2 text-sm text-foreground"
           >
-            <option value="name">Sort by name</option>
-            <option value="pin">Sort by PIN</option>
-            <option value="nip">Sort by NIP</option>
+            <option value="name">{t('employeesPage.sortName')}</option>
+            <option value="pin">{t('employeesPage.sortPin')}</option>
+            <option value="nip">{t('employeesPage.sortNip')}</option>
           </select>
           <button
             type="button"
             onClick={() => setSortDir((dir) => (dir === 'asc' ? 'desc' : 'asc'))}
-            className="rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-xs font-semibold text-slate-200"
+            className="rounded-lg border border-border bg-muted px-3 py-2 text-xs font-semibold text-foreground"
           >
             {sortDir === 'asc' ? 'ASC' : 'DESC'}
           </button>
@@ -234,18 +238,18 @@ export default function EmployeesPage() {
         onDelete={deleteEmployee}
       />
 
-      <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-800 bg-slate-900 px-4 py-3 text-xs text-slate-400">
+      <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border bg-card px-4 py-3 text-xs text-muted-foreground">
         <div>
-          Showing {(page - 1) * rowsPerPage + 1}-{Math.min(page * rowsPerPage, filteredRows.length)}{' '}
-          of {filteredRows.length}
+          {t('employeesPage.pagerShowing')} {(page - 1) * rowsPerPage + 1}-{Math.min(page * rowsPerPage, filteredRows.length)}{' '}
+          {t('employeesPage.pagerOf')} {filteredRows.length}
         </div>
         <div className="flex items-center gap-2">
-          <label htmlFor="employees-rows">Rows</label>
+          <label htmlFor="employees-rows">{t('employeesPage.rows')}</label>
           <select
             id="employees-rows"
             value={rowsPerPage}
             onChange={(event) => setRowsPerPage(Number(event.target.value))}
-            className="rounded border border-slate-700 bg-slate-950 px-2 py-1 text-slate-200"
+            className="rounded border border-border bg-card px-2 py-1 text-foreground"
           >
             {PAGE_SIZE_OPTIONS.filter((size) => size <= 50).map((size) => (
               <option key={size} value={size}>
@@ -257,20 +261,20 @@ export default function EmployeesPage() {
             type="button"
             onClick={() => setPage((p) => Math.max(1, p - 1))}
             disabled={page <= 1}
-            className="rounded border border-slate-700 px-2 py-1 text-slate-200 disabled:cursor-not-allowed disabled:opacity-40"
+            className="rounded border border-border px-2 py-1 text-foreground disabled:cursor-not-allowed disabled:opacity-40"
           >
-            Previous
+            {t('employeesPage.prev')}
           </button>
-          <span className="font-mono text-slate-300">
+          <span className="font-mono text-foreground">
             {page}/{pages}
           </span>
           <button
             type="button"
             onClick={() => setPage((p) => Math.min(pages, p + 1))}
             disabled={page >= pages}
-            className="rounded border border-slate-700 px-2 py-1 text-slate-200 disabled:cursor-not-allowed disabled:opacity-40"
+            className="rounded border border-border px-2 py-1 text-foreground disabled:cursor-not-allowed disabled:opacity-40"
           >
-            Next
+            {t('employeesPage.next')}
           </button>
         </div>
       </div>

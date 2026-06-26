@@ -14,15 +14,17 @@ export async function POST(request, { params }) {
     const { note } = body;
 
     const connection = await pool.getConnection();
+    try {
+      await connection.query(`
+        UPDATE tb_schedule_revision_requests
+        SET status = 'rejected', reviewed_by_karyawan_id = ?, reviewed_at = NOW(), review_note = ?
+        WHERE id = ? AND status = 'pending'
+      `, [auth.karyawan_id, note, id]);
 
-    await connection.query(`
-      UPDATE tb_schedule_revision_requests 
-      SET status = 'rejected', reviewed_by_karyawan_id = ?, reviewed_at = NOW(), review_note = ?
-      WHERE id = ? AND status = 'pending'
-    `, [auth.karyawan_id, note, id]);
-
-    connection.release();
-    return NextResponse.json({ ok: true, message: 'Rejected successfully.' });
+      return NextResponse.json({ ok: true, message: 'Rejected successfully.' });
+    } finally {
+      connection.release();
+    }
   } catch (error) {
     return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
   }

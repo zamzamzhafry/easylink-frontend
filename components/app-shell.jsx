@@ -115,7 +115,10 @@ export default function AppShell({ children }) {
     if (typeof window === 'undefined') return;
     try {
       const saved = window.localStorage.getItem(LOCALE_KEY);
-      setLocale(resolveAppLocale(saved));
+      const resolved = resolveAppLocale(saved);
+      setLocale(resolved);
+      // ponytail: sync cookie to localStorage so RSC reads match client.
+      document.cookie = `${LOCALE_KEY}=${resolved}; path=/; max-age=31536000; SameSite=Lax`;
     } catch {
       setLocale('en');
     }
@@ -140,6 +143,9 @@ export default function AppShell({ children }) {
     setLocale(resolved);
     try {
       window.localStorage.setItem(LOCALE_KEY, resolved);
+      // ponytail: mirror to cookie so RSC pages (dashboard) can read locale
+      // server-side via getLocaleFromCookies(). localStorage is client-only.
+      document.cookie = `${LOCALE_KEY}=${resolved}; path=/; max-age=31536000; SameSite=Lax`;
     } catch {
       // noop
     }
@@ -225,13 +231,13 @@ export default function AppShell({ children }) {
   if (authLoading) {
     return (
       <main className="flex min-h-screen items-center justify-center p-6">
-        <div className="app-shell-status w-full max-w-sm space-y-4 rounded-2xl border border-slate-200/60 bg-white/80 p-6 shadow-md shadow-slate-900/20 dark:border-slate-800/70 dark:bg-slate-950/60">
-          <div className="h-4 w-3/4 rounded-full bg-slate-200 dark:bg-slate-800 animate-pulse" />
-          <div className="h-4 w-full rounded-full bg-slate-200/80 dark:bg-slate-800/80 animate-pulse" />
-          <div className="h-4 w-5/6 rounded-full bg-slate-200/90 dark:bg-slate-800/70 animate-pulse" />
+        <div className="app-shell-status w-full max-w-sm space-y-4 rounded-2xl border border-border bg-card/80 p-6 shadow-md">
+          <div className="h-4 w-3/4 rounded-full bg-muted animate-pulse" />
+          <div className="h-4 w-full rounded-full bg-muted/80 animate-pulse" />
+          <div className="h-4 w-5/6 rounded-full bg-muted/90 animate-pulse" />
           <div className="flex items-center justify-between pt-2">
-            <span className="h-3 w-16 rounded-full bg-slate-200/80 dark:bg-slate-800/60 animate-pulse" />
-            <span className="h-3 w-12 rounded-full bg-slate-200/80 dark:bg-slate-800/60 animate-pulse" />
+            <span className="h-3 w-16 rounded-full bg-muted/80 animate-pulse" />
+            <span className="h-3 w-12 rounded-full bg-muted/80 animate-pulse" />
           </div>
         </div>
       </main>
@@ -242,7 +248,7 @@ export default function AppShell({ children }) {
     const redirectText = getUIText('appShell.redirecting', locale);
     return (
       <main className="flex min-h-screen items-center justify-center p-6">
-        <div className="app-shell-status rounded-xl border border-slate-800 bg-slate-900 px-5 py-4 text-sm text-slate-300">
+        <div className="app-shell-status rounded-xl border border-border bg-card px-5 py-4 text-sm text-muted-foreground">
           {redirectText}
         </div>
       </main>
@@ -257,7 +263,7 @@ export default function AppShell({ children }) {
           onClick={openMobileSidebar}
           aria-label="Open navigation menu"
           aria-expanded={mobileOpen}
-          className="app-shell-mobile-toggle fixed left-3 top-3 z-50 inline-flex h-11 w-11 items-center justify-center rounded-lg border border-slate-700 bg-slate-900 text-slate-200 shadow-lg transition-colors hover:border-slate-500 hover:text-white lg:hidden"
+          className="app-shell-mobile-toggle fixed left-3 top-3 z-50 inline-flex h-11 w-11 items-center justify-center rounded-lg border border-border bg-card text-foreground shadow-lg transition-colors hover:border-ring/50 hover:text-foreground lg:hidden"
         >
           <Menu className="h-5 w-5" />
         </button>

@@ -76,6 +76,34 @@ export default function usePersistedPreference(key, defaultValue, validate) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);
 
+  // ponytail: sync across components sharing this key (e.g. sidebar toggle
+  // vs page consumer). Without this, a write in one usePersistedPreference
+  // instance doesn't reach others until remount. Ceiling: for app-wide
+  // reactive prefs, promote to context. Upgrade path: provider + useSyncExternalStore.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const onStorage = (e) => {
+      if (e.key !== key) return;
+      let parsed;
+      try {
+        parsed = e.newValue == null ? defaultValue : JSON.parse(e.newValue);
+      } catch {
+        parsed = e.newValue;
+      }
+      if (isValid(parsed)) setValue(parsed);
+    };
+    const onPref = (e) => {
+      if (e.detail?.key !== key) return;
+      if (isValid(e.detail?.value)) setValue(e.detail.value);
+    };
+    window.addEventListener('storage', onStorage);
+    window.addEventListener('easylink:pref', onPref);
+    return () => {
+      window.removeEventListener('storage', onStorage);
+      window.removeEventListener('easylink:pref', onPref);
+    };
+  }, [key, isValid, defaultValue]);
+
   const update = useCallback(
     (next) => {
       const resolved = typeof next === 'function' ? next(value) : next;
@@ -87,6 +115,8 @@ export default function usePersistedPreference(key, defaultValue, validate) {
       } catch {
         // noop — in-memory value still updated
       }
+      // ponytail: broadcast same-document (storage event only fires cross-tab).
+      window.dispatchEvent(new CustomEvent('easylink:pref', { detail: { key, value: resolved } }));
     },
     [isValid, key, value]
   );

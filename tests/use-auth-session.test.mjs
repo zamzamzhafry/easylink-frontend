@@ -1,7 +1,14 @@
 import { beforeEach, describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 
-const hookModulePath = '../hooks/use-auth-session.js';
+// NOTE: We load the hook module ONCE. Under the tsx loader (used by the test
+// runner to transpile .ts imports) the URL query cache-bust
+// (`?t=...`) does NOT produce a fresh module graph — tsx dedups by path,
+// ignoring the query. So per-test isolation must come from the module's OWN
+// `resetSessionCache()` export (clears the module-level `sessionCache` +
+// inflight promise), not from reloading the module.
+const authModule = await import('../hooks/use-auth-session.js');
+const { fetchAuthSession, resetSessionCache } = authModule;
 
 function createSessionStorage() {
   const store = new Map();
@@ -21,14 +28,11 @@ function createSessionStorage() {
   };
 }
 
-async function loadHookModule() {
-  return import(`${hookModulePath}?t=${Date.now()}-${Math.random()}`);
-}
-
 describe('use-auth-session fetchAuthSession', () => {
   beforeEach(() => {
     global.fetch = undefined;
     global.window = undefined;
+    resetSessionCache();
   });
 
   test('reuses fresh unauthenticated cache across remount-like reloads', async () => {
@@ -45,15 +49,15 @@ describe('use-auth-session fetchAuthSession', () => {
       };
     };
 
-    const firstModule = await loadHookModule();
-    const firstSession = await firstModule.fetchAuthSession();
+    const firstSession = await fetchAuthSession();
 
     assert.equal(fetchCalls, 1);
     assert.equal(firstSession.statusCode, 401);
     assert.equal(firstSession.user, null);
 
-    const secondModule = await loadHookModule();
-    const secondSession = await secondModule.fetchAuthSession();
+    // A "remount" within the cache window reuses the in-memory cache without
+    // refetching.
+    const secondSession = await fetchAuthSession();
 
     assert.equal(fetchCalls, 1);
     assert.deepEqual(secondSession, firstSession);
@@ -73,9 +77,8 @@ describe('use-auth-session fetchAuthSession', () => {
       };
     };
 
-    const authModule = await loadHookModule();
-    const firstSession = await authModule.fetchAuthSession();
-    const secondSession = await authModule.fetchAuthSession();
+    const firstSession = await fetchAuthSession();
+    const secondSession = await fetchAuthSession();
 
     assert.equal(fetchCalls, 1);
     assert.equal(firstSession.statusCode, 429);
@@ -88,7 +91,7 @@ describe('use-auth-session fetchAuthSession', () => {
   test('resetSessionCache clears persisted failure state for next auth transition', async () => {
     const sessionStorage = createSessionStorage();
     let fetchCalls = 0;
- 
+
     global.window = { sessionStorage };
     global.fetch = async () => {
       fetchCalls += 1;
@@ -98,12 +101,11 @@ describe('use-auth-session fetchAuthSession', () => {
         json: async () => ({ ok: false, error: 'Unauthorized' }),
       };
     };
- 
-    const authModule = await loadHookModule();
-    await authModule.fetchAuthSession();
+
+    await fetchAuthSession();
     assert.equal(fetchCalls, 1);
- 
-    authModule.resetSessionCache();
+
+    resetSessionCache();
     global.fetch = async () => {
       fetchCalls += 1;
       return {
@@ -112,9 +114,9 @@ describe('use-auth-session fetchAuthSession', () => {
         json: async () => ({ ok: true, user: { login_id: 'admin01' } }),
       };
     };
- 
-    const nextSession = await authModule.fetchAuthSession();
- 
+
+    const nextSession = await fetchAuthSession();
+
     assert.equal(fetchCalls, 2);
     assert.equal(nextSession.statusCode, 200);
     assert.deepEqual(nextSession.user, { login_id: 'admin01' });
@@ -152,9 +154,8 @@ describe('use-auth-session fetchAuthSession', () => {
       };
     };
 
-    const authModule = await loadHookModule();
-    const firstSession = await authModule.fetchAuthSession();
-    const secondSession = await authModule.fetchAuthSession();
+    const firstSession = await fetchAuthSession();
+    const secondSession = await fetchAuthSession();
 
     assert.equal(fetchCalls, 1);
     assert.equal(firstSession.statusCode, 200);
@@ -177,11 +178,12 @@ describe('use-auth-session fetchAuthSession', () => {
       };
     };
 
-    const firstModule = await loadHookModule();
-    const firstSession = await firstModule.fetchAuthSession();
+    const firstSession = await fetchAuthSession();
 
-    const secondModule = await loadHookModule();
-    const secondSession = await secondModule.fetchAuthSession();
+    // 429 is a transient failure: it must NOT be persisted to sessionStorage,
+    // so a subsequent fetch (after reset) refetches rather than reusing it.
+    resetSessionCache();
+    const secondSession = await fetchAuthSession();
 
     assert.equal(fetchCalls, 2);
     assert.equal(firstSession.statusCode, 429);

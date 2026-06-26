@@ -6,6 +6,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
+    "test": "node --import tsx --env-file=.env --test \"tests/*.test.{js,mjs}\"",
     "typecheck": "tsc --noEmit",
     "migration:v3": "node scripts/migration-v3-orchestrator.mjs",
     "seed:v3:roles": "node scripts/seed-v3-role-fixtures.mjs",

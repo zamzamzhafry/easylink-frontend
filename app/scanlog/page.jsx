@@ -15,6 +15,8 @@ import {
 import { usePaginatedResource } from '@/hooks/use-paginated-resource';
 import { requestJson } from '@/lib/request-json';
 import { cn } from '@/lib/utils';
+import { useAppLocale } from '@/components/app-shell';
+import { getUIText } from '@/lib/localization/ui-texts';
 
 // ─── helpers ───────────────────────────────────────────────────────────────────
 function toIso(date) {
@@ -60,7 +62,7 @@ const IO_LABELS = {
 function VerifyBadge({ mode }) {
   const n = Number(mode ?? 0);
   const map = VERIFY_LABELS[n];
-  if (!map) return <span className="font-mono text-xs text-slate-500">{n}</span>;
+  if (!map) return <span className="font-mono text-xs text-muted-foreground">{n}</span>;
   return (
     <span
       className={cn(
@@ -77,21 +79,21 @@ function IoLabel({ mode }) {
   const n = Number(mode ?? 0);
   const map = IO_LABELS[n];
   return (
-    <span className={cn('text-[11px] font-medium opacity-70', map?.cls ?? 'text-slate-500')}>
+    <span className={cn('text-[11px] font-medium opacity-70', map?.cls ?? 'text-muted-foreground')}>
       {map?.label ?? String(n)}
     </span>
   );
 }
 
 // ─── table headers ─────────────────────────────────────────────────────────────
-const HEADERS = [
-  { key: 'scan_date', label: 'Date', className: 'w-28' },
-  { key: 'scan_time', label: 'Time', className: 'w-24' },
-  { key: 'pin', label: 'PIN', className: 'w-28' },
-  { key: 'verifymode', label: 'Verify', className: 'w-28' },
-  { key: 'iomode', label: 'IO Tag', className: 'w-28' },
-  { key: 'workcode', label: 'Work Code', className: 'w-24 text-right' },
-  { key: 'sn', label: 'Device SN', className: 'min-w-[140px]' },
+const HEADER_KEYS = [
+  { key: 'scan_date', col: 'date', className: 'w-28' },
+  { key: 'scan_time', col: 'time', className: 'w-24' },
+  { key: 'pin', col: 'pin', className: 'w-28' },
+  { key: 'verifymode', col: 'verify', className: 'w-28' },
+  { key: 'iomode', col: 'ioTag', className: 'w-28' },
+  { key: 'workcode', col: 'workCode', className: 'w-24 text-right' },
+  { key: 'sn', col: 'deviceSn', className: 'min-w-[140px]' },
 ];
 
 const LIMIT_OPTIONS = [100, 250, 500, 1000, 2000];
@@ -113,6 +115,9 @@ export default function ScanlogPage() {
   const [downloading, setDownloading] = useState(false);
 
   const toast = useToast();
+  const { locale } = useAppLocale();
+  const t = (path) => getUIText(path, locale);
+  const HEADERS = HEADER_KEYS.map((h) => ({ ...h, label: t(`scanlogPage.cols.${h.col}`) }));
 
   const {
     items: records,
@@ -223,18 +228,17 @@ export default function ScanlogPage() {
         {/* Header */}
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h1 className="flex items-center gap-2 text-xl font-bold text-white">
+            <h1 className="flex items-center gap-2 text-xl font-bold text-foreground">
               <DatabaseZap className="h-5 w-5 text-teal-400" />
-              Scan Log
+              {t('scanlogPage.title')}
             </h1>
-            <p className="mt-0.5 text-xs text-slate-500">
-              Primary analysis should focus on time, date, PIN, and machine SN. IO mode is shown as
-              reference only.
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              {t('scanlogPage.description')}
             </p>
-            <p className="mt-1 text-[11px] text-slate-500">
-              Data source:{' '}
+            <p className="mt-1 text-[11px] text-muted-foreground">
+              {t('scanlogPage.dataSource')}:{' '}
               <span className="font-semibold text-teal-300">
-                {source === 'canonical' ? 'Canonical Linux Store' : 'Legacy Scanlog Table'}
+                {source === 'canonical' ? t('scanlogPage.sourceCanonical') : t('scanlogPage.sourceLegacy')}
               </span>
             </p>
           </div>
@@ -247,10 +251,10 @@ export default function ScanlogPage() {
                 retry();
               }}
               disabled={loading}
-              className="flex items-center gap-1.5 rounded-lg border border-slate-700 px-3 py-2 text-xs text-slate-400 hover:text-white disabled:opacity-40"
+              className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-xs text-muted-foreground hover:text-foreground disabled:opacity-40"
             >
               <RefreshCw className={cn('h-3.5 w-3.5', loading && 'animate-spin')} />
-              Refresh
+              {t('scanlogPage.refresh')}
             </button>
             <button
               type="button"
@@ -264,35 +268,35 @@ export default function ScanlogPage() {
           </div>
         </div>
 
-        <div className="flex flex-wrap gap-2 rounded-xl border border-slate-800 bg-slate-900 p-3 text-xs">
+        <div className="flex flex-wrap gap-2 rounded-xl border border-border bg-card p-3 text-xs">
           <Link
             href="/attendance"
-            className="rounded-lg border border-slate-700 px-3 py-1.5 text-slate-300 transition-colors hover:border-teal-500 hover:text-teal-300"
+            className="rounded-lg border border-border px-3 py-1.5 text-foreground transition-colors hover:border-teal-500 hover:text-teal-300"
           >
             Attendance Summary
           </Link>
           <Link
             href="/attendance/review"
-            className="rounded-lg border border-slate-700 px-3 py-1.5 text-slate-300 transition-colors hover:border-amber-500 hover:text-amber-300"
+            className="rounded-lg border border-border px-3 py-1.5 text-foreground transition-colors hover:border-amber-500 hover:text-amber-300"
           >
             Attendance Review
           </Link>
           <Link
             href="/schedule"
-            className="rounded-lg border border-slate-700 px-3 py-1.5 text-slate-300 transition-colors hover:border-violet-500 hover:text-violet-300"
+            className="rounded-lg border border-border px-3 py-1.5 text-foreground transition-colors hover:border-violet-500 hover:text-violet-300"
           >
             Schedule Planner
           </Link>
         </div>
 
         {/* Filters */}
-        <div className="rounded-xl border border-slate-800 bg-slate-900 p-4">
+        <div className="rounded-xl border border-border bg-card p-4">
           <div className="flex flex-wrap items-end gap-3">
             {/* From */}
             <div>
               <label
                 htmlFor="scanlog-from"
-                className="mb-1 block text-[11px] font-medium text-slate-500"
+                className="mb-1 block text-[11px] font-medium text-muted-foreground"
               >
                 From
               </label>
@@ -301,7 +305,7 @@ export default function ScanlogPage() {
                 type="date"
                 value={from}
                 onChange={(e) => setFrom(e.target.value)}
-                className="rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-white focus:border-teal-500 focus:outline-none"
+                className="rounded-lg border border-border bg-muted px-3 py-2 text-sm text-foreground focus:border-teal-500 focus:outline-none"
               />
             </div>
 
@@ -309,7 +313,7 @@ export default function ScanlogPage() {
             <div>
               <label
                 htmlFor="scanlog-to"
-                className="mb-1 block text-[11px] font-medium text-slate-500"
+                className="mb-1 block text-[11px] font-medium text-muted-foreground"
               >
                 To
               </label>
@@ -318,7 +322,7 @@ export default function ScanlogPage() {
                 type="date"
                 value={to}
                 onChange={(e) => setTo(e.target.value)}
-                className="rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-white focus:border-teal-500 focus:outline-none"
+                className="rounded-lg border border-border bg-muted px-3 py-2 text-sm text-foreground focus:border-teal-500 focus:outline-none"
               />
             </div>
 
@@ -326,7 +330,7 @@ export default function ScanlogPage() {
             <SearchInput
               value={pinFilter}
               onChange={setPinFilter}
-              placeholder="Search PIN..."
+              placeholder={t('scanlogPage.searchPin')}
               className="w-48"
             />
 
@@ -334,7 +338,7 @@ export default function ScanlogPage() {
             <div>
               <label
                 htmlFor="scanlog-limit"
-                className="mb-1 block text-[11px] font-medium text-slate-500"
+                className="mb-1 block text-[11px] font-medium text-muted-foreground"
               >
                 Per page
               </label>
@@ -345,7 +349,7 @@ export default function ScanlogPage() {
                   setLimit(Number(e.target.value));
                   setPage(1);
                 }}
-                className="rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-white focus:border-teal-500 focus:outline-none"
+                className="rounded-lg border border-border bg-muted px-3 py-2 text-sm text-foreground focus:border-teal-500 focus:outline-none"
               >
                 {LIMIT_OPTIONS.map((l) => (
                   <option key={l} value={l}>
@@ -358,7 +362,7 @@ export default function ScanlogPage() {
             <div>
               <label
                 htmlFor="scanlog-source"
-                className="mb-1 block text-[11px] font-medium text-slate-500"
+                className="mb-1 block text-[11px] font-medium text-muted-foreground"
               >
                 Source
               </label>
@@ -375,10 +379,10 @@ export default function ScanlogPage() {
                   setReloadToken((value) => value + 1);
                   setPage(1);
                 }}
-                className="rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-white focus:border-teal-500 focus:outline-none"
+                className="rounded-lg border border-border bg-muted px-3 py-2 text-sm text-foreground focus:border-teal-500 focus:outline-none"
               >
-                <option value="canonical">Canonical Linux Store (tb_scanlog_safe_events)</option>
-                <option value="legacy">Legacy Scanlog Table (tb_scanlog)</option>
+                <option value="canonical">{t('scanlogPage.sourceCanonical')} (tb_scanlog_safe_events)</option>
+                <option value="legacy">{t('scanlogPage.sourceLegacy')} (tb_scanlog)</option>
               </select>
             </div>
 
@@ -399,7 +403,7 @@ export default function ScanlogPage() {
                   key={p.label}
                   type="button"
                   onClick={() => applyPreset(p)}
-                  className="rounded-lg border border-slate-700 px-3 py-2 text-xs text-slate-400 hover:border-teal-600 hover:text-teal-300"
+                  className="rounded-lg border border-border px-3 py-2 text-xs text-muted-foreground hover:border-teal-600 hover:text-teal-300"
                 >
                   {p.label}
                 </button>
@@ -408,15 +412,15 @@ export default function ScanlogPage() {
           </div>
 
           {/* Stats row */}
-          <div className="mt-3 flex items-center gap-4 border-t border-slate-800 pt-3 text-xs text-slate-500">
+          <div className="mt-3 flex items-center gap-4 border-t border-border pt-3 text-xs text-muted-foreground">
             <span>
-              Showing <span className="font-semibold text-slate-300">{records.length}</span> of{' '}
-              <span className="font-semibold text-slate-300">{total.toLocaleString()}</span> records
+              Showing <span className="font-semibold text-foreground">{records.length}</span> of{' '}
+              <span className="font-semibold text-foreground">{total.toLocaleString()}</span> records
             </span>
             {pages > 1 && (
               <span>
-                Page <span className="font-semibold text-slate-300">{page}</span> /{' '}
-                <span className="font-semibold text-slate-300">{pages}</span>
+                Page <span className="font-semibold text-foreground">{page}</span> /{' '}
+                <span className="font-semibold text-foreground">{pages}</span>
               </span>
             )}
           </div>
@@ -444,7 +448,7 @@ export default function ScanlogPage() {
             <thead>
               <TableHeadRow headers={HEADERS} />
             </thead>
-            <tbody className="divide-y divide-slate-800">
+            <tbody className="divide-y divide-border">
               {loading ? (
                 <TableLoadingRow colSpan={HEADERS.length} />
               ) : records.length === 0 ? (
@@ -453,13 +457,13 @@ export default function ScanlogPage() {
                 records.map((r) => (
                   <tr
                     key={`${r.pin}-${r.scan_date}-${r.scan_time}-${r.verifymode}-${r.iomode}-${r.workcode}-${r.sn}`}
-                    className="hover:bg-slate-800/40"
+                    className="hover:bg-muted/40"
                   >
                     {/* Date */}
-                    <td className="px-4 py-2.5 font-mono text-xs text-slate-300">{r.scan_date}</td>
+                    <td className="px-4 py-2.5 font-mono text-xs text-foreground">{r.scan_date}</td>
 
                     {/* Time */}
-                    <td className="px-4 py-2.5 font-mono text-xs font-semibold text-white">
+                    <td className="px-4 py-2.5 font-mono text-xs font-semibold text-foreground">
                       {r.scan_time}
                     </td>
 
@@ -479,12 +483,12 @@ export default function ScanlogPage() {
                     </td>
 
                     {/* Work Code */}
-                    <td className="px-4 py-2.5 text-right font-mono text-xs text-slate-500">
+                    <td className="px-4 py-2.5 text-right font-mono text-xs text-muted-foreground">
                       {r.workcode}
                     </td>
 
                     {/* SN */}
-                    <td className="px-4 py-2.5 font-mono text-[11px] text-slate-500">
+                    <td className="px-4 py-2.5 font-mono text-[11px] text-muted-foreground">
                       {r.sn || '—'}
                     </td>
                   </tr>
@@ -501,7 +505,7 @@ export default function ScanlogPage() {
               type="button"
               onClick={() => goPage(page - 1)}
               disabled={page <= 1 || loading}
-              className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-700 text-slate-400 hover:text-white disabled:opacity-40"
+              className="flex h-8 w-8 items-center justify-center rounded-lg border border-border text-muted-foreground hover:text-foreground disabled:opacity-40"
             >
               <ChevronLeft className="h-4 w-4" />
             </button>
@@ -516,7 +520,7 @@ export default function ScanlogPage() {
               }, [])
               .map((item) =>
                 typeof item === 'string' && item.startsWith('ellipsis-') ? (
-                  <span key={item} className="px-1 text-xs text-slate-600">
+                  <span key={item} className="px-1 text-xs text-muted-foreground">
                     …
                   </span>
                 ) : (
@@ -529,7 +533,7 @@ export default function ScanlogPage() {
                       'flex h-8 w-8 items-center justify-center rounded-lg text-xs font-medium',
                       item === page
                         ? 'bg-teal-600 text-white'
-                        : 'border border-slate-700 text-slate-400 hover:text-white'
+                        : 'border border-border text-muted-foreground hover:text-foreground'
                     )}
                   >
                     {item}
@@ -541,7 +545,7 @@ export default function ScanlogPage() {
               type="button"
               onClick={() => goPage(page + 1)}
               disabled={page >= pages || loading}
-              className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-700 text-slate-400 hover:text-white disabled:opacity-40"
+              className="flex h-8 w-8 items-center justify-center rounded-lg border border-border text-muted-foreground hover:text-foreground disabled:opacity-40"
             >
               <ChevronRight className="h-4 w-4" />
             </button>

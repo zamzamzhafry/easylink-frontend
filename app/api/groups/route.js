@@ -166,9 +166,19 @@ export async function POST(req) {
   }
 
   if (body.action === 'delete_group') {
-    await pool.query('DELETE FROM tb_employee_group WHERE group_id = ?', [body.id]);
-    await pool.query('DELETE FROM tb_user_group_access WHERE group_id = ?', [body.id]);
-    await pool.query('DELETE FROM tb_group WHERE id = ?', [body.id]);
+    const conn = await pool.getConnection();
+    try {
+      await conn.beginTransaction();
+      await conn.query('DELETE FROM tb_employee_group WHERE group_id = ?', [body.id]);
+      await conn.query('DELETE FROM tb_user_group_access WHERE group_id = ?', [body.id]);
+      await conn.query('DELETE FROM tb_group WHERE id = ?', [body.id]);
+      await conn.commit();
+    } catch (err) {
+      await conn.rollback();
+      throw err;
+    } finally {
+      conn.release();
+    }
     return NextResponse.json({ ok: true });
   }
 

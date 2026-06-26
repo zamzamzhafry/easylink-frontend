@@ -239,7 +239,7 @@ export default function RightOpsSidebar({ currentUser, collapsed = false, onTogg
           <button
             type="button"
             onClick={() => onToggle?.()}
-            className="pointer-events-auto relative inline-flex h-12 w-12 items-center justify-center rounded-full border border-amber-500/40 bg-slate-950/90 text-amber-200 shadow-lg shadow-slate-950/50 transition-colors hover:bg-slate-900"
+            className="pointer-events-auto relative inline-flex h-12 w-12 items-center justify-center rounded-full border border-amber-500/40 bg-background/90 text-amber-200 shadow-lg transition-colors hover:bg-card"
             aria-label={`${getUIText('rightOpsSidebar.reviewAria', resolvedLocale).replace('{{pending}}', String(pendingReviewCount))}. ${actionTexts.expandSidebar}`}
             aria-expanded={false}
           >

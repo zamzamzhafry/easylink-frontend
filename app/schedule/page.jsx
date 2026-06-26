@@ -8,8 +8,10 @@ import {
   ChevronRight,
   Download,
   FileSpreadsheet,
+  Filter,
   Pencil,
   Printer,
+  SlidersHorizontal,
   Upload,
   Users,
   X,
@@ -24,6 +26,8 @@ import { useToast } from '@/components/ui/toast-provider';
 import { requestJson } from '@/lib/request-json';
 import { PAGE_SIZE_OPTIONS } from '@/lib/constants';
 import useAuthSession from '@/hooks/use-auth-session';
+import { useAppLocale } from '@/components/app-shell';
+import { getUIText } from '@/lib/localization/ui-texts';
 import {
   canAccessAttendanceReviewQueue,
   canManageSchedule,
@@ -49,11 +53,11 @@ import { sanitizeExcelSheetName } from '@/lib/quick-summaries-export';
 
 
 const TABS = [
-  { key: 'plan', label: 'Monthly Plan', requiresManage: false },
-  { key: 'punches', label: 'Punch Shortcut', requiresManage: false },
-  { key: 'quick_summaries', label: 'Quick Summaries', requiresManage: false },
-  { key: 'import', label: 'Import / Check', requiresManage: true },
-  { key: 'summary', label: 'Employee Metrics', requiresManage: false },
+  { key: 'plan', requiresManage: false },
+  { key: 'punches', requiresManage: false },
+  { key: 'quick_summaries', requiresManage: false },
+  { key: 'import', requiresManage: true },
+  { key: 'summary', requiresManage: false },
 ];
 
 
@@ -96,6 +100,8 @@ function uniqueByEmployeeId(employees) {
 export default function SchedulePage() {
   const { success, warning } = useToast();
   const { user: currentUser } = useAuthSession();
+  const { locale } = useAppLocale();
+  const t = (path) => getUIText(path, locale);
   const searchParams = useSearchParams();
   const [activeTab, setActiveTab] = useState('plan');
   const [monthOf, setMonthOf] = useState(() => {
@@ -243,8 +249,8 @@ export default function SchedulePage() {
   const canEdit = canManageSchedule(currentUser);
   const canAccessReviewQueue = canAccessAttendanceReviewQueue(currentUser);
   const visibleTabs = useMemo(
-    () => TABS.filter((tab) => !tab.requiresManage || canEdit),
-    [canEdit]
+    () => TABS.filter((tab) => !tab.requiresManage || canEdit).map((tab) => ({ ...tab, label: t(`schedulePage.tabs.${tab.key}`) })),
+    [canEdit, t]
   );
 
   useEffect(() => {
@@ -292,6 +298,28 @@ export default function SchedulePage() {
   const setShift = async (employeeId, dateString, shiftId) => {
     const employee = data.employees.find((item) => Number(item.id) === Number(employeeId));
     const shift = data.shifts.find((item) => Number(item.id) === Number(shiftId));
+    // Optimistic: patch the single cell locally, skip full-table reload.
+    // Falls back to full load only on error so UI never drifts from server.
+    const prevSchedules = data.schedules;
+    setData((prev) => {
+      const exists = prev.schedules.some(
+        (s) =>
+          Number(s.karyawan_id) === Number(employeeId) &&
+          normalizeDate(s.tanggal) === dateString
+      );
+      const next = exists
+        ? prev.schedules.map((s) =>
+            Number(s.karyawan_id) === Number(employeeId) &&
+            normalizeDate(s.tanggal) === dateString
+              ? { ...s, shift_id: shiftId ? Number(shiftId) : null }
+              : s
+          )
+        : [
+            ...prev.schedules,
+            { karyawan_id: Number(employeeId), tanggal: dateString, shift_id: shiftId ? Number(shiftId) : null },
+          ];
+      return { ...prev, schedules: next };
+    });
     try {
       await requestJson('/api/schedule', {
         method: 'POST',
@@ -303,12 +331,13 @@ export default function SchedulePage() {
           ...(shiftId ? { shift_id: shiftId } : {}),
         }),
       });
-      await load();
       success(
         `${employee?.nama || `Employee #${employeeId}`} | ${dateString} -> ${shift ? shift.nama_shift : 'Not Assigned'}`,
         'Schedule updated'
       );
     } catch (error) {
+      // Revert on failure.
+      setData((prev) => ({ ...prev, schedules: prevSchedules }));
       warning(error.message || 'Failed to set shift schedule.', 'Unable to set shift');
     }
   };
@@ -352,10 +381,10 @@ export default function SchedulePage() {
   }, [quickSummariesData]);
 
   const selectedGroupLabel = useMemo(() => {
-    if (groupTab === 'all') return 'All Groups';
-    if (groupTab === 'ungrouped') return 'Unassigned';
-    return groups.find((item) => String(item.id) === String(groupTab))?.name || 'Unknown Group';
-  }, [groupTab, groups]);
+    if (groupTab === 'all') return t('schedulePage.allGroups');
+    if (groupTab === 'ungrouped') return t('schedulePage.unassigned');
+    return groups.find((item) => String(item.id) === String(groupTab))?.name || t('schedulePage.allGroups');
+  }, [groupTab, groups, t]);
 
   const chooseScheduleExportScope = useCallback(() => {
     if (groupTab === 'all') return 'current';
@@ -511,10 +540,11 @@ export default function SchedulePage() {
   };
 
   const exportTemplateExcel = async () => {
-    const scope = chooseScheduleExportScope();
-    const allExportEmployees = resolveExportEmployees(scope);
-    const XLSX = await import('xlsx');
-    const workbook = XLSX.utils.book_new();
+    try {
+      const scope = chooseScheduleExportScope();
+      const allExportEmployees = resolveExportEmployees(scope);
+      const XLSX = await import('xlsx');
+      const workbook = XLSX.utils.book_new();
 
     // --- Info sheet ---
     const noteRows = [
@@ -584,9 +614,12 @@ export default function SchedulePage() {
       workbook,
       `schedule_${from}_${to}_${scope === 'all' ? 'all_groups' : groupTab}.xlsx`
     );
+    } catch (error) {
+      warning(error.message || 'Schedule export failed.', 'Unable to export schedule');
+    }
   };
 
-  const printSchedule = () => {
+  const printSchedule = (compact = false) => {
     const scope = chooseScheduleExportScope();
     const exportEmployees = resolveExportEmployees(scope);
     const exportGroupLabel = scope === 'all' ? 'All Groups' : selectedGroupLabel;
@@ -601,6 +634,7 @@ export default function SchedulePage() {
         from,
         to,
         groupLabel: exportGroupLabel,
+        compact,
       })
     );
     popup.document.close();
@@ -721,44 +755,47 @@ export default function SchedulePage() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <p className="mb-1 text-xs font-mono uppercase tracking-widest text-[hsl(var(--primary))]">Planning</p>
-          <h1 className="text-3xl font-bold text-[hsl(var(--foreground))]">Monthly Group Schedule</h1>
+          <p className="mb-1 text-xs font-mono uppercase tracking-widest text-[hsl(var(--primary))]">{t('schedulePage.eyebrow')}</p>
+          <h1 className="text-3xl font-bold text-[hsl(var(--foreground))]">{t('schedulePage.title')}</h1>
           <p className="mt-1 text-sm text-[hsl(var(--muted-foreground))]">
-            Monthly planning by group, with done/pending/future estimated work hours.
+            {t('schedulePage.description')}
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
           <Button variant="soft" tone="success" size="sm" onClick={exportTemplateExcel}>
-            <FileSpreadsheet className="h-4 w-4" /> Export Excel
+            <FileSpreadsheet className="h-4 w-4" /> {t('schedulePage.exportExcel')}
           </Button>
           <Button variant="soft" tone="primary" size="sm" onClick={exportTemplateCsv}>
-            <Download className="h-4 w-4" /> Export CSV
+            <Download className="h-4 w-4" /> {t('schedulePage.exportCsv')}
           </Button>
-          <Button variant="outline" tone="neutral" size="sm" onClick={printSchedule}>
-            <Printer className="h-4 w-4" /> Print / PDF
+          <Button variant="outline" tone="neutral" size="sm" onClick={() => printSchedule(false)}>
+            <Printer className="h-4 w-4" /> {t('schedulePage.print')}
+          </Button>
+          <Button variant="outline" tone="neutral" size="sm" onClick={() => printSchedule(true)} title="Icon-only compact print">
+            <Printer className="h-4 w-4" /> {t('schedulePage.printSymbols')}
           </Button>
           {canAccessReviewQueue && (
             <Link
               href="/attendance/review"
               className="flex items-center gap-2 rounded-xl border border-sky-500/30 bg-sky-500/10 px-4 py-2.5 text-sm text-sky-300 transition-colors hover:bg-sky-500/20"
             >
-              Review Punches Shortcut
+              {t('schedulePage.reviewPunches')}
             </Link>
           )}
           {editMode && canEdit ? (
             <>
               <Button variant="soft" tone="primary" size="sm" onClick={() => setBulkModal(true)}>
-                <Users className="h-4 w-4" /> Bulk Assign Group
+                <Users className="h-4 w-4" /> {t('schedulePage.bulkAssign')}
               </Button>
               <Button variant="soft" tone="danger" size="sm" onClick={() => setEditMode(false)}>
-                <X className="h-4 w-4" /> Done Editing
+                <X className="h-4 w-4" /> {t('schedulePage.doneEditing')}
               </Button>
             </>
           ) : (
             <>
               {canEdit && (
                 <Button variant="soft" tone="primary" size="sm" onClick={() => setEditMode(true)}>
-                  <Pencil className="h-4 w-4" /> Plan a Schedule
+                  <Pencil className="h-4 w-4" /> {t('schedulePage.planSchedule')}
                 </Button>
               )}
             </>
@@ -766,134 +803,144 @@ export default function SchedulePage() {
         </div>
       </div>
 
-      <div className="flex flex-wrap items-center gap-2 rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] p-2">
-        <Button
-          variant="outline"
-          tone="neutral"
-          size="icon"
-          onClick={() => setMonthOf((current) => addDays(monthStart(current), -1))}
-        >
-          <ChevronLeft className="h-4 w-4" />
-        </Button>
-        <div className="rounded-lg border border-[hsl(var(--border))] px-3 py-2 font-mono text-sm text-[hsl(var(--foreground))]">
-          {monthTitle}
-        </div>
-        <Button
-          variant="outline"
-          tone="neutral"
-          size="icon"
-          onClick={() => setMonthOf((current) => addDays(monthEnd(current), 1))}
-        >
-          <ChevronRight className="h-4 w-4" />
-        </Button>
-        <div className="ml-auto font-mono text-xs text-[hsl(var(--muted-foreground))]">
-          {compactRangeLabel}
-        </div>
-      </div>
-
-      <div className="flex flex-wrap items-center gap-3 rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] p-3">
-        <label htmlFor="schedule-zoom" className="text-xs text-[hsl(var(--muted-foreground))]">
-          Day Columns Zoom
-        </label>
-        <input
-          id="schedule-zoom"
-          type="range"
-          min={75}
-          max={150}
-          step={5}
-          value={zoomPercent}
-          onChange={(event) => setZoomPercent(Number(event.target.value))}
-          className="h-1.5 w-48 cursor-pointer accent-[hsl(var(--primary))]"
-        />
-        <span className="font-mono text-xs text-[hsl(var(--primary))]">{zoomPercent}%</span>
-        <Button variant="outline" tone="neutral" size="sm" onClick={() => setZoomPercent(100)}>
-          Reset
-        </Button>
-        <span className="text-xs text-[hsl(var(--muted-foreground))]">Employee column stays fixed.</span>
-      </div>
-
-      <div className="flex flex-wrap gap-2 rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] p-2">
-        {visibleTabs.map((tab) => (
-          <button
-            key={tab.key}
-            type="button"
-            onClick={() => setActiveTab(tab.key)}
-            className={`rounded-lg px-3 py-2 text-xs font-medium transition-colors ${
-              activeTab === tab.key
-                ? 'bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))]'
-                : 'text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--secondary))] hover:text-[hsl(var(--foreground))]'
-            }`}
+      <div className="rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] p-2 space-y-2">
+        {/* month nav + zoom */}
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            variant="outline"
+            tone="neutral"
+            size="icon"
+            onClick={() => setMonthOf((current) => addDays(monthStart(current), -1))}
+            aria-label="Previous month"
           >
-            {tab.label}
-          </button>
-        ))}
-      </div>
-
-      <div className="rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] p-2">
-        <button
-          type="button"
-          onClick={() => setGroupFilterOpen((open) => !open)}
-          className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-[hsl(var(--foreground))] transition-colors hover:bg-[hsl(var(--secondary))]"
-        >
-          <span>Group Employee Filter</span>
-          <span className="font-mono text-[11px] text-[hsl(var(--primary))]">
-            {groupFilterOpen ? 'Hide' : 'Show'}
-          </span>
-        </button>
-        {groupFilterOpen && (
-          <div className="mt-2 flex flex-wrap gap-2">
-            <button
-              type="button"
-              onClick={() => {
-                setGroupTab('all');
-                setEmployeePage(1);
-              }}
-              className={`rounded-lg px-3 py-1.5 text-xs transition-colors ${
-                groupTab === 'all'
-                  ? 'bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))]'
-                  : 'text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--secondary))] hover:text-[hsl(var(--foreground))]'
-              }`}
-            >
-              All Groups ({data.employees.length})
-            </button>
-            {groups.map((group) => {
-              const count = data.employees.filter(
-                (employee) => String(employee.group_id) === String(group.id)
-              ).length;
-              return (
-                <button
-                  key={group.id}
-                  type="button"
-                  onClick={() => {
-                    setGroupTab(String(group.id));
-                    setEmployeePage(1);
-                  }}
-                  className={`rounded-lg px-3 py-1.5 text-xs transition-colors ${
-                    String(groupTab) === String(group.id)
-                      ? 'bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))]'
-                      : 'text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--secondary))] hover:text-[hsl(var(--foreground))]'
-                  }`}
-                >
-                  {group.name} ({count})
-                </button>
-              );
-            })}
-            <button
-              type="button"
-              onClick={() => {
-                setGroupTab('ungrouped');
-                setEmployeePage(1);
-              }}
-              className={`rounded-lg px-3 py-1.5 text-xs transition-colors ${
-                groupTab === 'ungrouped'
-                  ? 'bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))]'
-                  : 'text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--secondary))] hover:text-[hsl(var(--foreground))]'
-              }`}
-            >
-              Unassigned ({data.employees.filter((employee) => !employee.group_id).length})
-            </button>
+            <ChevronLeft className="h-4 w-4" />
+          </Button>
+          <div className="rounded-lg border border-[hsl(var(--border))] px-3 py-2 font-mono text-sm text-[hsl(var(--foreground))]">
+            {monthTitle}
           </div>
-        )}
+          <Button
+            variant="outline"
+            tone="neutral"
+            size="icon"
+            onClick={() => setMonthOf((current) => addDays(monthEnd(current), 1))}
+            aria-label="Next month"
+          >
+            <ChevronRight className="h-4 w-4" />
+          </Button>
+          <div className="ml-auto font-mono text-xs text-[hsl(var(--muted-foreground))]">
+            {compactRangeLabel}
+          </div>
+          <div className="flex items-center gap-2 border-l border-[hsl(var(--border))] pl-3">
+            <SlidersHorizontal className="h-3.5 w-3.5 text-[hsl(var(--muted-foreground))]" />
+            <label htmlFor="schedule-zoom" className="text-xs text-[hsl(var(--muted-foreground))]">
+              {t('schedulePage.zoom')}
+            </label>
+            <input
+              id="schedule-zoom"
+              type="range"
+              min={75}
+              max={150}
+              step={5}
+              value={zoomPercent}
+              onChange={(event) => setZoomPercent(Number(event.target.value))}
+              className="h-1.5 w-28 cursor-pointer accent-[hsl(var(--primary))]"
+              aria-label="Day columns zoom"
+            />
+            <span className="font-mono text-xs text-[hsl(var(--primary))]">{zoomPercent}%</span>
+            <Button variant="outline" tone="neutral" size="sm" onClick={() => setZoomPercent(100)}>
+              {t('schedulePage.reset')}
+            </Button>
+          </div>
+        </div>
+
+        {/* tabs */}
+        <div className="flex flex-wrap gap-1 border-t border-[hsl(var(--border))] pt-2">
+          {visibleTabs.map((tab) => (
+            <button
+              key={tab.key}
+              type="button"
+              onClick={() => setActiveTab(tab.key)}
+              className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
+                activeTab === tab.key
+                  ? 'bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))]'
+                  : 'text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--secondary))] hover:text-[hsl(var(--foreground))]'
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+
+        {/* group filter */}
+        <div className="border-t border-[hsl(var(--border))] pt-2">
+          <button
+            type="button"
+            onClick={() => setGroupFilterOpen((open) => !open)}
+            className="flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-left text-xs font-semibold uppercase tracking-wide text-[hsl(var(--foreground))] transition-colors hover:bg-[hsl(var(--secondary))]"
+          >
+            <span className="flex items-center gap-1.5">
+              <Filter className="h-3.5 w-3.5" />
+              {t('schedulePage.groupFilter')}
+            </span>
+            <span className="font-mono text-[11px] text-[hsl(var(--primary))]">
+              {groupFilterOpen ? t('schedulePage.hide') : t('schedulePage.show')}
+            </span>
+          </button>
+          {groupFilterOpen && (
+            <div className="mt-1 flex flex-wrap gap-1.5">
+              <button
+                type="button"
+                onClick={() => {
+                  setGroupTab('all');
+                  setEmployeePage(1);
+                }}
+                className={`rounded-lg px-3 py-1.5 text-xs transition-colors ${
+                  groupTab === 'all'
+                    ? 'bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))]'
+                    : 'text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--secondary))] hover:text-[hsl(var(--foreground))]'
+                }`}
+              >
+                {t('schedulePage.allGroups')} ({data.employees.length})
+              </button>
+              {groups.map((group) => {
+                const count = data.employees.filter(
+                  (employee) => String(employee.group_id) === String(group.id)
+                ).length;
+                return (
+                  <button
+                    key={group.id}
+                    type="button"
+                    onClick={() => {
+                      setGroupTab(String(group.id));
+                      setEmployeePage(1);
+                    }}
+                    className={`rounded-lg px-3 py-1.5 text-xs transition-colors ${
+                      String(groupTab) === String(group.id)
+                        ? 'bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))]'
+                        : 'text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--secondary))] hover:text-[hsl(var(--foreground))]'
+                    }`}
+                  >
+                    {group.name} ({count})
+                  </button>
+                );
+              })}
+              <button
+                type="button"
+                onClick={() => {
+                  setGroupTab('ungrouped');
+                  setEmployeePage(1);
+                }}
+                className={`rounded-lg px-3 py-1.5 text-xs transition-colors ${
+                  groupTab === 'ungrouped'
+                    ? 'bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))]'
+                    : 'text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--secondary))] hover:text-[hsl(var(--foreground))]'
+                }`}
+              >
+                {t('schedulePage.unassigned')} ({data.employees.filter((employee) => !employee.group_id).length})
+              </button>
+            </div>
+          )}
+        </div>
       </div>
 
       {activeTab === 'plan' && (

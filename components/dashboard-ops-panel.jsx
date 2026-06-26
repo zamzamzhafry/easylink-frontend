@@ -64,7 +64,7 @@ export default function DashboardOpsPanel() {
   const healthSummary = payload?.health_summary || null;
 
   return (
-    <section className="rounded-xl border border-slate-800 bg-slate-900">
+    <section className="rounded-xl border border-border bg-card">
       <button
         type="button"
         onClick={() => setOpen((prev) => !prev)}
@@ -75,27 +75,27 @@ export default function DashboardOpsPanel() {
           <Wrench className="h-4 w-4 text-teal-400" />
         </div>
         <div className="flex-1">
-          <h2 className="text-sm font-semibold text-white">Operations Control</h2>
-          <p className="mt-0.5 text-xs text-slate-400">
+          <h2 className="text-sm font-semibold text-foreground">Operations Control</h2>
+          <p className="mt-0.5 text-xs text-muted-foreground">
             {open ? T('dashboardOps.hints.expanded') : T('dashboardOps.hints.collapsed')}
           </p>
         </div>
-        <span className="rounded-full border border-slate-700 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+        <span className="rounded-full border border-border px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
           {open ? T('dashboardOps.actions.collapse') : T('dashboardOps.actions.expand')}
         </span>
         <ChevronDown
-          className={cn('h-4 w-4 text-slate-400 transition-transform', open && 'rotate-180')}
+          className={cn('h-4 w-4 text-muted-foreground transition-transform', open && 'rotate-180')}
         />
       </button>
 
       {open && (
         <>
-          <div className="flex items-center gap-2 border-t border-slate-800 px-5 py-3">
+          <div className="flex items-center gap-2 border-t border-border px-5 py-3">
             <button
               type="button"
               onClick={loadStatus}
               disabled={loading}
-              className="inline-flex items-center gap-2 rounded-lg border border-slate-700 px-3 py-2 text-xs font-medium text-slate-300 transition-colors hover:border-slate-500 hover:text-white disabled:opacity-60"
+              className="inline-flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-xs font-medium text-foreground transition-colors hover:border-border hover:text-foreground disabled:opacity-60"
             >
               <RefreshCcw className="h-3.5 w-3.5" />
               {T('dashboardOps.actions.checkRecoveryStatus')}
@@ -109,36 +109,36 @@ export default function DashboardOpsPanel() {
           </div>
 
           <div className="grid gap-4 px-5 py-4 lg:grid-cols-[1.2fr_0.8fr]">
-            <div className="rounded-lg border border-slate-800 bg-slate-950/60 p-4">
-              <div className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-400">
+            <div className="rounded-lg border border-border bg-card/60 p-4">
+              <div className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                 {T('dashboardOps.labels.taskStatus')}
               </div>
               {loading ? (
                 <div className="space-y-2">
-                  <div className="h-4 w-40 animate-pulse rounded bg-slate-800" />
-                  <div className="h-4 w-56 animate-pulse rounded bg-slate-800/80" />
-                  <div className="h-4 w-48 animate-pulse rounded bg-slate-800/70" />
+                  <div className="h-4 w-40 animate-pulse rounded bg-muted" />
+                  <div className="h-4 w-56 animate-pulse rounded bg-muted/80" />
+                  <div className="h-4 w-48 animate-pulse rounded bg-muted/70" />
                 </div>
               ) : (
-                <dl className="grid gap-2 text-sm text-slate-300 sm:grid-cols-2">
+                <dl className="grid gap-2 text-sm text-foreground sm:grid-cols-2">
                   <div>
-                    <dt className="text-xs uppercase tracking-wide text-slate-500">Task</dt>
-                    <dd className="mt-1 font-mono text-xs text-white">{task?.name || '-'}</dd>
+                    <dt className="text-xs uppercase tracking-wide text-muted-foreground">Task</dt>
+                    <dd className="mt-1 font-mono text-xs text-foreground">{task?.name || '-'}</dd>
                   </div>
                   <div>
-                    <dt className="text-xs uppercase tracking-wide text-slate-500">State</dt>
+                    <dt className="text-xs uppercase tracking-wide text-muted-foreground">State</dt>
                     <dd className="mt-1">{task?.state || '-'}</dd>
                   </div>
                   <div>
-                    <dt className="text-xs uppercase tracking-wide text-slate-500">Last Run</dt>
+                    <dt className="text-xs uppercase tracking-wide text-muted-foreground">Last Run</dt>
                     <dd className="mt-1">{toReadableDate(task?.last_run_time)}</dd>
                   </div>
                   <div>
-                    <dt className="text-xs uppercase tracking-wide text-slate-500">Next Run</dt>
+                    <dt className="text-xs uppercase tracking-wide text-muted-foreground">Next Run</dt>
                     <dd className="mt-1">{toReadableDate(task?.next_run_time)}</dd>
                   </div>
                   <div>
-                    <dt className="text-xs uppercase tracking-wide text-slate-500">Last Result</dt>
+                    <dt className="text-xs uppercase tracking-wide text-muted-foreground">Last Result</dt>
                     <dd className="mt-1">
                       {task?.last_task_result_label || '-'}
                       {task?.last_task_result != null ? ` (${task.last_task_result})` : ''}
@@ -148,18 +148,18 @@ export default function DashboardOpsPanel() {
               )}
             </div>
 
-            <div className="rounded-lg border border-slate-800 bg-slate-950/60 p-4">
-              <div className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-400">
+            <div className="rounded-lg border border-border bg-card/60 p-4">
+              <div className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                 {T('dashboardOps.labels.healthSummary')}
               </div>
               {!healthSummary ? (
-                <p className="text-sm text-slate-500">{T('dashboardOps.healthSummary.empty')}</p>
+                <p className="text-sm text-muted-foreground">{T('dashboardOps.healthSummary.empty')}</p>
               ) : (
-                <dl className="grid gap-2 text-sm text-slate-300">
+                <dl className="grid gap-2 text-sm text-foreground">
                   {Object.entries(healthSummary).map(([key, value]) => (
                     <div key={key}>
-                      <dt className="text-xs uppercase tracking-wide text-slate-500">{key}</dt>
-                      <dd className="mt-1 break-words font-mono text-xs text-white">
+                      <dt className="text-xs uppercase tracking-wide text-muted-foreground">{key}</dt>
+                      <dd className="mt-1 break-words font-mono text-xs text-foreground">
                         {renderValue(value)}
                       </dd>
                     </div>

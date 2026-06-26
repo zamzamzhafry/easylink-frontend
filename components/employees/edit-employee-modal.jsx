@@ -68,7 +68,7 @@ function Field({ label, value, onChange, hint, type = 'text' }) {
         type={type}
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-white transition-colors focus:border-teal-500 focus:outline-none"
+        className="w-full rounded-lg border border-border bg-muted px-3 py-2 text-sm text-foreground transition-colors focus:border-teal-500 focus:outline-none"
       />
       {hint && <p className="mt-1 text-xs text-muted-foreground">{hint}</p>}
     </div>
@@ -172,13 +172,13 @@ export default function EditEmployeeModal({ mode = 'edit', employee, users = [],
                 setForm((prev) => ({ ...prev, user_pin: '' }));
               }}
               placeholder="Type PIN or user name..."
-              className="w-full rounded-lg border border-slate-700 bg-slate-800 py-2 pl-9 pr-8 text-sm text-white transition-colors focus:border-teal-500 focus:outline-none"
+              className="w-full rounded-lg border border-border bg-muted py-2 pl-9 pr-8 text-sm text-foreground transition-colors focus:border-teal-500 focus:outline-none"
             />
             <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
           </div>
 
           {dropdownOpen && (
-            <div className="absolute z-20 mt-1 max-h-56 w-full overflow-y-auto rounded-lg border border-slate-700 bg-slate-900 shadow-2xl">
+            <div className="absolute z-20 mt-1 max-h-56 w-full overflow-y-auto rounded-lg border border-border bg-card shadow-2xl">
               <button
                 type="button"
                 onMouseDown={(event) => {
@@ -187,7 +187,7 @@ export default function EditEmployeeModal({ mode = 'edit', employee, users = [],
                   setUserSearch('');
                   setDropdownOpen(false);
                 }}
-                className="flex w-full items-center justify-between border-b border-slate-800 px-3 py-2 text-left text-xs text-muted-foreground transition-colors hover:bg-slate-800"
+                className="flex w-full items-center justify-between border-b border-border px-3 py-2 text-left text-xs text-muted-foreground transition-colors hover:bg-muted"
               >
                 <span>No linked user (NULL)</span>
               </button>
@@ -204,7 +204,7 @@ export default function EditEmployeeModal({ mode = 'edit', employee, users = [],
                         event.preventDefault();
                         chooseUser(user);
                       }}
-                      className="flex w-full items-center justify-between px-3 py-2 text-left text-xs text-slate-200 transition-colors hover:bg-slate-800"
+                      className="flex w-full items-center justify-between px-3 py-2 text-left text-xs text-foreground transition-colors hover:bg-muted"
                     >
                       <span className="font-mono">{buildUserLabel(user)}</span>
                       {isSelected && <Check className="h-3.5 w-3.5 text-teal-400" />}
@@ -239,12 +239,12 @@ export default function EditEmployeeModal({ mode = 'edit', employee, users = [],
             type="date"
           />
         </div>
-        <label className="flex items-center gap-2 text-sm text-slate-300">
+        <label className="flex items-center gap-2 text-sm text-foreground">
           <input
             type="checkbox"
             checked={form.isActiveDuty}
             onChange={(event) => setForm((prev) => ({ ...prev, isActiveDuty: event.target.checked }))}
-            className="h-4 w-4 rounded border border-slate-600 bg-slate-800 text-teal-500 focus:ring-teal-500/40"
+            className="h-4 w-4 rounded border border-border bg-muted text-teal-500 focus:ring-teal-500/40"
           />
           Is Active Duty
         </label>
@@ -254,7 +254,7 @@ export default function EditEmployeeModal({ mode = 'edit', employee, users = [],
         <button
           type="button"
           onClick={onClose}
-          className="flex-1 rounded-lg border border-slate-700 px-4 py-2 text-sm text-slate-400 transition-colors hover:text-white"
+          className="flex-1 rounded-lg border border-border px-4 py-2 text-sm text-muted-foreground transition-colors hover:text-foreground"
         >
           Cancel
         </button>

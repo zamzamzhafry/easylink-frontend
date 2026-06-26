@@ -19,6 +19,7 @@ import { PAGE_SIZE_OPTIONS } from '@/lib/constants';
 import { useToast } from '@/components/ui/toast-provider';
 import ModalShell from '@/components/ui/modal-shell';
 import DataTable from '@/components/ui/data-table';
+import useViewMode from '@/hooks/use-view-mode';
 import { Button, ButtonGroup } from '@/components/ui/button';
 import InlineStatusPanel from '@/components/ui/inline-status-panel';
 import { usePaginatedResource } from '@/hooks/use-paginated-resource';
@@ -28,7 +29,7 @@ import { cn } from '@/lib/utils';
 const PRIVILEGE_MAP = {
   0: {
     label: 'User',
-    cls: 'border-slate-300 bg-slate-100 text-slate-700 dark:border-slate-700 dark:bg-slate-800/60 dark:text-slate-300',
+    cls: 'border-border bg-muted text-muted-foreground dark:border-border dark:bg-muted/60 dark:text-foreground',
   },
   14: {
     label: 'Admin',
@@ -49,7 +50,7 @@ const EMPTY_FORM = { pin: '', nama: '', pwd: '', rfid: '', privilege: '0' };
 function Field({ label, required, children }) {
   return (
     <div>
-      <div className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">
+      <div className="mb-1 block text-xs font-medium text-muted-foreground dark:text-muted-foreground">
         {label} {required && <span className="text-rose-400">*</span>}
       </div>
       {children}
@@ -61,7 +62,7 @@ function Input({ className, ...props }) {
   return (
     <input
       className={cn(
-        'w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder-slate-400 focus:border-teal-500 focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-white dark:placeholder-slate-500',
+        'w-full rounded-lg border border-border bg-white px-3 py-2 text-sm text-foreground placeholder-slate-400 focus:border-teal-500 focus:outline-none dark:border-border dark:bg-muted dark:text-foreground dark:placeholder-slate-500',
         className
       )}
       {...props}
@@ -178,7 +179,7 @@ function UserModal({ mode, user, onClose, onSave }) {
             <select
               value={form.privilege}
               onChange={(e) => set('privilege', e.target.value)}
-              className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-teal-500 focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+              className="w-full rounded-lg border border-border bg-white px-3 py-2 text-sm text-foreground focus:border-teal-500 focus:outline-none dark:border-border dark:bg-muted dark:text-foreground"
             >
               <option value="0">User (0)</option>
               <option value="14">Admin (14)</option>
@@ -200,7 +201,7 @@ function UserModal({ mode, user, onClose, onSave }) {
               <button
                 type="button"
                 onClick={() => setShowPwd((v) => !v)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white"
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground dark:text-muted-foreground dark:hover:text-foreground"
               >
                 {showPwd ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
               </button>
@@ -244,6 +245,7 @@ export default function UsersPage() {
 
   const toast = useToast();
 
+  const { viewMode } = useViewMode();
   const {
     items: users,
     total,
@@ -346,7 +348,7 @@ export default function UsersPage() {
       key: 'nama',
       header: 'Name',
       render: (user) =>
-        user.nama || <span className="italic text-slate-500">—</span>,
+        user.nama || <span className="italic text-muted-foreground">—</span>,
     },
     {
       key: 'privilege',
@@ -374,11 +376,11 @@ export default function UsersPage() {
       priority: 'hide',
       render: (user) =>
         user.rfid ? (
-          <span className="font-mono text-xs text-slate-500 dark:text-slate-400">
+          <span className="font-mono text-xs text-muted-foreground dark:text-muted-foreground">
             {user.rfid}
           </span>
         ) : (
-          <span className="italic text-slate-600">—</span>
+          <span className="italic text-muted-foreground">—</span>
         ),
     },
     {
@@ -386,7 +388,7 @@ export default function UsersPage() {
       header: 'Groups',
       render: (user) =>
         user.groups.length === 0 ? (
-          <span className="italic text-xs text-slate-600">No groups</span>
+          <span className="italic text-xs text-muted-foreground">No groups</span>
         ) : (
           <div className="flex flex-wrap gap-1">
             {user.groups.map((g) => (
@@ -413,7 +415,7 @@ export default function UsersPage() {
       align: 'right',
       className: 'w-20',
       render: (user) => (
-        <span className="font-mono text-xs text-slate-600 dark:text-slate-300">
+        <span className="font-mono text-xs text-muted-foreground dark:text-foreground">
           {user.scan_total.toLocaleString()}
         </span>
       ),
@@ -425,7 +427,7 @@ export default function UsersPage() {
       className: 'w-20',
       priority: 'hide',
       render: (user) => (
-        <span className="font-mono text-xs text-slate-600 dark:text-slate-300">
+        <span className="font-mono text-xs text-muted-foreground dark:text-foreground">
           {user.scan_days.toLocaleString()}
         </span>
       ),
@@ -437,15 +439,15 @@ export default function UsersPage() {
       render: (user) =>
         user.last_scan ? (
           <div className="text-xs">
-            <div className="text-slate-700 dark:text-slate-300">
+            <div className="text-muted-foreground dark:text-foreground">
               {String(user.last_scan).slice(0, 10)}
             </div>
-            <div className="text-[10px] text-slate-500">
+            <div className="text-[10px] text-muted-foreground">
               {String(user.last_scan).slice(11, 19) || ''}
             </div>
           </div>
         ) : (
-          <span className="italic text-xs text-slate-600">Never</span>
+          <span className="italic text-xs text-muted-foreground">Never</span>
         ),
     },
     {
@@ -499,11 +501,11 @@ export default function UsersPage() {
       {/* Header */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="flex items-center gap-2 text-xl font-bold text-slate-900 dark:text-white">
+          <h1 className="flex items-center gap-2 text-xl font-bold text-foreground dark:text-foreground">
             <Users className="h-5 w-5 text-teal-400" />
             Users
           </h1>
-          <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-500">
+          <p className="mt-0.5 text-xs text-muted-foreground dark:text-muted-foreground">
             Device users from tb_user — {total} total
           </p>
         </div>
@@ -532,36 +534,36 @@ export default function UsersPage() {
       </div>
 
       <div className="grid gap-3 sm:grid-cols-3">
-        <div className="rounded-xl border border-slate-200 bg-white px-4 py-3 dark:border-slate-800 dark:bg-slate-900">
-          <p className="text-[11px] uppercase tracking-wide text-slate-500 dark:text-slate-500">
+        <div className="rounded-xl border border-border bg-white px-4 py-3 dark:border-border dark:bg-card">
+          <p className="text-[11px] uppercase tracking-wide text-muted-foreground dark:text-muted-foreground">
             Total users
           </p>
-          <p className="mt-1 text-2xl font-semibold text-slate-900 dark:text-white">
+          <p className="mt-1 text-2xl font-semibold text-foreground dark:text-foreground">
             {total.toLocaleString()}
           </p>
-          <p className="text-[11px] text-slate-500 dark:text-slate-500">
+          <p className="text-[11px] text-muted-foreground dark:text-muted-foreground">
             From server-side pagination
           </p>
         </div>
-        <div className="rounded-xl border border-slate-200 bg-white px-4 py-3 dark:border-slate-800 dark:bg-slate-900">
-          <p className="text-[11px] uppercase tracking-wide text-slate-500 dark:text-slate-500">
+        <div className="rounded-xl border border-border bg-white px-4 py-3 dark:border-border dark:bg-card">
+          <p className="text-[11px] uppercase tracking-wide text-muted-foreground dark:text-muted-foreground">
             Current page
           </p>
-          <p className="mt-1 text-2xl font-semibold text-slate-900 dark:text-white">
+          <p className="mt-1 text-2xl font-semibold text-foreground dark:text-foreground">
             {users.length.toLocaleString()}
           </p>
-          <p className="text-[11px] text-slate-500 dark:text-slate-500">
+          <p className="text-[11px] text-muted-foreground dark:text-muted-foreground">
             Page {page} / {pages}
           </p>
         </div>
-        <div className="rounded-xl border border-slate-200 bg-white px-4 py-3 dark:border-slate-800 dark:bg-slate-900">
-          <p className="text-[11px] uppercase tracking-wide text-slate-500 dark:text-slate-500">
+        <div className="rounded-xl border border-border bg-white px-4 py-3 dark:border-border dark:bg-card">
+          <p className="text-[11px] uppercase tracking-wide text-muted-foreground dark:text-muted-foreground">
             Filter status
           </p>
           <p className="mt-1 truncate text-sm font-medium text-teal-700 dark:text-teal-300">
             {searchSummary}
           </p>
-          <p className="text-[11px] text-slate-500 dark:text-slate-500">
+          <p className="text-[11px] text-muted-foreground dark:text-muted-foreground">
             {loading ? 'Refreshing data…' : 'Ready'}
           </p>
         </div>
@@ -577,9 +579,10 @@ export default function UsersPage() {
         error={loadError}
         emptyLabel={search ? 'No users found for current filter' : 'No users found'}
         rowKey="pin"
+        view={viewMode}
       />
 
-      <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 text-xs text-slate-500 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400">
+      <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border bg-white px-4 py-3 text-xs text-muted-foreground dark:border-border dark:bg-card dark:text-muted-foreground">
         <div>
           Showing {showingFrom}-{showingTo} of {total}
         </div>
@@ -592,7 +595,7 @@ export default function UsersPage() {
               setLimit(Number(event.target.value));
               setPage(1);
             }}
-            className="rounded border border-slate-300 bg-white px-2 py-1 text-slate-700 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200"
+            className="rounded border border-border bg-white px-2 py-1 text-muted-foreground dark:border-border dark:bg-card dark:text-foreground"
           >
             {PAGE_SIZE_OPTIONS.map((size) => (
               <option key={size} value={size}>
@@ -620,7 +623,7 @@ export default function UsersPage() {
               Next
             </Button>
           </ButtonGroup>
-          <span className="font-mono text-slate-600 dark:text-slate-300">
+          <span className="font-mono text-muted-foreground dark:text-foreground">
             {page}/{pages}
           </span>
         </div>

@@ -20,6 +20,7 @@ import {
   TableEmptyRow,
 } from '@/components/ui/table-shell';
 import { useToast } from '@/components/ui/toast-provider';
+import { csvEscape } from '@/lib/csv';
 
 // ─── verify/io maps ────────────────────────────────────────────────────────────
 const VERIFY_MAP = {
@@ -52,11 +53,6 @@ const SHIFT_ICON_EMOJI = {
 
 function shiftIconForKey(key) {
   return SHIFT_ICON_EMOJI[key] || '🕒';
-}
-
-function csvEscape(value) {
-  const text = value == null ? '' : String(value);
-  return `"${text.replace(/"/g, '""')}"`;
 }
 
 function downloadCsv(filename, headers, rows) {
@@ -212,8 +208,8 @@ function ShiftRadarChart({ shiftStats }) {
               className="h-2.5 w-2.5 rounded-full"
               style={{ backgroundColor: d.color_hex || '#6B7280' }}
             />
-            <span className="text-xs text-slate-400">
-              {d.nama_shift} <span className="font-semibold text-white">{d.total}d</span>
+            <span className="text-xs text-muted-foreground">
+              {d.nama_shift} <span className="font-semibold text-foreground">{d.total}d</span>
             </span>
           </div>
         ))}
@@ -225,7 +221,7 @@ function ShiftRadarChart({ shiftStats }) {
 // ─── Shift bar breakdown ───────────────────────────────────────────────────────
 function ShiftBreakdown({ shiftStats }) {
   const total = shiftStats.reduce((s, d) => s + d.total, 0);
-  if (total === 0) return <p className="text-xs text-slate-500 italic">No schedule data</p>;
+  if (total === 0) return <p className="text-xs text-muted-foreground italic">No schedule data</p>;
 
   return (
     <div className="space-y-2">
@@ -234,21 +230,21 @@ function ShiftBreakdown({ shiftStats }) {
           <div className="mb-1 flex items-center justify-between text-xs">
             <span className="flex items-center gap-1.5">
               <span className="h-2 w-2 rounded-full" style={{ backgroundColor: d.color_hex }} />
-              <span className="text-slate-300">{d.nama_shift}</span>
+              <span className="text-foreground">{d.nama_shift}</span>
               {d.is_paid && (
                 <span className="rounded border border-teal-500/30 bg-teal-500/10 px-1 py-0.5 text-[10px] text-teal-400">
                   Paid
                 </span>
               )}
             </span>
-            <span className="font-semibold text-white">
+            <span className="font-semibold text-foreground">
               {d.total}d{' '}
-              <span className="font-normal text-slate-500">
+              <span className="font-normal text-muted-foreground">
                 ({Math.round((d.total / total) * 100)}%)
               </span>
             </span>
           </div>
-          <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-800">
+          <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
             <div
               className="h-full rounded-full"
               style={{
@@ -267,8 +263,8 @@ function ShiftBreakdown({ shiftStats }) {
 function InfoRow({ label, value }) {
   return (
     <div className="flex items-start justify-between gap-2 py-2 text-sm">
-      <span className="text-slate-500">{label}</span>
-      <span className="text-right font-medium text-slate-200">{value ?? '—'}</span>
+      <span className="text-muted-foreground">{label}</span>
+      <span className="text-right font-medium text-foreground">{value ?? '—'}</span>
     </div>
   );
 }
@@ -308,29 +304,32 @@ export default function EmployeeProfilePage() {
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState('overview');
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      const res = await fetch(`/api/employees/${id}/profile`);
-      if (res.status === 403) {
-        toast.error('Not authorized to view this profile');
-        router.push('/employees');
-        return;
-      }
-      if (!res.ok) throw new Error(`Error ${res.status}`);
-      const json = await res.json();
-      if (!json.ok) throw new Error(json.error || 'Failed');
-      setData(json);
-    } catch (err) {
-      toast.error(err.message || 'Failed to load profile');
-    } finally {
-      setLoading(false);
-    }
-  }, [id, router, toast]);
-
   useEffect(() => {
-    load();
-  }, [load]);
+    let active = true;
+    (async () => {
+      setLoading(true);
+      try {
+        const res = await fetch(`/api/employees/${id}/profile`);
+        if (res.status === 403) {
+          if (!active) return;
+          toast.error('Not authorized to view this profile');
+          router.push('/employees');
+          return;
+        }
+        if (!res.ok) throw new Error(`Error ${res.status}`);
+        const json = await res.json();
+        if (!json.ok) throw new Error(json.error || 'Failed');
+        if (active) setData(json);
+      } catch (err) {
+        if (active) toast.error(err.message || 'Failed to load profile');
+      } finally {
+        if (active) setLoading(false);
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, [id, router, toast]);
 
   // ── Derived ───────────────────────────────────────────────────────────────────
   const employee = data?.employee;
@@ -427,7 +426,7 @@ export default function EmployeeProfilePage() {
   // ── Loading state ─────────────────────────────────────────────────────────────
   if (loading) {
     return (
-      <div className="flex h-64 items-center justify-center text-slate-500">
+      <div className="flex h-64 items-center justify-center text-muted-foreground">
         <div className="flex items-center gap-2">
           <div className="h-4 w-4 animate-spin rounded-full border-2 border-teal-500 border-t-transparent" />
           Loading profile…
@@ -438,7 +437,7 @@ export default function EmployeeProfilePage() {
 
   if (!employee) {
     return (
-      <div className="p-6 text-center text-slate-500">
+      <div className="p-6 text-center text-muted-foreground">
         Employee not found.{' '}
         <Link href="/employees" className="text-teal-400 hover:underline">
           Back to list
@@ -455,15 +454,15 @@ export default function EmployeeProfilePage() {
         <div className="flex items-center gap-3">
           <Link
             href="/employees"
-            className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-700 text-slate-400 hover:border-teal-500/50 hover:text-white"
+            className="flex h-8 w-8 items-center justify-center rounded-lg border border-border text-muted-foreground hover:border-teal-500/50 hover:text-foreground"
           >
             <ArrowLeft className="h-4 w-4" />
           </Link>
           <div>
-            <h1 className="text-xl font-bold text-white">
+            <h1 className="text-xl font-bold text-foreground">
               {employee.nama || employee.pin || 'Unknown'}
             </h1>
-            <p className="text-xs text-slate-500">
+            <p className="text-xs text-muted-foreground">
               PIN {employee.pin ?? '—'}
               {employee.nama_group && (
                 <>
@@ -509,16 +508,16 @@ export default function EmployeeProfilePage() {
         ].map(({ label, value, color }) => (
           <div
             key={label}
-            className="rounded-xl border border-slate-800 bg-slate-900 p-4 text-center"
+            className="rounded-xl border border-border bg-card p-4 text-center"
           >
             <div className={cn('text-2xl font-bold tabular-nums', color)}>{value}</div>
-            <div className="mt-1 text-xs text-slate-500">{label}</div>
+            <div className="mt-1 text-xs text-muted-foreground">{label}</div>
           </div>
         ))}
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-1 rounded-xl border border-slate-800 bg-slate-900 p-1">
+      <div className="flex gap-1 rounded-xl border border-border bg-card p-1">
         {TABS.map(({ id: tid, label, icon: Icon }) => (
           <button
             key={tid}
@@ -526,7 +525,7 @@ export default function EmployeeProfilePage() {
             onClick={() => setTab(tid)}
             className={cn(
               'flex flex-1 items-center justify-center gap-2 rounded-lg py-2 text-sm font-medium transition-colors',
-              tab === tid ? 'bg-teal-600 text-white shadow' : 'text-slate-400 hover:text-white'
+              tab === tid ? 'bg-teal-600 text-white shadow' : 'text-muted-foreground hover:text-foreground'
             )}
           >
             <Icon className="h-3.5 w-3.5" />
@@ -539,11 +538,11 @@ export default function EmployeeProfilePage() {
       {tab === 'overview' && (
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
           {/* Employee Info */}
-          <div className="rounded-xl border border-slate-800 bg-slate-900 p-5">
-            <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold text-slate-300">
+          <div className="rounded-xl border border-border bg-card p-5">
+            <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold text-foreground">
               <User className="h-4 w-4 text-teal-400" /> Employee Info
             </h2>
-            <div className="divide-y divide-slate-800">
+            <div className="divide-y divide-border">
               <InfoRow label="Name" value={employee.nama} />
               <InfoRow label="PIN" value={employee.pin} />
               <InfoRow label="NIP" value={employee.nip} />
@@ -560,7 +559,7 @@ export default function EmployeeProfilePage() {
               <InfoRow
                 label="Status"
                 value={
-                  <span className={employee.isActiveDuty ? 'text-teal-400' : 'text-slate-500'}>
+                  <span className={employee.isActiveDuty ? 'text-teal-400' : 'text-muted-foreground'}>
                     {employee.isActiveDuty ? 'Active Duty' : 'Inactive'}
                   </span>
                 }
@@ -569,10 +568,10 @@ export default function EmployeeProfilePage() {
           </div>
 
           {/* Shift Radar Chart */}
-          <div className="rounded-xl border border-slate-800 bg-slate-900 p-5">
-            <h2 className="mb-4 flex items-center gap-2 text-sm font-semibold text-slate-300">
+          <div className="rounded-xl border border-border bg-card p-5">
+            <h2 className="mb-4 flex items-center gap-2 text-sm font-semibold text-foreground">
               <Briefcase className="h-4 w-4 text-teal-400" /> Shift Breakdown
-              <span className="ml-auto text-xs font-normal text-slate-500">
+              <span className="ml-auto text-xs font-normal text-muted-foreground">
                 all-time · {totalScheduled} scheduled days
               </span>
             </h2>
@@ -605,7 +604,7 @@ export default function EmployeeProfilePage() {
               <thead>
                 <TableHeadRow headers={SCHED_HEADERS} />
               </thead>
-              <tbody className="divide-y divide-slate-800">
+              <tbody className="divide-y divide-border">
                 {schedule.length === 0 ? (
                   <TableEmptyRow
                     colSpan={SCHED_HEADERS.length}
@@ -617,11 +616,11 @@ export default function EmployeeProfilePage() {
                     return (
                       <tr
                         key={s.id}
-                        className={cn('hover:bg-slate-800/40', isFuture && 'bg-violet-500/5')}
+                        className={cn('hover:bg-muted/40', isFuture && 'bg-violet-500/5')}
                       >
                         {/* Date */}
                         <td className="px-4 py-2.5">
-                          <span className="font-mono text-xs text-slate-300">{s.tanggal}</span>
+                          <span className="font-mono text-xs text-foreground">{s.tanggal}</span>
                           {isFuture && (
                             <span className="ml-1.5 rounded-full bg-violet-500/20 px-1.5 py-0.5 text-[10px] text-violet-300">
                               upcoming
@@ -645,7 +644,7 @@ export default function EmployeeProfilePage() {
                         </td>
 
                         {/* Hours */}
-                        <td className="px-4 py-2.5 text-xs text-slate-400">
+                        <td className="px-4 py-2.5 text-xs text-muted-foreground">
                           {s.jam_masuk && s.jam_keluar ? (
                             <>
                               {s.jam_masuk} → {s.jam_keluar}
@@ -654,14 +653,14 @@ export default function EmployeeProfilePage() {
                               )}
                             </>
                           ) : (
-                            <span className="italic text-slate-600">
+                            <span className="italic text-muted-foreground">
                               {s.needs_scan ? 'Flexible' : 'Off'}
                             </span>
                           )}
                         </td>
 
                         {/* Note */}
-                        <td className="px-4 py-2.5 text-xs text-slate-500">{s.catatan || '—'}</td>
+                        <td className="px-4 py-2.5 text-xs text-muted-foreground">{s.catatan || '—'}</td>
                       </tr>
                     );
                   })
@@ -671,7 +670,7 @@ export default function EmployeeProfilePage() {
           </TableShell>
 
           {past.length > 0 && upcoming.length > 0 && (
-            <p className="text-right text-xs text-slate-600">
+            <p className="text-right text-xs text-muted-foreground">
               Showing {schedule.length} entries (90 days past + 30 days future)
             </p>
           )}
@@ -682,9 +681,9 @@ export default function EmployeeProfilePage() {
       {tab === 'scanlog' && (
         <div className="space-y-3">
           <div className="flex items-center justify-between">
-            <p className="text-xs text-slate-500">
-              Last 90 days · <span className="font-semibold text-slate-300">{scanlogs.length}</span>{' '}
-              records · <span className="font-semibold text-slate-300">{uniqueScanDays}</span>{' '}
+            <p className="text-xs text-muted-foreground">
+              Last 90 days · <span className="font-semibold text-foreground">{scanlogs.length}</span>{' '}
+              records · <span className="font-semibold text-foreground">{uniqueScanDays}</span>{' '}
               unique days
             </p>
           </div>
@@ -694,7 +693,7 @@ export default function EmployeeProfilePage() {
               <thead>
                 <TableHeadRow headers={SCAN_HEADERS} />
               </thead>
-              <tbody className="divide-y divide-slate-800">
+              <tbody className="divide-y divide-border">
                 {scanlogs.length === 0 ? (
                   <TableEmptyRow
                     colSpan={SCAN_HEADERS.length}
@@ -706,29 +705,29 @@ export default function EmployeeProfilePage() {
                     return (
                       <tr
                         key={`${r.scan_date}-${r.scan_time}-${r.pin}-${r.sn || 'nosn'}-${r.workcode}`}
-                        className="hover:bg-slate-800/40"
+                        className="hover:bg-muted/40"
                       >
-                        <td className="px-4 py-2 font-mono text-xs text-slate-300">
+                        <td className="px-4 py-2 font-mono text-xs text-foreground">
                           {r.scan_date}
                         </td>
-                        <td className="px-4 py-2 font-mono text-xs font-semibold text-white">
+                        <td className="px-4 py-2 font-mono text-xs font-semibold text-foreground">
                           {r.scan_time}
                         </td>
-                        <td className="px-4 py-2 text-xs text-slate-400">
+                        <td className="px-4 py-2 text-xs text-muted-foreground">
                           {VERIFY_MAP[r.verifymode] ?? r.verifymode}
                         </td>
                         <td
                           className={cn(
                             'px-4 py-2 text-xs font-medium',
-                            io?.cls ?? 'text-slate-400'
+                            io?.cls ?? 'text-muted-foreground'
                           )}
                         >
                           {io?.label ?? String(r.iomode)}
                         </td>
-                        <td className="px-4 py-2 text-right font-mono text-xs text-slate-500">
+                        <td className="px-4 py-2 text-right font-mono text-xs text-muted-foreground">
                           {r.workcode}
                         </td>
-                        <td className="px-4 py-2 font-mono text-[11px] text-slate-600">
+                        <td className="px-4 py-2 font-mono text-[11px] text-muted-foreground">
                           {r.sn || '—'}
                         </td>
                       </tr>

@@ -4,6 +4,9 @@ import { NextResponse } from 'next/server';
 import * as XLSX from 'xlsx';
 import pool from '@/lib/db';
 import { hasKaryawanColumn } from '@/lib/karyawan-schema';
+import { resolveDateRange } from '@/lib/date-range';
+import { csvEscape } from '@/lib/csv';
+import { toMinutes } from '@/lib/time';
 import {
   forbiddenResponse,
   getAllowedGroupIds,
@@ -22,23 +25,6 @@ const STATUS_LABELS = {
   anomaly: 'Anomaly',
 };
 
-function parseDateParam(value, fallback) {
-  if (!value) return fallback;
-  const normalized = value.trim();
-  if (/^\d{4}-\d{2}-\d{2}$/.test(normalized)) return normalized;
-  return fallback;
-}
-
-function toMinutes(value) {
-  if (!value || typeof value !== 'string') return null;
-  const [hours, minutes] = value.split(':').map(Number);
-  if (Number.isNaN(hours) || Number.isNaN(minutes)) return null;
-  return hours * 60 + minutes;
-}
-
-function csvEscape(value) {
-  return `"${String(value ?? '').replace(/"/g, '""')}"`;
-}
 
 function createStatusCounts() {
   return STATUS_KEYS.reduce((acc, key) => {
@@ -238,9 +224,11 @@ export async function GET(req) {
   }
 
   const { searchParams } = new URL(req.url);
-  const today = new Date().toISOString().slice(0, 10);
-  const from = parseDateParam(searchParams.get('from'), today);
-  const to = parseDateParam(searchParams.get('to'), from);
+  const range = resolveDateRange(searchParams.get('from'), searchParams.get('to'));
+  if (range.error) {
+    return NextResponse.json({ ok: false, error: range.error }, { status: range.status });
+  }
+  const { from, to } = range;
   const groupParam = searchParams.get('group_id');
   const employeeParam = searchParams.get('employee_id');
   const wantsDownload = searchParams.get('download') === '1';

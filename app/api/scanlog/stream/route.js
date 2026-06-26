@@ -187,6 +187,11 @@ export async function GET(request) {
 
       request.signal.addEventListener('abort', closeStream);
     },
+    cancel() {
+      // Client disconnected — stop the poller so the interval doesn't leak.
+      if (intervalId) clearInterval(intervalId);
+      closed = true;
+    },
   });
 
   return new Response(stream, {

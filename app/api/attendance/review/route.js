@@ -3,6 +3,8 @@ export const dynamic = 'force-dynamic';
 import { NextResponse } from 'next/server';
 import pool from '@/lib/db';
 import { hasKaryawanColumn } from '@/lib/karyawan-schema';
+import { resolveDateRange } from '@/lib/date-range';
+import { toMinutes } from '@/lib/time';
 import {
   forbiddenResponse,
   getAuthContextFromCookies,
@@ -29,15 +31,6 @@ async function hasTable(tableName) {
   const exists = Array.isArray(rows) && rows.length > 0;
   tableExistsCache.set(tableName, exists);
   return exists;
-}
-
-function toMinutes(timeValue) {
-  if (!timeValue) return null;
-  const [hh = '0', mm = '0'] = String(timeValue).split(':');
-  const h = Number.parseInt(hh, 10);
-  const m = Number.parseInt(mm, 10);
-  if (!Number.isFinite(h) || !Number.isFinite(m)) return null;
-  return h * 60 + m;
 }
 
 function buildStatus({ firstScan, lastScan, shiftIn, shiftOut, nextDay, scanCount }) {
@@ -145,8 +138,11 @@ export async function GET(req) {
   const hasHiddenTable = await hasTable('tb_scanlog_hidden');
 
   const { searchParams } = new URL(req.url);
-  const from = searchParams.get('from') || new Date().toISOString().slice(0, 10);
-  const to = searchParams.get('to') || from;
+  const range = resolveDateRange(searchParams.get('from'), searchParams.get('to'));
+  if (range.error) {
+    return NextResponse.json({ ok: false, error: range.error }, { status: range.status });
+  }
+  const { from, to } = range;
   const groupId = searchParams.get('group_id') || '';
   const pinFilter = searchParams.get('pin') || '';
 

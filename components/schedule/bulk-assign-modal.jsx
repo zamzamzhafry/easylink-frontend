@@ -26,6 +26,14 @@ export default function BulkAssignModal({
       warning('Select both group and shift before applying bulk assignment.', 'Validation warning');
       return;
     }
+    if (!from || !to) {
+      warning('Select both from and to dates.', 'Validation warning');
+      return;
+    }
+    if (from > to) {
+      warning('"From" date must be on or before "To".', 'Validation warning');
+      return;
+    }
 
     setSaving(true);
     const affected = await onApply({
@@ -50,14 +58,14 @@ export default function BulkAssignModal({
     >
       <div className="space-y-4">
         <div>
-          <label htmlFor="bulk-assign-group" className="mb-1 block text-xs text-slate-400">
+          <label htmlFor="bulk-assign-group" className="mb-1 block text-xs text-muted-foreground">
             Group
           </label>
           <select
             id="bulk-assign-group"
             value={groupId}
             onChange={(event) => setGroupId(event.target.value)}
-            className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-white focus:border-teal-500 focus:outline-none"
+            className="w-full rounded-lg border border-border bg-muted px-3 py-2 text-sm text-foreground focus:border-teal-500 focus:outline-none"
           >
             <option value="">- select group -</option>
             {groups.map((group) => (
@@ -69,14 +77,14 @@ export default function BulkAssignModal({
         </div>
 
         <div>
-          <label htmlFor="bulk-assign-shift" className="mb-1 block text-xs text-slate-400">
+          <label htmlFor="bulk-assign-shift" className="mb-1 block text-xs text-muted-foreground">
             Shift
           </label>
           <select
             id="bulk-assign-shift"
             value={shiftId}
             onChange={(event) => setShiftId(event.target.value)}
-            className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-white focus:border-teal-500 focus:outline-none"
+            className="w-full rounded-lg border border-border bg-muted px-3 py-2 text-sm text-foreground focus:border-teal-500 focus:outline-none"
           >
             <option value="">- select shift -</option>
             {shifts.map((shift) => (
@@ -90,7 +98,7 @@ export default function BulkAssignModal({
 
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label htmlFor="bulk-assign-from" className="mb-1 block text-xs text-slate-400">
+            <label htmlFor="bulk-assign-from" className="mb-1 block text-xs text-muted-foreground">
               From
             </label>
             <input
@@ -98,11 +106,11 @@ export default function BulkAssignModal({
               type="date"
               value={from}
               onChange={(event) => setFrom(event.target.value)}
-              className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 font-mono text-sm text-white focus:border-teal-500 focus:outline-none"
+              className="w-full rounded-lg border border-border bg-muted px-3 py-2 font-mono text-sm text-foreground focus:border-teal-500 focus:outline-none"
             />
           </div>
           <div>
-            <label htmlFor="bulk-assign-to" className="mb-1 block text-xs text-slate-400">
+            <label htmlFor="bulk-assign-to" className="mb-1 block text-xs text-muted-foreground">
               To
             </label>
             <input
@@ -110,7 +118,7 @@ export default function BulkAssignModal({
               type="date"
               value={to}
               onChange={(event) => setTo(event.target.value)}
-              className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 font-mono text-sm text-white focus:border-teal-500 focus:outline-none"
+              className="w-full rounded-lg border border-border bg-muted px-3 py-2 font-mono text-sm text-foreground focus:border-teal-500 focus:outline-none"
             />
           </div>
         </div>
@@ -136,7 +144,7 @@ export default function BulkAssignModal({
             <button
               type="button"
               onClick={onClose}
-              className="flex-1 rounded-lg border border-slate-700 px-4 py-2 text-sm text-slate-400 transition-colors hover:text-white"
+              className="flex-1 rounded-lg border border-border px-4 py-2 text-sm text-muted-foreground transition-colors hover:text-foreground"
             >
               Cancel
             </button>

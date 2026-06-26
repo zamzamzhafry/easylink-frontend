@@ -1,9 +1,10 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { Download, FileSpreadsheet, BarChart3, Activity, Clock, Users, TrendingUp } from 'lucide-react';
+import { Download, FileSpreadsheet, BarChart3, Activity, Clock, Users, TrendingUp, Info } from 'lucide-react';
 import { useToast } from '@/components/ui/toast-provider';
 import InlineStatusPanel from '@/components/ui/inline-status-panel';
+import ModalShell from '@/components/ui/modal-shell';
 import { requestJson } from '@/lib/request-json';
 import { useAppLocale } from '@/components/app-shell';
 import { getUIText } from '@/lib/localization/ui-texts';
@@ -33,15 +34,96 @@ function monthStart(value = new Date()) {
   return isoDate(date);
 }
 
-function StatCard({ label, value, unit, color }) {
-  const colorClass = color === 'green' ? 'text-emerald-400' : color === 'yellow' ? 'text-amber-400' : color === 'red' ? 'text-rose-400' : 'text-white';
+// ponytail: formula explanations surfaced via the info icon on each metric
+// card + chart header. Keep concise; ceiling → move to a dedicated docs page.
+const FORMULAS = {
+  attendanceRate: {
+    title: 'Attendance Rate',
+    formula: '(presentCount / (totalEmployees × dayCountInPeriod)) × 100',
+    logic: 'Counts employees who scanned in against the maximum possible (every employee every day). Employees who never scan are counted as absent, so the rate reflects true coverage.',
+    impact: 'Low rate → staffing gaps or device/user linkage issues. High rate → workforce present but says nothing about punctuality.',
+  },
+  punctualityIndex: {
+    title: 'Punctuality Index',
+    formula: '(onTimeCount / presentCount) × 100',
+    logic: 'Of those who showed up, the share who arrived on or before their scheduled start. Excludes absences entirely.',
+    impact: 'Isolates lateness from absence. A high attendance rate + low punctuality means people come but late.',
+  },
+  avgLateMinutes: {
+    title: 'Avg Late Minutes',
+    formula: 'totalLateMinutes / lateCount',
+    logic: 'Average minutes late, averaged only over the late arrivals (not all arrivals).',
+    impact: 'Severity of lateness. 5 min × many people vs 60 min × few people read the same on rate but differ operationally.',
+  },
+  totalOvertime: {
+    title: 'Total Overtime',
+    formula: 'Σ (actualOut − scheduledOut) for shifts where actual > scheduled',
+    logic: 'Sums overtime minutes across all qualifying shifts in the period, then reported in hours.',
+    impact: 'Labor cost + fatigue indicator. Spikes suggest understaffing or schedule mismatch.',
+  },
+  bradford: {
+    title: 'Bradford Factor',
+    formula: 'frequency² × totalDays',
+    logic: 'frequency = number of absence spells; totalDays = total absence days. Squaring frequency makes frequent short absences score far worse than one long absence of equal total days.',
+    impact: 'Flags disruptive absentees. Score 0 = none. Common bands: <50 ok, 50–100 concern, 100–200 serious, >200 critical.',
+  },
+  weeklyTrend: {
+    title: 'Weekly Trend',
+    formula: 'per ISO week: attendance %, punctuality %, late %',
+    logic: 'Groups attendance records by ISO week within the range and plots the three rates over time.',
+    impact: 'Spots deterioration or improvement across weeks. Dips may correlate with holidays, shift changes, or device downtime.',
+  },
+  checkInDistribution: {
+    title: 'Check-in Distribution',
+    formula: 'count of check-in scans grouped by hour-of-day (0–23)',
+    logic: 'Histogram of first-scan times across the period. Peak hour = busiest arrival window.',
+    impact: 'Schedule design: if peak is far from shift start, shifts may be misaligned with actual arrival patterns.',
+  },
+  departmentBreakdown: {
+    title: 'Department Breakdown',
+    formula: 'per group: present / late / absent counts + attendance rate',
+    logic: 'Aggregates attendance by employee group for the selected range.',
+    impact: 'Compares group reliability. A single low group drags the org rate; investigate that group’s shifts/devices.',
+  },
+};
+
+function StatCard({ label, value, unit, color, infoKey, onInfo }) {
+  const colorClass = color === 'green' ? 'text-emerald-400' : color === 'yellow' ? 'text-amber-400' : color === 'red' ? 'text-rose-400' : 'text-foreground';
   return (
-    <div className="rounded-lg border border-slate-800 bg-slate-900 px-3 py-2">
-      <p className="text-xs text-slate-500">{label}</p>
+    <div className="rounded-lg border border-border bg-card px-3 py-2">
+      <div className="flex items-center justify-between gap-1">
+        <p className="text-xs text-muted-foreground">{label}</p>
+        {infoKey && (
+          <button
+            type="button"
+            onClick={() => onInfo?.(infoKey)}
+            className="text-muted-foreground/60 transition-colors hover:text-teal-400"
+            aria-label={`Explain ${label}`}
+            title="How is this calculated?"
+          >
+            <Info className="h-3.5 w-3.5" />
+          </button>
+        )}
+      </div>
       <p className={`font-mono text-lg font-bold ${colorClass}`}>
-        {value}{unit && <span className="text-sm text-slate-400 ml-1">{unit}</span>}
+        {value}{unit && <span className="text-sm text-muted-foreground ml-1">{unit}</span>}
       </p>
     </div>
+  );
+}
+
+function ChartInfoButton({ infoKey, onInfo }) {
+  if (!infoKey) return null;
+  return (
+    <button
+      type="button"
+      onClick={() => onInfo?.(infoKey)}
+      className="ml-auto inline-flex items-center gap-1 rounded border border-border px-2 py-1 text-xs text-muted-foreground transition-colors hover:border-teal-500/50 hover:text-teal-300"
+      aria-label="Explain this chart"
+      title="How is this calculated?"
+    >
+      <Info className="h-3 w-3" /> Formula
+    </button>
   );
 }
 
@@ -67,6 +149,7 @@ export default function AnalyticsPage() {
   });
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState('');
+  const [infoFormula, setInfoFormula] = useState(null);
 
   const loadAuth = useCallback(async () => {
     try {
@@ -179,25 +262,25 @@ export default function AnalyticsPage() {
   );
 
   return (
-    <div className="min-h-screen bg-slate-950 p-4 text-white">
+    <div className="min-h-screen bg-background p-4 text-foreground">
       <div className="mx-auto max-w-7xl space-y-4">
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold">Analytics Dashboard</h1>
-            <p className="text-sm text-slate-400">Advanced attendance insights and metrics</p>
+            <p className="text-sm text-muted-foreground">Advanced attendance insights and metrics</p>
           </div>
           <div className="flex gap-2">
             <button
               onClick={handleExportPDF}
-              className="flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm hover:bg-slate-700"
+              className="flex items-center gap-2 rounded-lg border border-border bg-muted px-3 py-2 text-sm hover:bg-muted"
             >
               <Download className="h-4 w-4" />
               PDF
             </button>
             <button
               onClick={handleExportExcel}
-              className="flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm hover:bg-slate-700"
+              className="flex items-center gap-2 rounded-lg border border-border bg-muted px-3 py-2 text-sm hover:bg-muted"
             >
               <FileSpreadsheet className="h-4 w-4" />
               Excel
@@ -206,35 +289,35 @@ export default function AnalyticsPage() {
         </div>
 
         {/* Filters */}
-        <div className="rounded-lg border border-slate-800 bg-slate-900 p-4">
+        <div className="rounded-lg border border-border bg-card p-4">
           <div className="grid grid-cols-1 gap-3 md:grid-cols-5">
             <div>
-              <label className="mb-1 block text-xs text-slate-400">From</label>
+              <label className="mb-1 block text-xs text-muted-foreground">From</label>
               <input
                 type="date"
                 value={from}
                 onChange={(e) => setFrom(e.target.value)}
-                className="w-full rounded border border-slate-700 bg-slate-800 px-2 py-1 text-sm text-white"
+                className="w-full rounded border border-border bg-muted px-2 py-1 text-sm text-foreground"
               />
             </div>
             <div>
-              <label className="mb-1 block text-xs text-slate-400">To</label>
+              <label className="mb-1 block text-xs text-muted-foreground">To</label>
               <input
                 type="date"
                 value={to}
                 onChange={(e) => setTo(e.target.value)}
-                className="w-full rounded border border-slate-700 bg-slate-800 px-2 py-1 text-sm text-white"
+                className="w-full rounded border border-border bg-muted px-2 py-1 text-sm text-foreground"
               />
             </div>
             <div>
-              <label className="mb-1 block text-xs text-slate-400">Group</label>
+              <label className="mb-1 block text-xs text-muted-foreground">Group</label>
               <select
                 value={groupId}
                 onChange={(e) => {
                   setGroupId(e.target.value);
                   setEmployeeId('');
                 }}
-                className="w-full rounded border border-slate-700 bg-slate-800 px-2 py-1 text-sm text-white"
+                className="w-full rounded border border-border bg-muted px-2 py-1 text-sm text-foreground"
               >
                 <option value="">All Groups</option>
                 {groups.map((g) => (
@@ -245,12 +328,12 @@ export default function AnalyticsPage() {
               </select>
             </div>
             <div>
-              <label className="mb-1 block text-xs text-slate-400">Employee</label>
+              <label className="mb-1 block text-xs text-muted-foreground">Employee</label>
               <select
                 value={employeeId}
                 onChange={(e) => setEmployeeId(e.target.value)}
                 disabled={!groupId}
-                className="w-full rounded border border-slate-700 bg-slate-800 px-2 py-1 text-sm text-white disabled:opacity-50"
+                className="w-full rounded border border-border bg-muted px-2 py-1 text-sm text-foreground disabled:opacity-50"
               >
                 <option value="">All Employees</option>
                 {employees.map((emp) => (
@@ -292,32 +375,41 @@ export default function AnalyticsPage() {
             value={data.metrics.attendanceRate?.toFixed(1) || '0.0'}
             unit="%"
             color={getMetricColor(data.metrics.attendanceRate, 'rate')}
+            infoKey="attendanceRate"
+            onInfo={setInfoFormula}
           />
           <StatCard
             label="Punctuality Index"
             value={data.metrics.punctualityRate?.toFixed(1) || '0.0'}
             unit="%"
             color={getMetricColor(data.metrics.punctualityRate, 'rate')}
+            infoKey="punctualityIndex"
+            onInfo={setInfoFormula}
           />
           <StatCard
             label="Avg Late Minutes"
             value={data.metrics.avgLateMinutes?.toFixed(0) || '0'}
             unit="min"
             color="white"
+            infoKey="avgLateMinutes"
+            onInfo={setInfoFormula}
           />
           <StatCard
             label="Total Overtime"
             value={data.metrics.totalOvertimeHours?.toFixed(1) || '0.0'}
             unit="hrs"
             color="white"
+            infoKey="totalOvertime"
+            onInfo={setInfoFormula}
           />
         </div>
 
         {/* Weekly Trend Line Chart */}
-        <div className="rounded-lg border border-slate-800 bg-slate-900 p-4">
+        <div className="rounded-lg border border-border bg-card p-4">
           <div className="mb-3 flex items-center gap-2">
             <TrendingUp className="h-5 w-5 text-blue-400" />
             <h2 className="text-lg font-semibold">Weekly Trend</h2>
+            <ChartInfoButton infoKey="weeklyTrend" onInfo={setInfoFormula} />
           </div>
           <ResponsiveContainer width="100%" height={300}>
             <LineChart data={data.weeklyTrend}>
@@ -337,12 +429,13 @@ export default function AnalyticsPage() {
         </div>
 
         {/* Check-in Distribution Area Chart */}
-        <div className="rounded-lg border border-slate-800 bg-slate-900 p-4">
+        <div className="rounded-lg border border-border bg-card p-4">
           <div className="mb-3 flex items-center gap-2">
             <Clock className="h-5 w-5 text-blue-400" />
             <h2 className="text-lg font-semibold">Check-in Distribution</h2>
+            <ChartInfoButton infoKey="checkInDistribution" onInfo={setInfoFormula} />
             {peakHour.count > 0 && (
-              <span className="ml-auto text-xs text-slate-400">
+              <span className="ml-auto text-xs text-muted-foreground">
                 Peak: {peakHour.hour}:00 ({peakHour.count} check-ins)
               </span>
             )}
@@ -368,11 +461,12 @@ export default function AnalyticsPage() {
         </div>
 
         {/* Department Breakdown Stacked Bar Chart */}
-        <div className="rounded-lg border border-slate-800 bg-slate-900 p-4">
+        <div className="rounded-lg border border-border bg-card p-4">
           <div className="mb-3 flex items-center gap-2">
             <Users className="h-5 w-5 text-blue-400" />
             <h2 className="text-lg font-semibold">Department Breakdown</h2>
-            <span className="ml-auto text-xs text-slate-400">Click bar to filter by group</span>
+            <ChartInfoButton infoKey="departmentBreakdown" onInfo={setInfoFormula} />
+            <span className="ml-auto text-xs text-muted-foreground">Click bar to filter by group</span>
           </div>
           <ResponsiveContainer width="100%" height={300}>
             <BarChart data={data.departmentBreakdown} onClick={handleDepartmentClick}>
@@ -392,7 +486,7 @@ export default function AnalyticsPage() {
         </div>
 
         {/* Heatmap Calendar */}
-        <div className="rounded-lg border border-slate-800 bg-slate-900 p-4">
+        <div className="rounded-lg border border-border bg-card p-4">
           <div className="mb-3 flex items-center gap-2">
             <Activity className="h-5 w-5 text-blue-400" />
             <h2 className="text-lg font-semibold">Attendance Heatmap</h2>
@@ -401,14 +495,14 @@ export default function AnalyticsPage() {
             <div className="inline-block min-w-full">
               <div className="flex">
                 {/* Sticky employee names column */}
-                <div className="sticky left-0 z-10 bg-slate-900">
-                  <div className="h-8 border-b border-slate-700 px-2 py-1 text-xs font-medium text-slate-400">
+                <div className="sticky left-0 z-10 bg-card">
+                  <div className="h-8 border-b border-border px-2 py-1 text-xs font-medium text-muted-foreground">
                     Employee
                   </div>
                   {data.heatmap.map((row, idx) => (
                     <div
                       key={idx}
-                      className="h-8 border-b border-slate-800 px-2 py-1 text-xs text-slate-300 truncate"
+                      className="h-8 border-b border-border px-2 py-1 text-xs text-foreground truncate"
                       style={{ width: '150px' }}
                     >
                       {row.employeeName}
@@ -419,7 +513,7 @@ export default function AnalyticsPage() {
                 <div className="flex">
                   {data.heatmap[0]?.dates?.map((dateObj, dateIdx) => (
                     <div key={dateIdx} className="flex-shrink-0" style={{ width: '40px' }}>
-                      <div className="h-8 border-b border-slate-700 px-1 py-1 text-center text-xs text-slate-400">
+                      <div className="h-8 border-b border-border px-1 py-1 text-center text-xs text-muted-foreground">
                         {new Date(dateObj.date).getDate()}
                       </div>
                       {data.heatmap.map((row, rowIdx) => {
@@ -437,7 +531,7 @@ export default function AnalyticsPage() {
                         return (
                           <div
                             key={rowIdx}
-                            className="h-8 border-b border-slate-800 cursor-pointer hover:opacity-80"
+                            className="h-8 border-b border-border cursor-pointer hover:opacity-80"
                             style={{ backgroundColor: bgColor }}
                             title={`${row.employeeName} - ${dateObj.date} - ${cell.status}`}
                           />
@@ -452,37 +546,38 @@ export default function AnalyticsPage() {
           <div className="mt-3 flex flex-wrap gap-3 text-xs">
             <div className="flex items-center gap-1">
               <div className="h-3 w-3 rounded" style={{ backgroundColor: '#10b981' }} />
-              <span className="text-slate-400">Present</span>
+              <span className="text-muted-foreground">Present</span>
             </div>
             <div className="flex items-center gap-1">
               <div className="h-3 w-3 rounded" style={{ backgroundColor: '#f59e0b' }} />
-              <span className="text-slate-400">Late</span>
+              <span className="text-muted-foreground">Late</span>
             </div>
             <div className="flex items-center gap-1">
               <div className="h-3 w-3 rounded" style={{ backgroundColor: '#fb7185' }} />
-              <span className="text-slate-400">Early Leave</span>
+              <span className="text-muted-foreground">Early Leave</span>
             </div>
             <div className="flex items-center gap-1">
               <div className="h-3 w-3 rounded" style={{ backgroundColor: '#ef4444' }} />
-              <span className="text-slate-400">Absent</span>
+              <span className="text-muted-foreground">Absent</span>
             </div>
             <div className="flex items-center gap-1">
               <div className="h-3 w-3 rounded" style={{ backgroundColor: '#1e293b' }} />
-              <span className="text-slate-400">No Schedule</span>
+              <span className="text-muted-foreground">No Schedule</span>
             </div>
           </div>
         </div>
 
         {/* Bradford Factor Table */}
-        <div className="rounded-lg border border-slate-800 bg-slate-900 p-4">
+        <div className="rounded-lg border border-border bg-card p-4">
           <div className="mb-3 flex items-center gap-2">
             <BarChart3 className="h-5 w-5 text-blue-400" />
             <h2 className="text-lg font-semibold">Bradford Factor Analysis</h2>
+            <ChartInfoButton infoKey="bradford" onInfo={setInfoFormula} />
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-slate-700 text-left text-xs text-slate-400">
+                <tr className="border-b border-border text-left text-xs text-muted-foreground">
                   <th className="px-3 py-2">Employee</th>
                   <th className="px-3 py-2">Group</th>
                   <th className="px-3 py-2 text-right">Frequency</th>
@@ -493,7 +588,7 @@ export default function AnalyticsPage() {
               <tbody>
                 {data.bradfordFactors.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="px-3 py-4 text-center text-slate-500">
+                    <td colSpan={5} className="px-3 py-4 text-center text-muted-foreground">
                       {t('analyticsPage.bradford.empty')}
                     </td>
                   </tr>
@@ -506,11 +601,11 @@ export default function AnalyticsPage() {
                         ? 'text-amber-400'
                         : 'text-rose-400';
                     return (
-                      <tr key={idx} className="border-b border-slate-800 hover:bg-slate-800/50">
-                        <td className="px-3 py-2 text-white">{row.employeeName}</td>
-                        <td className="px-3 py-2 text-slate-300">{row.groupName}</td>
-                        <td className="px-3 py-2 text-right text-slate-300">{row.frequency}</td>
-                        <td className="px-3 py-2 text-right text-slate-300">{row.totalDays}</td>
+                      <tr key={idx} className="border-b border-border hover:bg-muted/50">
+                        <td className="px-3 py-2 text-foreground">{row.employeeName}</td>
+                        <td className="px-3 py-2 text-foreground">{row.groupName}</td>
+                        <td className="px-3 py-2 text-right text-foreground">{row.frequency}</td>
+                        <td className="px-3 py-2 text-right text-foreground">{row.totalDays}</td>
                         <td className={`px-3 py-2 text-right font-mono font-bold ${scoreColor}`}>
                           {row.bradfordScore}
                         </td>
@@ -526,6 +621,32 @@ export default function AnalyticsPage() {
 
         {!auth && <p className="text-xs text-rose-400">Session not loaded. Please re-login.</p>}
       </div>
+      {infoFormula && FORMULAS[infoFormula] && (
+        <ModalShell
+          title={FORMULAS[infoFormula].title}
+          subtitle="How this metric is calculated"
+          onClose={() => setInfoFormula(null)}
+          maxWidth="max-w-lg"
+          contentClassName="max-h-[75vh] overflow-y-auto"
+        >
+          <div className="space-y-4 text-sm">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Formula</p>
+              <code className="mt-1 block rounded bg-muted px-3 py-2 font-mono text-xs text-foreground">
+                {FORMULAS[infoFormula].formula}
+              </code>
+            </div>
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Logic</p>
+              <p className="mt-1 text-xs text-foreground/90">{FORMULAS[infoFormula].logic}</p>
+            </div>
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Impact on data</p>
+              <p className="mt-1 text-xs text-foreground/90">{FORMULAS[infoFormula].impact}</p>
+            </div>
+          </div>
+        </ModalShell>
+      )}
     </div>
   );
 }

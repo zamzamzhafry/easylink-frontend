@@ -23,8 +23,8 @@ export default function MachineSyncPanel({ machineId }) {
   const isbusy = Boolean(busy);
 
   return (
-    <div className="rounded-xl border border-slate-700 bg-slate-800/60 p-4">
-      <h3 className="mb-3 flex items-center gap-2 text-sm font-semibold text-slate-200">
+    <div className="rounded-xl border border-border bg-muted/60 p-4">
+      <h3 className="mb-3 flex items-center gap-2 text-sm font-semibold text-foreground">
         <DatabaseZap className="h-4 w-4 text-emerald-400" />
         PHP Bridge Sync
       </h3>
@@ -32,15 +32,15 @@ export default function MachineSyncPanel({ machineId }) {
       <div className="mb-3 flex flex-wrap gap-4 text-center">
         <div>
           <div className="text-lg font-bold text-sky-400">{dbStats?.users ?? '-'}</div>
-          <div className="text-[10px] uppercase text-slate-500">DB Users</div>
+          <div className="text-[10px] uppercase text-muted-foreground">DB Users</div>
         </div>
         <div>
           <div className="text-lg font-bold text-sky-400">{dbStats?.scanlogs ?? '-'}</div>
-          <div className="text-[10px] uppercase text-slate-500">DB Scanlogs</div>
+          <div className="text-[10px] uppercase text-muted-foreground">DB Scanlogs</div>
         </div>
         <div>
-          <div className="text-xs text-slate-400 mt-1">{dbStats?.latest_scan || '-'}</div>
-          <div className="text-[10px] uppercase text-slate-500">Latest Scan</div>
+          <div className="text-xs text-muted-foreground mt-1">{dbStats?.latest_scan || '-'}</div>
+          <div className="text-[10px] uppercase text-muted-foreground">Latest Scan</div>
         </div>
       </div>
 
@@ -94,7 +94,7 @@ export default function MachineSyncPanel({ machineId }) {
           type="button"
           onClick={() => refreshDbStats(machineId)}
           disabled={isbusy}
-          className="rounded-lg border border-slate-500/40 bg-slate-500/10 px-3 py-1.5 text-xs font-semibold text-slate-300 disabled:opacity-50"
+          className="rounded-lg border border-border/40 bg-muted/40 px-3 py-1.5 text-xs font-semibold text-muted-foreground disabled:opacity-50"
         >
           Refresh Stats
         </button>

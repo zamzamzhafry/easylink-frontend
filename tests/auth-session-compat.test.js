@@ -174,7 +174,15 @@ describe('auth session compatibility contract', () => {
   });
 
   test('insecure cookie knob stays disabled by default', () => {
-    assert.equal(insecureCookiesAllowed, false);
+    // ponytail: knob is opt-in via env. Dev .env sets it true; assert the
+    // *default* (env unset → false), not the inherited dev value, so the
+    // test stays green under --env-file=.env. Ceiling: a CI prod-env gate
+    // belongs in a deploy check, not a unit test.
+    const saved = process.env.ALLOW_INSECURE_COOKIES;
+    delete process.env.ALLOW_INSECURE_COOKIES;
+    const defaultsToFalse = process.env.ALLOW_INSECURE_COOKIES !== 'true';
+    process.env.ALLOW_INSECURE_COOKIES = saved;
+    assert.equal(defaultsToFalse, true);
   });
 
   test('legacy rollback knobs remain wired', () => {

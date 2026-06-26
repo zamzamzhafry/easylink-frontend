@@ -228,28 +228,52 @@ export async function POST(req) {
     }
 
     const { shift_id, from, to } = body;
+    const fromDate = new Date(from);
+    const toDate = new Date(to);
+    // Reject non-date input (would throw on toISOString) and cap the range so a
+    // wide from/to can't turn this into a self-DoS insert loop.
+    if (Number.isNaN(fromDate.getTime()) || Number.isNaN(toDate.getTime())) {
+      return invalid('Valid from and to dates are required.');
+    }
+    if (fromDate > toDate) return invalid('"from" must be on or before "to".');
+    const MAX_BULK_DAYS = 366;
+    const dayDiff = Math.round((toDate - fromDate) / 86_400_000);
+    if (dayDiff > MAX_BULK_DAYS) {
+      return invalid(`Date range exceeds ${MAX_BULK_DAYS} days.`);
+    }
+
     const [members] = await pool.query(
       'SELECT karyawan_id FROM tb_employee_group WHERE group_id = ?',
       [groupId]
     );
     const dates = [];
-    const cur = new Date(from);
-    const end = new Date(to);
+    const cur = new Date(fromDate);
+    const end = toDate;
 
     while (cur <= end) {
       dates.push(cur.toISOString().slice(0, 10));
       cur.setDate(cur.getDate() + 1);
     }
 
-    for (const member of members) {
-      for (const dateValue of dates) {
-        await pool.query(
-          `INSERT INTO tb_schedule (karyawan_id, tanggal, shift_id)
-           VALUES (?, ?, ?)
-           ON DUPLICATE KEY UPDATE shift_id = VALUES(shift_id)`,
-          [member.karyawan_id, dateValue, shift_id]
-        );
+    const conn = await pool.getConnection();
+    try {
+      await conn.beginTransaction();
+      for (const member of members) {
+        for (const dateValue of dates) {
+          await conn.query(
+            `INSERT INTO tb_schedule (karyawan_id, tanggal, shift_id)
+             VALUES (?, ?, ?)
+             ON DUPLICATE KEY UPDATE shift_id = VALUES(shift_id)`,
+            [member.karyawan_id, dateValue, shift_id]
+          );
+        }
       }
+      await conn.commit();
+    } catch (err) {
+      await conn.rollback();
+      throw err;
+    } finally {
+      conn.release();
     }
 
     return NextResponse.json({ ok: true, affected: members.length * dates.length });
@@ -306,23 +330,33 @@ export async function POST(req) {
     let affected = 0;
     const skipped = [];
 
-    for (const row of rows) {
-      const employeeId = Number(row.karyawan_id);
-      const shiftId = Number(row.shift_id);
-      const tanggal = row.tanggal;
+    const conn = await pool.getConnection();
+    try {
+      await conn.beginTransaction();
+      for (const row of rows) {
+        const employeeId = Number(row.karyawan_id);
+        const shiftId = Number(row.shift_id);
+        const tanggal = row.tanggal;
 
-      if (!employeeSet.has(employeeId) || !shiftSet.has(shiftId) || !tanggal) {
-        skipped.push(row);
-        continue;
+        if (!employeeSet.has(employeeId) || !shiftSet.has(shiftId) || !tanggal) {
+          skipped.push(row);
+          continue;
+        }
+
+        await conn.query(
+          `INSERT INTO tb_schedule (karyawan_id, tanggal, shift_id, catatan)
+           VALUES (?, ?, ?, ?)
+           ON DUPLICATE KEY UPDATE shift_id = VALUES(shift_id), catatan = VALUES(catatan)`,
+          [employeeId, tanggal, shiftId, row.catatan ?? null]
+        );
+        affected += 1;
       }
-
-      await pool.query(
-        `INSERT INTO tb_schedule (karyawan_id, tanggal, shift_id, catatan)
-         VALUES (?, ?, ?, ?)
-         ON DUPLICATE KEY UPDATE shift_id = VALUES(shift_id), catatan = VALUES(catatan)`,
-        [employeeId, tanggal, shiftId, row.catatan ?? null]
-      );
-      affected += 1;
+      await conn.commit();
+    } catch (err) {
+      await conn.rollback();
+      throw err;
+    } finally {
+      conn.release();
     }
 
     return NextResponse.json({ ok: true, affected, skipped: skipped.length });

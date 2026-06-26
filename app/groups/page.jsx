@@ -7,9 +7,13 @@ import GroupsList from '@/components/groups/groups-list';
 import UnassignedPanel from '@/components/groups/unassigned-panel';
 import { useToast } from '@/components/ui/toast-provider';
 import { requestJson } from '@/lib/request-json';
+import { useAppLocale } from '@/components/app-shell';
+import { getUIText } from '@/lib/localization/ui-texts';
 
 export default function GroupsPage() {
   const { warning } = useToast();
+  const { locale } = useAppLocale();
+  const t = (path) => getUIText(path, locale);
   const [data, setData] = useState({
     groups: [],
     members: [],
@@ -167,11 +171,11 @@ export default function GroupsPage() {
       <div className="flex items-end justify-between">
         <div>
           <p className="mb-1 text-xs font-mono uppercase tracking-widest text-teal-400">
-            Organization
+            {t('groupsPage.eyebrow')}
           </p>
-          <h1 className="text-3xl font-bold text-white">Employee Groups</h1>
-          <p className="mt-1 text-sm text-slate-400">
-            Organize employees into groups for bulk scheduling
+          <h1 className="text-3xl font-bold text-foreground">{t('groupsPage.title')}</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {t('groupsPage.description')}
           </p>
         </div>
         <button
@@ -179,7 +183,7 @@ export default function GroupsPage() {
           onClick={() => setCreating(true)}
           className="flex items-center gap-2 rounded-xl bg-teal-500 px-4 py-2.5 text-sm font-semibold text-slate-900 transition-colors hover:bg-teal-400"
         >
-          <Plus className="h-4 w-4" /> New Group
+          <Plus className="h-4 w-4" /> {t('groupsPage.newGroup')}
         </button>
       </div>
 

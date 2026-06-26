@@ -7,6 +7,7 @@ import { requestJson } from '@/lib/request-json';
 import { resetSessionCache, fetchAuthSession } from '@/hooks/use-auth-session';
 import { useAppLocale } from '@/components/app-shell';
 import { getUIText } from '@/lib/localization/ui-texts';
+import { sanitizeNextPath } from '@/lib/login-redirect';
 
 export default function LoginPage() {
   const { warning, success } = useToast();
@@ -21,7 +22,7 @@ export default function LoginPage() {
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    const next = params.get('next') || '/';
+    const next = sanitizeNextPath(params.get('next'));
     setNextPath(next);
   }, []);
 

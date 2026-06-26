@@ -5,6 +5,7 @@ import {
   unauthorizedResponse,
   forbiddenResponse,
 } from '@/lib/auth-session';
+import { resolveDateRange } from '@/lib/date-range';
 import {
   buildPaginatedResponse,
   computePaginationMeta,
@@ -64,6 +65,13 @@ export async function GET(request) {
 
   const from = searchParams.get('from') || null;
   const to = searchParams.get('to') || null;
+  // Guard against self-DoS when both dates provided — scanlog table is huge.
+  if (from && to) {
+    const range = resolveDateRange(from, to);
+    if (range.error) {
+      return NextResponse.json({ ok: false, error: range.error }, { status: range.status });
+    }
+  }
   const pinFilter = (searchParams.get('pin') || '').trim();
   const { limit, pageInput } = parsePaginationParams(searchParams, {
     defaultLimit: 500,
@@ -107,23 +115,36 @@ export async function GET(request) {
   const total = Number(Array.isArray(countRows) ? (countRows[0]?.total ?? 0) : 0);
   const meta = computePaginationMeta({ total, pageInput, limit });
 
-  // Data query
-  const dataParams = [...params, meta.limit, meta.offset];
-  const [rows] = await pool.query(
-    `SELECT
-       sl.sn,
-       DATE_FORMAT(${timeColumn}, '%Y-%m-%d') AS scan_date,
-       TIME(${timeColumn})   AS scan_time,
-       sl.pin,
-       sl.verifymode,
-       sl.iomode,
-       sl.workcode
-     FROM ${baseTable} sl
-     ${whereSQL}
-     ORDER BY ${timeColumn} DESC
-     LIMIT ? OFFSET ?`,
-    dataParams
-  );
+  // Download bypasses pagination but is capped to avoid OOM (date range already
+  // bounded to 366 days by resolveDateRange). Paginated view keeps LIMIT/OFFSET.
+  const DOWNLOAD_MAX_ROWS = 50000;
+  const dataSQL = download
+    ? `SELECT
+         sl.sn,
+         DATE_FORMAT(${timeColumn}, '%Y-%m-%d') AS scan_date,
+         TIME(${timeColumn})   AS scan_time,
+         sl.pin,
+         sl.verifymode,
+         sl.iomode,
+         sl.workcode
+       FROM ${baseTable} sl
+       ${whereSQL}
+       ORDER BY ${timeColumn} DESC
+       LIMIT ?`
+    : `SELECT
+         sl.sn,
+         DATE_FORMAT(${timeColumn}, '%Y-%m-%d') AS scan_date,
+         TIME(${timeColumn})   AS scan_time,
+         sl.pin,
+         sl.verifymode,
+         sl.iomode,
+         sl.workcode
+       FROM ${baseTable} sl
+       ${whereSQL}
+       ORDER BY ${timeColumn} DESC
+       LIMIT ? OFFSET ?`;
+  const dataParams = download ? [...params, DOWNLOAD_MAX_ROWS] : [...params, meta.limit, meta.offset];
+  const [rows] = await pool.query(dataSQL, dataParams);
 
   const records = (Array.isArray(rows) ? rows : []).map((r) => ({
     sn: r.sn || '',
@@ -139,12 +160,21 @@ export async function GET(request) {
 
   // CSV download
   if (download) {
+    const csvEscape = (value) => {
+      const text = value == null ? '' : String(value);
+      // CSV formula injection guard — prefix risky leading chars so Excel/LibreOffice
+      // treat the cell as text, not a formula.
+      const guarded = /^[=+\-@]/.test(text) ? `'${text}` : text;
+      return `"${guarded.replace(/"/g, '""')}"`;
+    };
     const header = 'SN,Date,Time,PIN,Verify Mode,IO Mode,Work Code\n';
     const csv =
       header +
       records
         .map((r) =>
-          [r.sn, r.scan_date, r.scan_time, r.pin, r.verify_label, r.io_label, r.workcode].join(',')
+          [r.sn, r.scan_date, r.scan_time, r.pin, r.verify_label, r.io_label, r.workcode]
+            .map(csvEscape)
+            .join(',')
         )
         .join('\n');
 
