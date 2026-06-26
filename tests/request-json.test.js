@@ -2,7 +2,7 @@ import { describe, test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 
 // `requestJson` calls global fetch; stub it per-test.
-import { requestJson } from '../lib/request-json.js';
+import { requestJson, __clearDedupCache } from '../lib/request-json.js';
 
 const okJson = (body, init = {}) => ({
   ok: true,
@@ -21,6 +21,7 @@ describe('requestJson', () => {
   let originalFetch;
   beforeEach(() => {
     originalFetch = global.fetch;
+    __clearDedupCache();
   });
   test(async function teardown() {
     global.fetch = originalFetch;
