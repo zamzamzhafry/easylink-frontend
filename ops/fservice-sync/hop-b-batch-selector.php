@@ -2,8 +2,9 @@
 
 declare(strict_types=1);
 
-const HOP_B_SCHEMA_VERSION = '1.0.0';
-const HOP_B_SOURCE_SDK = 'fservice-hop-b';
+require_once __DIR__ . '/lib-log.php';
+require_once __DIR__ . '/lib-hop-b-contract.php';
+
 const HOP_B_DEFAULT_BATCH_SIZE = 100;
 const HOP_B_DEFAULT_MAX_ATTEMPTS = 5;
 const HOP_B_RETRY_BASE_SECONDS = 60;
@@ -440,7 +441,16 @@ function hop_b_build_payload(array $batch, array $rows): array
     $sourceEventKeys = [];
 
     foreach ($rows as $row) {
-        $records[] = hop_b_build_record($row);
+        $record = hop_b_build_record($row);
+        // Pre-send contract assertion (fail-fast on sender). Mirrors the VM
+        // validator in lib/hop-b-ingest-contract.js so drift is caught here,
+        // not as a non-retryable 409 dead-letter on the receiver.
+        $violation = hop_b_assert_record_contract($record);
+        if ($violation !== null) {
+            throw new RuntimeException('hop_b contract violation (staging_id='
+                . ((int) $row['id']) . '): ' . $violation);
+        }
+        $records[] = $record;
         $stagingIds[] = (int) $row['id'];
         $sourceEventKeys[] = (string) $row['source_event_key'];
     }

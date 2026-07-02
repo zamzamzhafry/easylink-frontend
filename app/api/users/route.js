@@ -10,6 +10,7 @@ import {
   computePaginationMeta,
   parsePaginationParams,
 } from '@/lib/pagination';
+import { tableExists, columnExists } from '@/lib/schema-probe';
 
 const IDENTIFIER_PATTERN = /^[A-Za-z0-9._-]{1,50}$/;
 
@@ -156,35 +157,6 @@ async function syncCanonicalGlobalRole(connection, { employeeId, privilege }) {
 // ─────────────────────────────────────────────
 // Helpers — detect canonical vs legacy schema at runtime
 // ─────────────────────────────────────────────
-const _tableExistsCache = new Map();
-const _columnExistsCache = new Map();
-async function tableExists(tableName) {
-  if (_tableExistsCache.has(tableName)) return _tableExistsCache.get(tableName);
-  const [rows] = await pool.query(
-    `SELECT 1 AS found FROM information_schema.TABLES
-     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? LIMIT 1`,
-    [tableName]
-  );
-  const exists = Array.isArray(rows) && rows.length > 0;
-  _tableExistsCache.set(tableName, exists);
-  return exists;
-}
-
-async function columnExists(tableName, columnName) {
-  const cacheKey = `${tableName}.${columnName}`;
-  if (_columnExistsCache.has(cacheKey)) return _columnExistsCache.get(cacheKey);
-  const [rows] = await pool.query(
-    `SELECT 1 AS found FROM information_schema.COLUMNS
-     WHERE TABLE_SCHEMA = DATABASE()
-       AND TABLE_NAME = ?
-       AND COLUMN_NAME = ?
-     LIMIT 1`,
-    [tableName, columnName]
-  );
-  const exists = Array.isArray(rows) && rows.length > 0;
-  _columnExistsCache.set(cacheKey, exists);
-  return exists;
-}
 
 let _cachedDefaultSn;
 async function getDefaultTbUserSn() {

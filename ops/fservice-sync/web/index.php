@@ -5,6 +5,9 @@
  */
 
 require_once __DIR__ . '/../lib-log.php';
+require_once __DIR__ . '/../lib-bridge-http.php';
+require_once __DIR__ . '/../lib-hop-b-contract.php';
+require_once __DIR__ . '/../lib-sync-scanlogs.php';
 
 // --- DB Config ---------------------------------------------------------------
 $DB_HOST = getenv('DB_HOST') ?: '127.0.0.1';
@@ -60,47 +63,9 @@ function get_machine_by_sn(string $sn): ?array {
 
 // --- Bridge helper -----------------------------------------------------------
 function bridge_post(array $machine, string $path, array $fields = []): array {
+    // Thin wrapper over shared lib-bridge-http. Same return shape.
     global $TIMEOUT;
-    $baseUrl = "http://{$machine['bridge_host']}:{$machine['bridge_port']}";
-    $fields['sn'] = $machine['sn'];
-    $ch = curl_init();
-    curl_setopt_array($ch, [
-        CURLOPT_URL            => $baseUrl . $path,
-        CURLOPT_POST           => true,
-        CURLOPT_POSTFIELDS     => http_build_query($fields),
-        CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_TIMEOUT        => $TIMEOUT,
-        CURLOPT_HTTPHEADER     => ['Content-Type: application/x-www-form-urlencoded'],
-    ]);
-    $resp = curl_exec($ch);
-    $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    $err  = curl_error($ch);
-    curl_close($ch);
-
-    $rawSnippet = is_string($resp) ? substr($resp, 0, 500) : '(non-string)';
-    el_log('DEBUG', 'bridge', "POST $path", [
-        'url'       => $baseUrl . $path,
-        'machine'   => $machine['label'] ?? '?',
-        'sn'        => $machine['sn'] ?? '?',
-        'http'      => $code,
-        'curl_err'  => $err,
-        'body_len'  => is_string($resp) ? strlen($resp) : 0,
-        'body_head' => $rawSnippet,
-        'fields'    => array_diff_key($fields, ['sn' => 1]),
-    ]);
-
-    if ($resp === false) {
-        el_log('ERROR', 'bridge', "$path curl failed", ['curl_err' => $err, 'http' => $code]);
-        return ['ok' => false, 'error' => $err, 'http' => $code];
-    }
-    $json = json_decode($resp, true);
-    if (!is_array($json)) {
-        el_log('ERROR', 'bridge', "$path non-JSON", [
-            'http' => $code, 'body_head' => $rawSnippet,
-        ]);
-        return ['ok' => false, 'error' => 'Non-JSON response', 'raw' => $rawSnippet, 'http' => $code];
-    }
-    return ['ok' => true, 'data' => $json, 'http' => $code];
+    return bridge_http_post($machine, $path, $fields, $TIMEOUT ?? 120, 'bridge');
 }
 
 // --- Sync functions ----------------------------------------------------------
@@ -118,27 +83,7 @@ function _bridge_no_data(array $r): bool {
  * Mirror one tb_scanlog row into easylink_bridge.raw_scanlog_staging so the
  * Hop B worker (hop-b-batch-selector.php) can pick it up. Best-effort.
  */
-function _stage_one(?PDOStatement $stage, string $sn, string $scanDateTs,
-                    string $pin, int $verify, int $io, int $work): void {
-    if (!$stage) return;
-    $ts = $scanDateTs !== '' ? strtotime($scanDateTs) : false;
-    if ($ts === false) {
-        el_log('WARN', 'stage', 'skip unparseable scan_date', ['raw' => $scanDateTs, 'pin' => $pin]);
-        return;
-    }
-    $date = date('Y-m-d', $ts);
-    $time = date('H:i:s', $ts);
-    $key  = "{$sn}|{$date}|{$time}|{$pin}|{$verify}|{$io}|{$work}";
-    try {
-        $stage->execute([
-            ':sn'=>$sn, ':sd'=>$date, ':st'=>$time,
-            ':pin'=>$pin, ':vm'=>$verify, ':io'=>$io, ':wc'=>$work,
-            ':sek'=>$key, ':fetched'=>$scanDateTs ?: date('Y-m-d H:i:s'),
-        ]);
-    } catch (\Throwable $e) {
-        el_log('WARN', 'stage', 'stage insert failed', ['err' => $e->getMessage(), 'key' => $key]);
-    }
-}
+// Staging helper moved to lib-sync-scanlogs stage_scan_row().
 
 function sync_users_to_db(array $machine): array {
     $isSession = true; $total = 0; $errors = [];
@@ -170,40 +115,14 @@ function sync_users_to_db(array $machine): array {
 }
 
 function sync_scanlogs_to_db(array $machine, bool $full = false): array {
-    $endpoint = $full ? '/scanlog/all/paging' : '/scanlog/new';
-    $isSession = true; $total = 0; $staged = 0; $errors = [];
+    $total = 0; $staged = 0; $errors = [];
     try {
         $pdo = get_pdo();
         $bridge = get_bridge_pdo();
-        $stmt = $pdo->prepare("INSERT IGNORE INTO tb_scanlog (sn,scan_date,pin,verifymode,iomode,workcode) VALUES (:sn,:sd,:pin,:vm,:io,:wc)");
-        $stage = $bridge
-            ? $bridge->prepare("INSERT IGNORE INTO raw_scanlog_staging
-                  (sn, scan_date, scan_time, pin, verifymode, iomode, workcode,
-                   source_event_key, fetched_at)
-                  VALUES (:sn,:sd,:st,:pin,:vm,:io,:wc,:sek,:fetched)")
-            : null;
-        while ($isSession) {
-            $r = bridge_post($machine, $endpoint, ['limit' => 100]);
-            if (!$r['ok']) { $errors[] = $r['error'] ?? 'bridge fail'; break; }
-            if (empty($r['data']['Result'])) {
-                if (_bridge_no_data($r)) { el_log('INFO','sync','scanlogs: no more data', ['sn'=>$machine['sn']??'?']); }
-                else { $errors[] = (string)($r['data']['message'] ?? 'Result false'); }
-                break;
-            }
-            foreach (($r['data']['Data'] ?? []) as $row) {
-                $sn = (string)($row['SN'] ?? $machine['sn']);
-                $sd = (string)($row['ScanDate'] ?? '');
-                $pin = (string)($row['PIN'] ?? '');
-                $vm = (int)($row['VerifyMode'] ?? 0);
-                $io = (int)($row['IOMode'] ?? 0);
-                $wc = (int)($row['WorkCode'] ?? 0);
-                $stmt->execute([':sn'=>$sn,':sd'=>$sd,':pin'=>$pin,':vm'=>$vm,':io'=>$io,':wc'=>$wc]);
-                _stage_one($stage, $sn, $sd, $pin, $vm, $io, $wc);
-                if ($stage && $stage->rowCount() > 0) $staged++;
-                $total++;
-            }
-            $isSession = !empty($r['data']['IsSession']);
-        }
+        // Delegates to lib-sync-scanlogs. C4: no local tb_scanlog dual-write —
+        // Windows stages only; VM mirror owns tb_scanlog.
+        $flow = sync_scanlogs_flow($machine, $bridge, $full);
+        $total = $flow['total']; $staged = $flow['staged']; $errors = $flow['errors'];
         $pdo->prepare("UPDATE tb_device_config SET last_sync_scanlogs=?, last_sync_at=NOW() WHERE id=?")->execute([$total, $machine['id']]);
     } catch (\Exception $e) {
         $errors[] = $e->getMessage();

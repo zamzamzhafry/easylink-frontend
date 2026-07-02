@@ -4,6 +4,7 @@ import {
   unauthorizedResponse,
 } from '@/lib/auth-session';
 import pool from '@/lib/db';
+import { tableExists } from '@/lib/schema-probe';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -17,18 +18,6 @@ function toBoundedInt(value, fallback, { min = 1, max = 100 } = {}) {
   const numeric = Number.parseInt(String(value ?? ''), 10);
   if (!Number.isFinite(numeric)) return fallback;
   return Math.min(max, Math.max(min, numeric));
-}
-
-async function tableExists(name) {
-  const [rows] = await pool.query(
-    `SELECT 1 AS found
-     FROM information_schema.TABLES
-     WHERE TABLE_SCHEMA = DATABASE()
-       AND TABLE_NAME = ?
-     LIMIT 1`,
-    [name]
-  );
-  return Array.isArray(rows) && rows.length > 0;
 }
 
 function normalizeRow(row) {

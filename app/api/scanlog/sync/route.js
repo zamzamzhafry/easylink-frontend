@@ -12,8 +12,13 @@ import {
   parsePaginationParams,
 } from '@/lib/pagination';
 import { getMigrationGateStatus } from '@/lib/flags/migration-flags';
-import { SCANLOG_CANONICAL_SOURCE } from '@/lib/scanlog-read-source';
+import {
+  SCANLOG_CANONICAL_SOURCE,
+  SCANLOG_SAFE_TABLE,
+  SCANLOG_LEGACY_TABLE,
+} from '@/lib/scanlog-read-source';
 import { mergeSafeEventsIntoLegacy } from '@/lib/scanlog-legacy-mirror';
+import { tableExists } from '@/lib/schema-probe';
 
 function toBoundedInt(value, fallback, { min = 1, max = 100000 } = {}) {
   const parsed = Number.parseInt(String(value ?? ''), 10);
@@ -65,20 +70,6 @@ function serializeBatchRow(row) {
     ...row,
     debug: batchDetails.get(row.id) || null,
   };
-}
-
-async function tableExists(tableName) {
-  const [rows] = await pool.query(
-    `
-      SELECT 1
-      FROM information_schema.TABLES
-      WHERE TABLE_SCHEMA = DATABASE()
-        AND TABLE_NAME = ?
-      LIMIT 1
-    `,
-    [tableName]
-  );
-  return rows.length > 0;
 }
 
 const DELTA_SAMPLE_LIMIT = 50;
@@ -187,8 +178,8 @@ function extractDeltaTotal(report, name) {
 }
 
 async function buildDeltaReport({ safeExists = false } = {}) {
-  const safeTable = 'tb_scanlog_safe_events';
-  const legacyTable = 'tb_scanlog';
+  const safeTable = SCANLOG_SAFE_TABLE;
+  const legacyTable = SCANLOG_LEGACY_TABLE;
   const warnings = [];
   const safeTableExists = safeExists || (await tableExists(safeTable));
   if (!safeTableExists) {
@@ -531,7 +522,7 @@ async function insertSafeEvents(rows, batchId) {
 
   const [result] = await pool.query(
     `
-      INSERT IGNORE INTO tb_scanlog_safe_events (
+      INSERT IGNORE INTO ${SCANLOG_SAFE_TABLE} (
         source_event_key,
         source_sdk,
         sn,
@@ -562,7 +553,7 @@ export async function GET(req) {
   const reportType = url.searchParams.get('report');
 
   if (reportType === 'delta') {
-    const hasSafeEvents = await tableExists('tb_scanlog_safe_events');
+    const hasSafeEvents = await tableExists(SCANLOG_SAFE_TABLE);
     if (!hasSafeEvents) {
       return NextResponse.json(
         {
@@ -759,7 +750,7 @@ export async function POST(req) {
   if (!auth) return unauthorizedResponse();
   if (!auth.is_admin) return forbiddenResponse('Admin only');
 
-  const hasEvents = await tableExists('tb_scanlog_safe_events');
+  const hasEvents = await tableExists(SCANLOG_SAFE_TABLE);
   const hasBatches = await tableExists('tb_scanlog_safe_batches');
   if (!hasEvents || !hasBatches) {
     return NextResponse.json(

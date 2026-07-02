@@ -9,8 +9,8 @@ async function loginAsAdmin(page: Page) {
   await page.goto('/login');
   await page.waitForURL('**/login');
 
-  await page.fill('label:has-text("Login ID") >> input', adminLoginId);
-  await page.fill('label:has-text("Password") >> input', adminPassword);
+  await page.fill('#login-id', adminLoginId);
+  await page.fill('#login-password', adminPassword);
 
   await page.click('button[type="submit"]');
   await page.waitForURL('**/');
@@ -22,8 +22,8 @@ test('login page loads and admin can sign in to dashboard', async ({ page }) => 
 
   await expect(page.getByRole('heading', { name: /login/i })).toBeVisible();
 
-  await page.fill('label:has-text("Login ID") >> input', adminLoginId);
-  await page.fill('label:has-text("Password") >> input', adminPassword);
+  await page.fill('#login-id', adminLoginId);
+  await page.fill('#login-password', adminPassword);
   await page.click('button[type="submit"]');
 
   await page.waitForURL('**/');

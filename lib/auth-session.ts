@@ -1,6 +1,7 @@
 import crypto from 'crypto';
 import type { NextResponse as NextResponseType } from 'next/server';
 import pool from '@/lib/db';
+import { tableExists as hasTable } from '@/lib/schema-probe';
 
 // ponytail: next/headers + next/server have no Node-ESM export (Next-bundler-only),
 // which blocks `node --test` from loading this module. Lazy-load inside the 3 runtime
@@ -305,8 +306,6 @@ export function getCanonicalRolesFromLegacyAuth(
   return [...new Set(canonicalRoles)];
 }
 
-const tableExistsCache = new Map<string, boolean>();
-
 function base64UrlEncode(value: string) {
   return Buffer.from(value, 'utf8').toString('base64url');
 }
@@ -407,25 +406,6 @@ function logSubjectTypeMismatch(expected: AuthSubjectType, actual: AuthSubjectTy
     expected_subject_type: expected,
     actual_subject_type: actual,
   });
-}
-
-async function hasTable(tableName: string) {
-  if (tableExistsCache.has(tableName)) {
-    return tableExistsCache.get(tableName) === true;
-  }
-
-  const [rows] = await pool.query(
-    `SELECT 1 AS found
-     FROM information_schema.TABLES
-     WHERE TABLE_SCHEMA = DATABASE()
-       AND TABLE_NAME = ?
-     LIMIT 1`,
-    [tableName]
-  );
-
-  const exists = Array.isArray(rows) && rows.length > 0;
-  tableExistsCache.set(tableName, exists);
-  return exists;
 }
 
 function normalizeBoolean(raw: number | string | null | undefined) {
@@ -959,4 +939,18 @@ export async function unauthorizedResponse(message = 'Unauthorized') {
 export async function forbiddenResponse(message = 'Forbidden') {
   const Res = await getNextResponse();
   return Res.json({ ok: false, error: message }, { status: 403 });
+}
+
+// ponytail: response-shape helpers for the {ok:false,error} family. Routes still hand-roll
+// NextResponse.json inline (33/36) — these are the seam for incremental adoption, not a
+// forced wrapper. Ceiling: if a route needs structured error fields (code/request_id like
+// the hop-b path), keep its bespoke shape; do not force this family there.
+export async function badRequestResponse(message = 'Bad request') {
+  const Res = await getNextResponse();
+  return Res.json({ ok: false, error: message }, { status: 400 });
+}
+
+export async function serverErrorResponse(message = 'Internal server error') {
+  const Res = await getNextResponse();
+  return Res.json({ ok: false, error: message }, { status: 500 });
 }

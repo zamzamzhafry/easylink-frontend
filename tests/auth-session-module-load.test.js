@@ -35,6 +35,8 @@ test('runtime-boundary exports exist but are not invoked at import time', () => 
   assert.equal(typeof authSession.setAuthCookie, 'function');
   assert.equal(typeof authSession.unauthorizedResponse, 'function');
   assert.equal(typeof authSession.forbiddenResponse, 'function');
+  assert.equal(typeof authSession.badRequestResponse, 'function');
+  assert.equal(typeof authSession.serverErrorResponse, 'function');
   // No next/headers load happened during this import: the lazy cache slot
   // is module-private, so we assert by absence of a thrown error above.
 });

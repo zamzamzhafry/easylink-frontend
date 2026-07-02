@@ -15,23 +15,7 @@ import {
   canAccessRawAttendance,
   getAttendanceGroupIds,
 } from '@/lib/authz/authorization-adapter';
-
-const tableExistsCache = new Map();
-
-async function hasTable(tableName) {
-  if (tableExistsCache.has(tableName)) return tableExistsCache.get(tableName) === true;
-  const [rows] = await pool.query(
-    `SELECT 1
-     FROM information_schema.TABLES
-     WHERE TABLE_SCHEMA = DATABASE()
-       AND TABLE_NAME = ?
-     LIMIT 1`,
-    [tableName]
-  );
-  const exists = Array.isArray(rows) && rows.length > 0;
-  tableExistsCache.set(tableName, exists);
-  return exists;
-}
+import { tableExists as hasTable } from '@/lib/schema-probe';
 
 function buildStatus({ firstScan, lastScan, shiftIn, shiftOut, nextDay, scanCount }) {
   if (!firstScan || !lastScan) return 'tidak_hadir';

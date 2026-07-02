@@ -11,6 +11,7 @@ import {
   canAccessAttendance,
   getAttendanceGroupIds,
 } from '@/lib/authz/authorization-adapter';
+import { resolveDateRange } from '@/lib/date-range';
 
 function invalid(message) {
   return NextResponse.json({ ok: false, error: message }, { status: 400 });
@@ -65,13 +66,10 @@ export async function GET(req) {
   const canFilterDeleted = await hasKaryawanColumn('isDeleted');
 
   if (!from || !to) return invalid('from and to are required.');
-  if (from > to) return invalid('from must be earlier than or equal to to.');
-  // Guard against self-DoS: wide range blows up the per-day scanlog join.
-  const QUICK_MAX_RANGE_DAYS = 366;
-  const dayDiff = Math.round((new Date(to) - new Date(from)) / 86_400_000);
-  if (dayDiff > QUICK_MAX_RANGE_DAYS) {
-    return invalid(`Date range exceeds ${QUICK_MAX_RANGE_DAYS} days.`);
-  }
+  // Shared 366-day cap + from>to guard (self-DoS: wide range blows up the
+  // per-day scanlog join). One home in lib/date-range resolveDateRange.
+  const range = resolveDateRange(from, to);
+  if (range.error) return invalid(range.error);
 
   if (!auth.is_admin && Number.isInteger(groupId) && !allowedGroupIds?.includes(groupId)) {
     return NextResponse.json(

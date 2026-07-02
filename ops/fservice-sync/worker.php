@@ -8,9 +8,9 @@
  *
  * Job types:
  *   - sync_scanlogs : pull /scanlog/new (or /scanlog/all/paging if full) into
- *                     demo_easylinksdk.tb_scanlog AND
- *                     easylink_bridge.raw_scanlog_staging (dual write so Hop B
- *                     worker sees fresh rows immediately).
+ *                     easylink_bridge.raw_scanlog_staging only (staging-only
+ *                     since C4; VM mirror owns tb_scanlog). Hop B worker then
+ *                     drains staging into the VM.
  *   - sync_users    : pull /user/all/paging into demo_easylinksdk.tb_user.
  *   - hop_b_push    : drain easylink_bridge.raw_scanlog_staging by repeatedly
  *                     invoking hop-b-batch-selector.php --worker-run until
@@ -22,6 +22,9 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/lib-log.php';
+require_once __DIR__ . '/lib-bridge-http.php';
+require_once __DIR__ . '/lib-hop-b-contract.php';
+require_once __DIR__ . '/lib-sync-scanlogs.php';
 
 ini_set('display_errors', '0');
 ini_set('log_errors', '1');
@@ -58,12 +61,19 @@ function w_main_pdo(): PDO { global $DB_NAME; return w_pdo($DB_NAME); }
 function w_bridge_pdo(): PDO { global $BRIDGE_DB_NAME; return w_pdo($BRIDGE_DB_NAME); }
 
 function config_get(string $key, string $default = ''): string {
+    static $warnedMissing = false;
     try {
         $stmt = w_main_pdo()->prepare("SELECT config_value FROM app_config WHERE config_key = ?");
         $stmt->execute([$key]);
         $val = $stmt->fetchColumn();
         return $val !== false ? (string)$val : $default;
     } catch (\Throwable $e) {
+        // Most common cause: migrations/004 not applied (app_config table
+        // missing). Log once so this isn't a silent misconfiguration.
+        if (!$warnedMissing) {
+            $warnedMissing = true;
+            el_log('ERROR', 'config', 'app_config read failed (run migrations/004_reliability_improvements.sql)', ['key' => $key, 'err' => $e->getMessage()]);
+        }
         return $default;
     }
 }
@@ -142,73 +152,13 @@ function chain_followup_job(string $parentId, string $type, array $payload): voi
 // --- Bridge HTTP helper -----------------------------------------------------
 
 function w_bridge_post(array $machine, string $path, array $fields = []): array {
+    // Thin wrapper over shared lib-bridge-http. Preserves the worker-bridge
+    // log tag + global $TIMEOUT so existing log filters keep matching.
     global $TIMEOUT;
-    $baseUrl = "http://{$machine['bridge_host']}:{$machine['bridge_port']}";
-    $fields['sn'] = $machine['sn'];
-    $ch = curl_init();
-    curl_setopt_array($ch, [
-        CURLOPT_URL            => $baseUrl . $path,
-        CURLOPT_POST           => true,
-        CURLOPT_POSTFIELDS     => http_build_query($fields),
-        CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_TIMEOUT        => $TIMEOUT,
-        CURLOPT_HTTPHEADER     => ['Content-Type: application/x-www-form-urlencoded'],
-    ]);
-    $resp = curl_exec($ch);
-    $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    $err  = curl_error($ch);
-    curl_close($ch);
-
-    $rawSnippet = is_string($resp) ? substr($resp, 0, 500) : '(non-string)';
-    el_log('DEBUG', 'worker-bridge', "POST $path", [
-        'url' => $baseUrl . $path, 'http' => $code, 'body_head' => $rawSnippet,
-        'fields' => array_diff_key($fields, ['sn' => 1]),
-    ]);
-
-    if ($resp === false) {
-        return ['ok' => false, 'error' => $err ?: 'curl failed', 'http' => $code];
-    }
-    $json = json_decode($resp, true);
-    if (!is_array($json)) {
-        return ['ok' => false, 'error' => 'Non-JSON response', 'raw' => $rawSnippet, 'http' => $code];
-    }
-    return ['ok' => true, 'data' => $json, 'http' => $code];
+    return bridge_http_post($machine, $path, $fields, $TIMEOUT ?? 120, 'worker-bridge');
 }
 
-// --- Dual-write helper: stage row into easylink_bridge ----------------------
-
-function w_stage_one(PDOStatement $stage, string $sn, string $scanDateTs,
-                     string $pin, int $verify, int $io, int $work): void {
-    // scanDateTs is whatever FService gave us (e.g. "2026-06-13 17:43:51").
-    // Split into date + time for the staging schema; key formula must match
-    // hop-b-batch-selector source_event_key contract.
-    $date = '';
-    $time = '';
-    if ($scanDateTs !== '') {
-        $ts = strtotime($scanDateTs);
-        if ($ts !== false) {
-            $date = date('Y-m-d', $ts);
-            $time = date('H:i:s', $ts);
-        }
-    }
-    if ($date === '' || $time === '') {
-        // unparseable timestamp — skip staging but don't fail the job
-        el_log('WARN', 'worker-stage', 'skip unparseable scan_date', ['raw' => $scanDateTs, 'pin' => $pin]);
-        return;
-    }
-    $key = "{$sn}|{$date}|{$time}|{$pin}|{$verify}|{$io}|{$work}";
-    $stage->execute([
-        ':sn'        => $sn,
-        ':sd'        => $date,
-        ':st'        => $time,
-        ':pin'       => $pin,
-        ':vm'        => $verify,
-        ':io'        => $io,
-        ':wc'        => $work,
-        ':sek'       => $key,
-        ':fetched'   => $scanDateTs ?: date('Y-m-d H:i:s'),
-    ]);
-}
+// Staging helper moved to lib-sync-scanlogs stage_scan_row().
 
 // --- Job runners ------------------------------------------------------------
 
@@ -224,62 +174,13 @@ function run_sync_scanlogs(string $jobId, array $payload): void {
     $machine = $mStmt->fetch();
     if (!$machine) { job_set_error($jobId, "machine $machineId not found"); return; }
 
-    $insert = $main->prepare(
-        "INSERT IGNORE INTO tb_scanlog (sn,scan_date,pin,verifymode,iomode,workcode)
-         VALUES (:sn,:sd,:pin,:vm,:io,:wc)"
-    );
-    $stage = $bridge->prepare(
-        "INSERT IGNORE INTO raw_scanlog_staging
-           (sn, scan_date, scan_time, pin, verifymode, iomode, workcode,
-            source_event_key, fetched_at)
-         VALUES (:sn,:sd,:st,:pin,:vm,:io,:wc,:sek,:fetched)"
-    );
-
-    $endpoint = $full ? '/scanlog/all/paging' : '/scanlog/new';
-    $total = 0;
-    $errors = [];
-    $isSession = true;
-    $page = 0;
-
-    while ($isSession) {
-        $r = w_bridge_post($machine, $endpoint, ['limit' => 100]);
-        if (!$r['ok']) { $errors[] = $r['error'] ?? 'bridge fail'; break; }
-        $data = $r['data'];
-        if (empty($data['Result'])) {
-            // "No data" is success, not error
-            $msg = (string)($data['message'] ?? '');
-            if (stripos($msg, 'no data') !== false || stripos($msg, 'tidak') !== false) {
-                el_log('INFO', 'worker', "sync_scanlogs: no more data", ['msg' => $msg]);
-            } else {
-                $errors[] = "device: $msg";
-            }
-            break;
-        }
-        $rows = $data['Data'] ?? [];
-        foreach ($rows as $row) {
-            $sn     = (string)($row['SN'] ?? $machine['sn']);
-            $sd     = (string)($row['ScanDate'] ?? '');
-            $pin    = (string)($row['PIN'] ?? '');
-            $verify = (int)($row['VerifyMode'] ?? 0);
-            $io     = (int)($row['IOMode'] ?? 0);
-            $work   = (int)($row['WorkCode'] ?? 0);
-
-            $insert->execute([
-                ':sn'  => $sn, ':sd'  => $sd, ':pin' => $pin,
-                ':vm'  => $verify, ':io'  => $io, ':wc'  => $work,
-            ]);
-            try {
-                w_stage_one($stage, $sn, $sd, $pin, $verify, $io, $work);
-            } catch (\Throwable $e) {
-                // staging is best-effort; log but don't fail the sync
-                el_log('WARN', 'worker-stage', 'stage failed', ['err' => $e->getMessage()]);
-            }
-            $total++;
-        }
-        $page++;
+    // Delegates to lib-sync-scanlogs. C4: Windows no longer dual-writes
+    // tb_scanlog — only stages + pushes. VM mirror owns tb_scanlog.
+    $flow = sync_scanlogs_flow($machine, $bridge, $full, function (int $total) use ($jobId) {
         job_set_progress($jobId, $total);
-        $isSession = !empty($data['IsSession']);
-    }
+    });
+    $total = $flow['total'];
+    $errors = $flow['errors'];
 
     try {
         $main->prepare("UPDATE tb_device_config SET last_sync_scanlogs=?, last_sync_at=NOW() WHERE id=?")
@@ -288,7 +189,7 @@ function run_sync_scanlogs(string $jobId, array $payload): void {
         el_log('WARN', 'worker', 'update last_sync failed', ['err' => $e->getMessage()]);
     }
 
-    $result = ['ok' => empty($errors), 'synced' => $total, 'errors' => $errors, 'staged' => true];
+    $result = ['ok' => empty($errors), 'synced' => $total, 'errors' => $errors, 'staged' => $flow['staged'] > 0];
     el_log('INFO', 'worker', "sync_scanlogs done", $result + ['job' => $jobId]);
     if (empty($errors)) {
         job_set_done($jobId, $result);
@@ -408,6 +309,14 @@ function run_hop_b_push(string $jobId, array $payload): void {
             'duplicates' => $decoded['duplicate_count'] ?? null,
         ]);
 
+        // Check error BEFORE no_op: hop_b_run_worker_cycle's catch returns
+        // {status:'error', outcome:'no_op'} on any exception (DB fail, etc).
+        // If no_op is checked first, the error is swallowed and the job
+        // falsely reports done. Error must win.
+        if ($status === 'error' || $outcome === 'permanent_failure') {
+            $errors[] = "cycle $i: " . ($decoded['error'] ?? $decoded['message'] ?? $outcome);
+            break;
+        }
         if ($outcome === 'no_op') break;
         if ($outcome === 'sent' || $outcome === 'replay') {
             $batchesSent++;
@@ -416,8 +325,13 @@ function run_hop_b_push(string $jobId, array $payload): void {
             job_set_progress($jobId, $batchesSent);
             continue;
         }
-        if ($status === 'error' || $outcome === 'permanent_failure') {
-            $errors[] = "cycle $i: " . ($decoded['error'] ?? $decoded['message'] ?? $outcome);
+        if ($outcome === 'retry_scheduled') {
+            // transient send failure (5xx/network) — batch already requeued
+            // for retry. Stop draining; not a hard job error.
+            el_log('WARN', 'hop-b-push', "cycle $i: retry_scheduled, stopping drain", [
+                'http_status' => $decoded['http_status_code'] ?? null,
+                'error' => $decoded['error'] ?? null,
+            ]);
             break;
         }
         // unknown outcome — log + stop to avoid infinite loop

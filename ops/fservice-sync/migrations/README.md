@@ -13,6 +13,10 @@ mysql -u root < ops\fservice-sync\migrations\002_fservice_jobs.sql
 
 :: Step 3 (one-time): backfill existing tb_scanlog rows into raw_scanlog_staging
 mysql -u root < ops\fservice-sync\migrations\003_backfill_staging.sql
+
+:: Step 4: app_config + reliability indexes (REQUIRED for auto_hop_b_push toggle
+::         and watchdog config; spans demo_easylinksdk + easylink_bridge)
+mysql -u root < ops\fservice-sync\migrations\004_reliability_improvements.sql
 ```
 
 After step 3, verify:

@@ -12,6 +12,7 @@ import {
   parsePaginationParams,
 } from '@/lib/pagination';
 import { buildScanlogReadBoundary, resolveScanlogReadSource } from '@/lib/scanlog-read-source';
+import { tableExists } from '@/lib/schema-probe';
 
 const VERIFY_LABEL = {
   1: 'Fingerprint',
@@ -35,20 +36,6 @@ function nextIsoDate(dateString) {
   const date = new Date(`${String(dateString)}T00:00:00.000Z`);
   date.setUTCDate(date.getUTCDate() + 1);
   return date.toISOString().slice(0, 10);
-}
-
-async function tableExists(tableName) {
-  const [rows] = await pool.query(
-    `
-      SELECT 1
-      FROM information_schema.TABLES
-      WHERE TABLE_SCHEMA = DATABASE()
-        AND TABLE_NAME = ?
-      LIMIT 1
-    `,
-    [tableName]
-  );
-  return rows.length > 0;
 }
 
 // ─────────────────────────────────────────────

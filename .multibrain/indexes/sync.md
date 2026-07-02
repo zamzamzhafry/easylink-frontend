@@ -1,0 +1,6 @@
+# Sync / Hop B Bucket
+
+FService bridge ↔ VM pipeline (PHP ops/fservice-sync + Next.js ingest). Newest first.
+
+- `2026-07-01 00:30` — @claude — architecture deepening C1-C4 ("do it all"): 3 new shared PHP libs (lib-bridge-http, lib-hop-b-contract, lib-sync-scanlogs); 3 bridge_post copies + 3 stagers + 3 sync flows collapsed into thin wrappers; wire contract now two-sided (PHP pre-send assert, key fn parity verified byte-identical to JS); Windows stops dual-writing local tb_scanlog (staging-only, VM mirror sole owner). JS untouched. C5 repo split deferred. -> .multibrain/context/2026-07-01-0030-claude-sync-deepening.md
+- `2026-06-30 00:25` — @claude — hop-b + PHP audit: fixed 2 critical (worker check-order swallowing selector exceptions; query-string fix was WRONG → reverted to per-endpoint 1:1 easylink.ps1), paging `page` param never sent (3 files), 004 migration never applied (README Step 4 + config_get logs), retry_scheduled branch verified safe. Refuted auditor claims: source_event_key formula matches both sides; ack-parsing unwraps nested ack. Follow-up unfixed: no job lease, no hop_b scheduler, sync.php Phase1 not looped. -> .multibrain/context/2026-06-30-0025-claude-hopb-audit.md

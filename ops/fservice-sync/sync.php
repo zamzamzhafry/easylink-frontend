@@ -23,6 +23,9 @@
  */
 
 require_once __DIR__ . '/lib-log.php';
+require_once __DIR__ . '/lib-bridge-http.php';
+require_once __DIR__ . '/lib-hop-b-contract.php';
+require_once __DIR__ . '/lib-sync-scanlogs.php';
 
 // --- Configuration -----------------------------------------------------------
 
@@ -47,54 +50,21 @@ function bridge_url(string $path): string {
 }
 
 function bridge_post(string $path, array $fields = []): ?array {
-    $fields['sn'] = FSERVICE_SN;
-    $body = http_build_query($fields);
-
-    $ch = curl_init();
-    curl_setopt_array($ch, [
-        CURLOPT_URL            => bridge_url($path),
-        CURLOPT_POST           => true,
-        CURLOPT_POSTFIELDS     => $body,
-        CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_TIMEOUT        => REQUEST_TIMEOUT,
-        CURLOPT_HTTPHEADER     => ['Content-Type: application/x-www-form-urlencoded'],
-    ]);
-
-    $response = curl_exec($ch);
-    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    $error    = curl_error($ch);
-    curl_close($ch);
-
-    $rawSnippet = is_string($response) ? substr($response, 0, 500) : '(non-string)';
-    $url        = bridge_url($path);
-
-    el_log('DEBUG', 'bridge', "POST $path", [
-        'url'       => $url,
-        'http'      => $httpCode,
-        'curl_err'  => $error,
-        'body_len'  => is_string($response) ? strlen($response) : 0,
-        'body_head' => $rawSnippet,
-        'fields'    => array_diff_key($fields, ['sn' => 1]),
-    ]);
-
-    if ($response === false || $httpCode !== 200) {
-        el_log('ERROR', 'bridge', "$path failed", [
-            'http' => $httpCode, 'curl_err' => $error, 'url' => $url,
-        ]);
-        echo "[ERROR] $path failed: HTTP $httpCode - $error\n";
+    // CLI wrapper over shared lib-bridge-http. Returns the decoded data array
+    // (not the ok-envelope) on success, null on any failure. Preserves the
+    // [ERROR] stdout lines operators read during manual `php sync.php` runs.
+    $machine = [
+        'bridge_host' => FSERVICE_HOST,
+        'bridge_port' => FSERVICE_PORT,
+        'sn'          => FSERVICE_SN,
+        'label'       => 'fservice',
+    ];
+    $r = bridge_http_post($machine, $path, $fields, REQUEST_TIMEOUT, 'bridge');
+    if (!$r['ok'] || ($r['http'] ?? 0) !== 200) {
+        echo "[ERROR] $path failed: HTTP " . ($r['http'] ?? 0) . " - " . ($r['error'] ?? '') . "\n";
         return null;
     }
-
-    $decoded = json_decode($response, true);
-    if (!is_array($decoded)) {
-        el_log('ERROR', 'bridge', "$path non-JSON", [
-            'http' => $httpCode, 'body_head' => $rawSnippet, 'url' => $url,
-        ]);
-        echo "[ERROR] $path returned non-JSON\n";
-        return null;
-    }
-
-    return $decoded;
+    return $r['data'];
 }
 
 function _pdo_db(string $db): PDO {
@@ -116,33 +86,7 @@ function get_bridge_pdo(): ?PDO {
     }
 }
 
-/**
- * Insert one scan row into easylink_bridge.raw_scanlog_staging so the Hop B
- * worker (hop-b-batch-selector.php) can pick it up. Best-effort.
- */
-function _stage_scan(?PDOStatement $stage, string $sn, string $scanDateTs,
-                     string $pin, int $verify, int $io, int $work): bool {
-    if (!$stage) return false;
-    $ts = $scanDateTs !== '' ? strtotime($scanDateTs) : false;
-    if ($ts === false) {
-        el_log('WARN', 'stage', 'skip unparseable scan_date', ['raw' => $scanDateTs, 'pin' => $pin]);
-        return false;
-    }
-    $date = date('Y-m-d', $ts);
-    $time = date('H:i:s', $ts);
-    $key  = "{$sn}|{$date}|{$time}|{$pin}|{$verify}|{$io}|{$work}";
-    try {
-        $stage->execute([
-            ':sn'=>$sn, ':sd'=>$date, ':st'=>$time, ':pin'=>$pin,
-            ':vm'=>$verify, ':io'=>$io, ':wc'=>$work,
-            ':sek'=>$key, ':fetched'=>$scanDateTs,
-        ]);
-        return $stage->rowCount() > 0;
-    } catch (\Throwable $e) {
-        el_log('WARN', 'stage', 'stage insert failed', ['err' => $e->getMessage(), 'key' => $key]);
-        return false;
-    }
-}
+// Staging helper moved to lib-sync-scanlogs stage_scan_row().
 
 // --- User Sync ---------------------------------------------------------------
 
@@ -192,84 +136,41 @@ function sync_users(PDO $pdo): int {
 // --- Scanlog Sync ------------------------------------------------------------
 
 function sync_scanlogs(PDO $pdo, bool $fullMode = false): int {
-    // --- Phase 1: try /scanlog/new first ---
-    $endpoint = '/scanlog/new';
-    echo "[INFO] Pulling scanlogs from bridge ($endpoint)...\n";
-
-    $stmt = $pdo->prepare("
-        INSERT IGNORE INTO tb_scanlog (sn, scan_date, pin, verifymode, iomode, workcode)
-        VALUES (:sn, :scan_date, :pin, :verifymode, :iomode, :workcode)
-    ");
+    // Delegates to lib-sync-scanlogs. C4: no local tb_scanlog dual-write —
+    // stages only; VM mirror owns tb_scanlog. CLI two-phase preserved:
+    // /scanlog/new (incremental) first, fall back to /scanlog/all/paging if
+    // --full or incremental returned nothing.
     $bridge = get_bridge_pdo();
-    $stage = $bridge ? $bridge->prepare(
-        "INSERT IGNORE INTO raw_scanlog_staging
-           (sn, scan_date, scan_time, pin, verifymode, iomode, workcode, source_event_key, fetched_at)
-         VALUES (:sn,:sd,:st,:pin,:vm,:io,:wc,:sek,:fetched)"
-    ) : null;
+    $machine = [
+        'bridge_host' => FSERVICE_HOST,
+        'bridge_port' => FSERVICE_PORT,
+        'sn'          => FSERVICE_SN,
+        'label'       => 'fservice',
+    ];
 
-    $total = 0;
-    $staged = 0;
+    echo "[INFO] Pulling scanlogs from bridge (/scanlog/new)...\n";
+    $flow = sync_scanlogs_flow($machine, $bridge, false);
+    $total = $flow['total']; $staged = $flow['staged'];
+    echo "[INFO] Incremental sync got $total records (staged=$staged)\n";
 
-    $consume = function(array $rows) use ($stmt, $stage, &$total, &$staged) {
-        foreach ($rows as $row) {
-            $sn = (string)($row['SN'] ?? FSERVICE_SN);
-            $sd = (string)($row['ScanDate'] ?? '');
-            $pin = (string)($row['PIN'] ?? '');
-            $vm = (int)($row['VerifyMode'] ?? 0);
-            $io = (int)($row['IOMode'] ?? 0);
-            $wc = (int)($row['WorkCode'] ?? 0);
-            $stmt->execute([
-                ':sn'=>$sn, ':scan_date'=>$sd, ':pin'=>$pin,
-                ':verifymode'=>$vm, ':iomode'=>$io, ':workcode'=>$wc,
-            ]);
-            if (_stage_scan($stage, $sn, $sd, $pin, $vm, $io, $wc)) $staged++;
-            $total++;
-        }
-    };
-
-    // Try /scanlog/new first (incremental)
-    $result = bridge_post($endpoint, ['limit' => PAGING_LIMIT]);
-
-    if ($result && !empty($result['Result'])) {
-        $consume($result['Data'] ?? []);
-        echo "[INFO] Incremental sync got $total records (staged=$staged)\n";
-    }
-
-    // --- Phase 2: fallback to /scanlog/all/paging if needed ---
     if ($fullMode || $total === 0) {
         if ($total === 0) {
             echo "[INFO] No new scanlogs from /scanlog/new — falling back to /scanlog/all/paging\n";
         }
-
-        $endpoint = '/scanlog/all/paging';
-        echo "[INFO] Pulling ALL scanlogs from bridge ($endpoint)...\n";
-
-        $isSession = true;
-        $pageTotal = 0;
-        $before = $total;
-
-        while ($isSession) {
-            $result = bridge_post($endpoint, ['limit' => PAGING_LIMIT]);
-
-            if (!$result || empty($result['Result'])) {
-                $msg = is_array($result) ? (string)($result['message'] ?? '') : '';
-                if (stripos($msg, 'no data') !== false || stripos($msg, 'tidak') !== false) {
-                    echo "[INFO] Scanlog all/paging: no more data\n";
-                } else {
-                    echo "[WARN] Scanlog all/paging returned Result=false: $msg\n";
-                }
-                break;
-            }
-
-            $consume($result['Data'] ?? []);
-            $pageTotal = $total - $before;
-
-            $isSession = !empty($result['IsSession']);
-        }
-
+        echo "[INFO] Pulling ALL scanlogs from bridge (/scanlog/all/paging)...\n";
+        $flow2 = sync_scanlogs_flow($machine, $bridge, true);
+        $pageTotal = $flow2['total'];
+        $total += $pageTotal;
+        $staged += $flow2['staged'];
         echo "[INFO] All scanlogs synced this phase: $pageTotal records\n";
+        if (!empty($flow2['errors'])) {
+            echo "[WARN] " . implode('; ', $flow2['errors']) . "\n";
+        }
     }
 
+    if (!empty($flow['errors'])) {
+        echo "[WARN] " . implode('; ', $flow['errors']) . "\n";
+    }
     echo "[INFO] Total scanlogs synced: $total (staged for Hop B: $staged)\n";
     return $total;
 }

@@ -7,6 +7,7 @@
 - `agents` — Agent setup, config, multi-brain maintenance. Last updated: 2026-06-01 -> .multibrain/indexes/agents.md
 - `ui` — UI bug fixes, token migration, dark mode, print features. Last updated: 2026-06-25 -> .multibrain/indexes/ui.md
 - `auth` — Auth hardening, security fixes, connection leaks. Last updated: 2026-06-25 -> .multibrain/indexes/auth.md
+- `sync` — FService bridge ↔ VM pipeline (PHP ops/fservice-sync + Next.js ingest). Last updated: 2026-06-30 -> .multibrain/indexes/sync.md
 
 ## Latest Session (2026-06-25 23:30)
 php8 SDK pivot + dogfood hardening. 13 commits `520e4e9`→`cc71eb0` on `fix/bug-hunt-and-hardening`. Full i18n (13 pages EN/ID), API dedup (signal-safe), viewMode live, changelog modal, sidebar accordion, schedule compaction, analytics formula modals, optimistic shift, php8-style `lib/sdk-device-client.js` + `app/api/scanlog/hop-b-sync/route.js` (admin-only, INSERT IGNORE tb_scanlog). Architecture review 8 candidates at `/tmp/architecture-review-easylink.html`. 9 green dogfood passes. NOT live-verified: hop-b-sync real device pull. Handoff at `/tmp/handoff-easylink-2026-06-25.md`. -> .multibrain/context/2026-06-25-2330-claude-php8-sdk-pivot.md
