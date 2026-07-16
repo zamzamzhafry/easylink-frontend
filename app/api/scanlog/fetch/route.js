@@ -1,9 +1,12 @@
 /**
- * POST /api/scanlog/fetch — on-demand pull from the remote easylink-fetcher.
+ * POST /api/scanlog/fetch — on-demand raw pull from the remote easylink-fetcher.
  *
- * Admin-cookie auth. Calls fetcher (Cloudflare Tunnel) → device → returns
- * HOP_B records → prod writes them to tb_scanlog_safe_events via the shared
- * insertHopBSafeEvents (INSERT IGNORE dedup). Both-services-talk proof.
+ * Option A (dump-raw-then-app-cleans):
+ *   1. Admin-cookie auth.
+ *   2. Call fetcher /fetch → device rows returned VERBATIM (raw_rows).
+ *   3. INSERT IGNORE raw rows into tb_raw_scanlog (landing dedup on natural_key).
+ *   4. Inline clean pass → tb_scanlog_safe_events (validate/dedup/invalid-date).
+ * Raw rows are never lost, so the clean pass is replayable via /clean-pass.
  *
  * Env: FETCHER_URL, FETCHER_TOKEN (set on prod).
  */
@@ -15,10 +18,8 @@ import {
   getAuthContextFromCookies,
   unauthorizedResponse,
 } from '@/lib/auth-session';
-import { insertHopBSafeEvents } from '@/lib/hop-b-ingest-writer';
-import { buildHopBSourceEventKey } from '@/lib/hop-b-ingest-contract';
-import { randomUUID } from 'node:crypto';
-import { fetchScanlogsFromFetcher, FETCHER_SOURCE_SDK } from '@/lib/fetcher-client';
+import { fetchRawScanlogsFromFetcher } from '@/lib/fetcher-client';
+import { landRawRows, runCleanPass } from '@/lib/scanlog-clean-pass';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -46,10 +47,10 @@ export async function POST(request) {
   if (!sn)   return NextResponse.json({ ok: false, error: 'sn required' }, { status: 400 });
   if (!from) return NextResponse.json({ ok: false, error: 'from required' }, { status: 400 });
 
-  // 1. Call the fetcher.
+  // 1. Call the fetcher — raw device rows verbatim.
   let fetched;
   try {
-    fetched = await fetchScanlogsFromFetcher({ sn, from, to, limit });
+    fetched = await fetchRawScanlogsFromFetcher({ sn, from, to, limit });
   } catch (e) {
     return NextResponse.json({ ok: false, error: e.code === 'FETCHER_UNCONFIGURED' ? e.message : 'FETCHER_UNREACHABLE', detail: e.message }, { status: 502 });
   }
@@ -57,39 +58,26 @@ export async function POST(request) {
     return NextResponse.json({ ok: false, error: fetched.error, upstreamStatus: fetched.upstreamStatus, body: fetched.body?.slice(0, 300) }, { status: 502 });
   }
 
-  // 2. Normalize records: ensure source_event_key + source_sdk for the writer.
-  const records = fetched.records.map((r) => ({
-    device_sn: r.device_sn,
-    scan_date: r.scan_date,
-    scan_time: r.scan_time,
-    pin: r.pin,
-    verify_mode: r.verify_mode,
-    io_mode: r.io_mode,
-    workcode: r.workcode,
-    source_sdk: FETCHER_SOURCE_SDK,
-    source_event_key: r.source_event_key || buildHopBSourceEventKey(r),
-  }));
-
-  if (records.length === 0) {
-    return NextResponse.json({ ok: true, sn, fetched: 0, inserted: 0, duplicate: 0, from, to });
+  if (fetched.rawRows.length === 0) {
+    return NextResponse.json({ ok: true, sn, fetched: 0, landed: 0, inserted: 0, duplicate: 0, invalid: 0, from, to });
   }
 
-  // 3. Write via shared INSERT IGNORE path (dedup on source_event_key).
-  // batch_id = a fetcher-pull UUID (no tb_hop_b_ingest_log row for on-demand).
-  const batchId = randomUUID();
-  let conn;
+  // 2. Land raw rows verbatim, then 3. inline clean pass.
   try {
-    conn = await pool.getConnection();
-    await conn.beginTransaction();
-    const affected = await insertHopBSafeEvents(conn, { ingestLogId: batchId, records });
-    await conn.commit();
-    const duplicate = records.length - affected;
-    return NextResponse.json({ ok: true, sn, fetched: records.length, inserted: affected, duplicate, batch_id: batchId, from, to });
+    const landed = await landRawRows({ deviceSn: sn, rawRows: fetched.rawRows });
+    const clean = await runCleanPass({ limit: 5000 });
+    return NextResponse.json({
+      ok: true, sn, from, to,
+      fetched: fetched.rawRows.length,
+      landed: landed.landed,
+      landedDuplicate: landed.duplicate,
+      scanned: clean.scanned,
+      inserted: clean.inserted,
+      duplicate: clean.duplicate,
+      invalid: clean.invalid,
+    });
   } catch (e) {
-    if (conn) { try { await conn.rollback(); } catch {} }
     return NextResponse.json({ ok: false, error: 'DB_WRITE_FAILED', detail: e.message }, { status: 500 });
-  } finally {
-    if (conn) conn.release();
   }
 }
 

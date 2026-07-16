@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Deploy Checklist — Option A Raw Scanlog (Windows)</title>
+<style>
+  :root {
+    --bg:#0f1115; --card:#181b22; --line:#262b36; --ink:#e7ebf0; --mut:#9aa4b2;
+    --ok:#37d67a; --warn:#ffb020; --acc:#5b9dff; --code:#0b0d11;
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink);
+    font:15px/1.55 -apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif; padding:32px 16px; }
+  .wrap { max-width:860px; margin:0 auto; }
+  h1 { font-size:24px; margin:0 0 4px; }
+  .sub { color:var(--mut); margin:0 0 24px; font-size:13px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px;
+    padding:18px 20px; margin:0 0 18px; }
+  h2 { font-size:15px; letter-spacing:.02em; text-transform:uppercase; color:var(--acc);
+    margin:0 0 14px; }
+  ul { list-style:none; margin:0; padding:0; }
+  li { display:flex; gap:10px; align-items:flex-start; padding:7px 0;
+    border-bottom:1px dashed var(--line); }
+  li:last-child { border-bottom:0; }
+  .box { flex:0 0 auto; width:18px; height:18px; border-radius:5px; margin-top:2px;
+    border:1.5px solid var(--line); position:relative; }
+  .done { background:var(--ok); border-color:var(--ok); }
+  .done::after { content:"✓"; position:absolute; inset:0; color:#04120a; font-size:13px;
+    font-weight:800; display:flex; align-items:center; justify-content:center; }
+  .todo { border-color:var(--warn); }
+  .txt { flex:1; }
+  .txt b { color:var(--ink); }
+  .txt small { color:var(--mut); display:block; margin-top:2px; }
+  code { background:var(--code); border:1px solid var(--line); border-radius:5px;
+    padding:1px 6px; font:13px/1.4 ui-monospace,SFMono-Regular,Consolas,monospace; color:#cbd5e6; }
+  pre { background:var(--code); border:1px solid var(--line); border-radius:8px;
+    padding:12px 14px; overflow:auto; margin:8px 0 0; }
+  pre code { border:0; padding:0; background:none; }
+  .legend { display:flex; gap:18px; font-size:12px; color:var(--mut); margin:0 0 20px; }
+  .legend span { display:flex; gap:6px; align-items:center; }
+  .dot { width:12px; height:12px; border-radius:4px; display:inline-block; }
+  .pill { font-size:11px; padding:1px 7px; border-radius:20px; border:1px solid var(--line);
+    color:var(--mut); margin-left:6px; }
+  .flow { color:var(--mut); font-size:13px; }
+  .flow b { color:var(--acc); }
+  .skip { position:absolute; left:-999px; top:0; background:var(--acc); color:#04120a;
+    padding:8px 14px; border-radius:0 0 8px 0; font-weight:700; z-index:10; }
+  .skip:focus { left:0; }
+  a:focus-visible, .skip:focus-visible { outline:3px solid var(--acc); outline-offset:2px; }
+</style>
+</head>
+<body>
+<a class="skip" href="#main">Skip to checklist</a>
+<div class="wrap" id="main" role="main">
+  <h1>Deploy Checklist — Option A: Raw Scanlog Landing</h1>
+  <p class="sub">easylink-frontend + easylink-fetcher · Windows machine · 2026-07-16</p>
+
+  <p class="flow">Data path: <b>Device</b> → fetcher <code>/fetch</code> (raw rows) → app <code>tb_raw_scanlog</code> (verbatim dump) → clean pass → <code>tb_scanlog_safe_events</code></p>
+  <br>
+
+  <div class="legend">
+    <span><i class="dot" style="background:var(--ok)"></i> done / verified in code</span>
+    <span><i class="dot" style="background:var(--warn)"></i> you do on Windows box</span>
+  </div>
+
+  <div class="card">
+    <h2>Code — shipped &amp; tested</h2>
+    <ul role="list">
+      <li><span class="box done" role="img" aria-label="done"></span><span class="txt"><b>Migration <code>004_raw_scanlog_landing.sql</code></b><small>tb_raw_scanlog: verbatim raw_json, natural_key unique dedup, process_status</small></span></li>
+      <li><span class="box done" role="img" aria-label="done"></span><span class="txt"><b>Fetcher <code>/fetch</code> returns raw rows</b><small>bin/fetch-server.php — no transform at edge; <code>/push</code> legacy path untouched · php -l clean</small></span></li>
+      <li><span class="box done" role="img" aria-label="done"></span><span class="txt"><b>Clean pass <code>lib/scanlog-clean-pass.js</code></b><small>ported transform.php + real calendar/invalid-date detection + dedup</small></span></li>
+      <li><span class="box done" role="img" aria-label="done"></span><span class="txt"><b>Route <code>POST /api/scanlog/fetch</code></b><small>raw pull → land → inline clean (admin-only)</small></span></li>
+      <li><span class="box done" role="img" aria-label="done"></span><span class="txt"><b>Route <code>POST /api/scanlog/clean-pass</code></b><small>manual re-clean pending rows (replayability)</small></span></li>
+      <li><span class="box done" role="img" aria-label="done"></span><span class="txt"><b>Tests 197/197 pass</b><small>+6 new clean-pass unit tests · typecheck clean · e2e spec still valid</small></span></li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h2>Windows deploy steps <span class="pill">do in order</span></h2>
+    <ul role="list">
+      <li><span class="box todo" role="img" aria-label="to do"></span><span class="txt"><b>Pull both repos on Windows box</b>
+        <pre><code>cd C:\Users\USER\Desktop\easylink-frontend &amp;&amp; git pull
+cd C:\Users\USER\Desktop\easylink-fetcher   &amp;&amp; git pull</code></pre></span></li>
+      <li><span class="box todo" role="img" aria-label="to do"></span><span class="txt"><b>Apply migration to MySQL</b>
+        <pre><code>mysql -u root demo_easylinksdk &lt; migrations\004_raw_scanlog_landing.sql</code></pre>
+        <small>Verify: <code>SHOW TABLES LIKE 'tb_raw_scanlog';</code> returns 1 row</small></span></li>
+      <li><span class="box todo" role="img" aria-label="to do"></span><span class="txt"><b>Restart fetcher server</b>
+        <pre><code>php -S 0.0.0.0:9090 bin\fetch-server.php</code></pre>
+        <small>Behind cloudflared tunnel: <code>fetch.&lt;domain&gt; → localhost:9090</code></small></span></li>
+      <li><span class="box todo" role="img" aria-label="to do"></span><span class="txt"><b>Rebuild + restart Next.js app</b>
+        <pre><code>npm run build
+pm2 restart easylink-frontend   (or: npm start)</code></pre></span></li>
+      <li><span class="box todo" role="img" aria-label="to do"></span><span class="txt"><b>Confirm env vars set on app</b><small><code>FETCHER_URL</code>, <code>FETCHER_TOKEN</code>, <code>DB_*</code> — GET <code>/api/scanlog/fetch</code> as admin shows <code>fetcher_url_set:true</code></small></span></li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h2>Post-deploy smoke <span class="pill">prove it works</span></h2>
+    <ul role="list">
+      <li><span class="box todo" role="img" aria-label="to do"></span><span class="txt"><b>Fetcher health</b>
+        <pre><code>curl -H "Authorization: Bearer %FETCHER_TOKEN%" http://localhost:9090/health</code></pre>
+        <small>expect <code>{ok:true, php:..., machines:N}</code></small></span></li>
+      <li><span class="box todo" role="img" aria-label="to do"></span><span class="txt"><b>Trigger a pull</b> (admin cookie) → <code>POST /api/scanlog/fetch</code> <code>{sn, from, to}</code><small>expect <code>{ok:true, fetched, landed, inserted, duplicate, invalid}</code></small></span></li>
+      <li><span class="box todo" role="img" aria-label="to do"></span><span class="txt"><b>Raw landed verbatim</b><small><code>SELECT COUNT(*), process_status FROM tb_raw_scanlog GROUP BY process_status;</code></small></span></li>
+      <li><span class="box todo" role="img" aria-label="to do"></span><span class="txt"><b>Clean survivors in safe table</b><small><code>SELECT COUNT(*) FROM tb_scanlog_safe_events;</code> — non-decreasing</small></span></li>
+      <li><span class="box todo" role="img" aria-label="to do"></span><span class="txt"><b>Replay is idempotent</b><small>run <code>POST /api/scanlog/clean-pass</code> twice → second returns <code>inserted:0</code> (all duplicate)</small></span></li>
+      <li><span class="box todo" role="img" aria-label="to do"></span><span class="txt"><b>Re-pull same window = no dup raw</b><small>same <code>sn/from/to</code> again → <code>landed:0, landedDuplicate:&gt;0</code></small></span></li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h2>Rollback / safety notes</h2>
+    <ul role="list">
+      <li><span class="box done" role="img" aria-label="done"></span><span class="txt"><b>Raw is never lost</b><small>if clean logic is wrong, fix it and re-run <code>/clean-pass</code> — no device re-pull needed</small></span></li>
+      <li><span class="box done" role="img" aria-label="done"></span><span class="txt"><b>Sample device logic untouched</b><small>device-call.php / device.php raw pull unchanged; only edge transform relocated to app</small></span></li>
+      <li><span class="box done" role="img" aria-label="done"></span><span class="txt"><b><code>/push</code> legacy path still intact</b><small>old transform-at-edge push flow left working; not removed</small></span></li>
+      <li><span class="box todo" role="img" aria-label="to do"></span><span class="txt"><b>Table rollback if needed</b><small><code>DROP TABLE tb_raw_scanlog;</code> — safe_events untouched by drop</small></span></li>
+    </ul>
+  </div>
+
+  <p class="sub">Privilege change (admin → role-eligible fetch) is parked — separate grill, not in this deploy.</p>
+</div>
+</body>
+</html>
